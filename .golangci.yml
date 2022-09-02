@@ -1,0 +1,162 @@
+# https://golangci-lint.run/usage/configuration/#config-file
+run:
+  deadline: 20m
+  skip-dirs-use-default: true
+  timeout: 1m
+
+modules-download-mode: readonly
+
+linters:
+  disable-all: true
+  enable:
+    #- exhaustivestruct
+    - asciicheck
+    #- asmdecl
+    #- assign
+    #- atomic
+    #- atomicalign
+    - bodyclose
+    #- bools
+    #- buildtag
+    #- cgocall
+    #- composites
+    #- copylocks
+    - cyclop
+    - deadcode
+    #- deepequalerrors
+    - depguard
+    - dogsled
+    - dupl
+    - durationcheck
+    - errcheck
+    - errorlint
+    #- errorsas
+    - exhaustive
+    - exportloopref
+    #- fieldalignment
+    #- findcall
+    #- forbidigo
+    - forcetypeassert
+    #- framepointer
+    - funlen
+    - gci
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - godox
+    - goerr113
+    - gofmt
+    - gofumpt
+    - goheader
+    - goimports
+    #- gomnd
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    #- httpresponse
+    #- ifaceassert
+    - importas
+    - ineffassign
+    - lll
+    #- loopclosure
+    #- lostcancel
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    #- nilfunc
+    #- nilness
+    - nlreturn
+    - noctx
+    - nolintlint
+    - paralleltest
+    - prealloc
+    - predeclared
+    #- printf
+    #- reflectvaluecompare
+    - revive
+    - rowserrcheck
+    #- shadow
+    #- shift
+    #- sigchanyzer
+    #- sortslice
+    - sqlclosecheck
+    - staticcheck
+    #- stdmethods
+    #- stringintconv
+    - structcheck
+    #- structtag
+    - stylecheck
+    - tagliatelle
+    #- testinggoroutine
+    - testpackage
+    #- tests
+    - thelper
+    - tparallel
+    - typecheck
+    - unconvert
+    #- unmarshal
+    - unparam
+    #- unreachable
+    #- unsafeptr
+    - unused
+    #- unusedresult
+    #- unusedwrite
+    - varcheck
+    - wastedassign
+    - whitespace
+    - wrapcheck
+    - wsl
+issues:
+  # Show only new issues created after git revision `REV`
+  new-from-rev: main
+
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - funlen
+        - gosec
+        - dupl
+
+    - path: test_helpers\.go
+      linters:
+        - funlen
+        - gosec
+        - dupl
+output:
+  sort-results: true
+
+linters-settings:
+  golint:
+    min-confidence: 0
+  goconst:
+    min-len: 2
+    min-occurrences: 2
+  gofmt:
+    auto-fix: false
+  govet:
+    check-shadowing: true
+  gocyclo:
+    min-complexity: 10
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(gitlab.com/screwyprof/prettycov)
+  nolintlint:
+    allow-unused: true # report any unused nolint directives
+  wrapcheck:
+    # An array of strings that specify substrings of signatures to ignore.
+    # If this set, it will override the default set of ignored signatures.
+    # See https://github.com/tomarrell/wrapcheck#configuration for more information.
+    ignoreSigs:
+      - fmt.Errorf(
