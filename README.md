@@ -15,6 +15,109 @@ After that, I decided to build it on my own. So here it is :)
 go install github.com/screwyprof/prettycov/cmd/prettycov@latest
 ```
 
+## How to use
+### Getting built-in help
+Run `prettycov` or `prettycov help` or `prettycov --help` to get build-in usage info.
+
+### Run your tests with coverage
+`prettycov` works by parsing coverage profile, so the first thing to do is to run tests with coverage:
+
+`go test -cover -coverprofile=coverage.out` ./...
+
+### Show coverage summary up to the given depth
+You must specify the path to the coverage profile via `-profile` flag.
+
+You may also specify `-depth` to set the maximum depth (starting from 0) of the resulting tree:
+
+```shell
+❯ prettycov -profile=coverage.out -depth=5
+ github.com - 91.08
+ └ screwyprof - 91.08
+   └ skeleton - 91.08
+     ├ internal - 85.73
+     │ ├ delivery - 100.00
+     │ │ └ rest - 100.00
+     │ ├ app - 57.18
+     │ │ ├ modzap - 16.70
+     │ │ ├ modcfg - 75.00
+     │ │ ├ modrel - 87.00
+     │ │ └ fxlogger - 50.00
+     │ └ adapter - 100.00
+     │   └ postgres - 100.00
+     ├ cert - 100.00
+     │ └ usecase - 100.00
+     │   ├ issuecert - 100.00
+     │   └ viewcert - 100.00
+     └ tests - 87.50
+       └ integration - 87.50
+         └ postgres - 87.50
+```
+
+### Show coverage summary with replaced paths
+Sometimes the project may have a long project path (package path to be more precise) which clutters the output. 
+In this case you may want to replace it with a shorter name:
+
+```shell
+❯ prettycov -profile=coverage.out -depth=5 -old github.com/screwyprof/skeleton -new unicorn
+ unicorn - 91.08
+ ├ tests - 87.50
+ │ └ integration - 87.50
+ │   └ postgres - 87.50
+ │     └ app - 87.50
+ ├ cert - 100.00
+ │ └ usecase - 100.00
+ │   ├ issuecert - 100.00
+ │   └ viewcert - 100.00
+ └ internal - 85.73
+   ├ app - 57.18
+   │ ├ fxlogger - 50.00
+   │ ├ modcfg - 75.00
+   │ ├ modrel - 87.00
+   │ └ modzap - 16.70
+   ├ delivery - 100.00
+   │ └ rest - 100.00
+   │   ├ apierr - 100.00
+   │   ├ req - 100.00
+   │   └ handler - 100.00
+   └ adapter - 100.00
+     └ postgres - 100.00
+```
+
+### Getting top-level coverage info
+This is what I created this tool for. You may get a nice top-level package coverage:
+
+```shell
+❯ prettycov -profile=coverage.out -old github.com/screwyprof/skeleton -new unicorn -depth=1
+ unicorn - 91.08
+ ├ cert - 100.00
+ ├ internal - 85.73
+ └ tests - 87.50
+```
+
+## How it works
+It calls `go tool cover -html` under the hood then parses the output to populate a prefix tree of paths and coverages.
+Then it traverses the tree from the further leaves to top merging the coverage info. 
+Then it draws the tree up to the given depth.
+
+### What's next?
+#### Add support for alternative outputs.
+You maybe surprised, but `go tool cover` will generate different figures for `-func` and `-html` params... 
+At the moment `-html` format is used.
+
+#### Parse stdin for input instead of calling `go tool cover` directly
+At the moment we call `go tool cover` under the hood. What if we analysed the stdin instead:
+`go tool cover -html=coverage.out -o report.html` && `cat report.html | prettycov -depth=1`
+
+#### Configure default coverage calculation behaviour
+By default, golang tool simply ignores files with no tests (with zero coverage). 
+At the moment `prettycov` keeps this in mind and does the same thing. However, if you want to get an honest report 
+there should be an option to include zero-covered files into the summary.
+
+
+#### Add tests and run `prettycov` in the CI to get the report for this project
+This project was born spontaneously when I was on vacation. I didn't have much time, so just coded the idea with no tests.
+Now that it proved to be useful it would be great to add tests. For now, I've got a red coverage badge to remind me about it.
+
 ## Contributors ✨
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
 
@@ -22,9 +125,11 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
 <!-- prettier-ignore-start -->
 <!-- markdownlint-disable -->
 <table>
-  <tr>
-    <td align="center"><a href="https://github.com/angrz"><img src="https://avatars.githubusercontent.com/u/2292871?v=4?s=100" width="100px;" alt=""/><br /><sub><b>Anton Grinchak</b></sub></a><br /><a href="https://github.com/scrwyprof/screwyprof/prettycov/commits?author=angrz" title="Code">💻</a></td>
-  </tr>
+  <tbody>
+    <tr>
+      <td align="center"><a href="https://github.com/kannman"><img src="https://avatars.githubusercontent.com/u/40325995?v=4?s=100" width="100px;" alt=""/><br /><sub><b>antongr</b></sub></a><br /><a href="https://github.com/screwyprof/prettycov/commits?author=kannman" title="Code">💻</a></td>
+    </tr>
+  </tobdy>
 </table>
 
 <!-- markdownlint-restore -->

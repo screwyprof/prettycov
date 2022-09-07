@@ -1,6 +1,6 @@
 {
-  "projectName": "screwyprof/prettycov",
-  "projectOwner": "scrwyprof",
+  "projectName": "prettycov",
+  "projectOwner": "screwyprof",
   "repoType": "github",
   "repoHost": "https://github.com",
   "files": [
@@ -11,10 +11,10 @@
   "commitConvention": "none",
   "contributors": [
     {
-      "login": "angrz",
-      "name": "Anton Grinchak",
-      "avatar_url": "https://avatars.githubusercontent.com/u/2292871?v=4",
-      "profile": "https://github.com/angrz",
+      "login": "kannman",
+      "name": "antongr",
+      "avatar_url": "https://avatars.githubusercontent.com/u/40325995?v=4",
+      "profile": "https://github.com/kannman",
       "contributions": [
         "code"
       ]
