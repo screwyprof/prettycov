@@ -1,100 +1,37 @@
 package prettycov
 
 import (
-	"bytes"
-	"errors"
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
 	"path"
 	"sort"
 	"strings"
 )
 
-var ErrInvalidLineFormat = errors.New("invalid line format")
-
-type Coverage struct {
-	Items []CoverageItem
-	Total float64
+type CoverageStats struct {
+	Covered   int
+	Uncovered int
+	Ratio     float64
 }
 
-type CoverageItem struct {
+type FileCoverage struct {
 	File     string
-	Coverage float64
+	Coverage CoverageStats
 }
 
-func Cover(profile string) (io.Reader, error) {
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-
-	cmd := exec.Command("go", "tool", "cover", "-func", profile)
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%w: %s", err, stderr.String())
-	}
-
-	return stdout, nil
+type PkgCoverage struct {
+	Pkg      string
+	Coverage CoverageStats
 }
 
-func CoverHTML(profile string) (io.Reader, error) {
-	stderr := &bytes.Buffer{}
+func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
+	shortenPaths(files, curRoot, newRoot)
 
-	tmp, err := os.CreateTemp(os.TempDir(), "coverage-*.html")
-	if err != nil {
-		return nil, fmt.Errorf("cannot create temp file: %w", err)
-	}
+	files = mergeFiles(files)
+	packages := mergePackages(files)
 
-	output := tmp.Name()
-
-	cmd := exec.Command("go", "tool", "cover", "-html", profile, "-o", output)
-	cmd.Stderr = stderr
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%w: %s", err, stderr.String())
-	}
-
-	f, err := os.ReadFile(output)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read coverage.html: %w", err)
-	}
-
-	if err := os.Remove(output); err != nil {
-		return nil, fmt.Errorf("cannot remove temp file: %w", err)
-	}
-
-	return bytes.NewReader(f), nil
+	return process(packages)
 }
 
-func Process(items []CoverageItem, curRoot, newRoot string) *PathTree {
-	items = mergeByPackage(items)
-	shortenPaths(items, curRoot, newRoot)
-
-	return process(items)
-}
-
-func mergeByPackage(items []CoverageItem) []CoverageItem {
-	coverage := map[string]float64{}
-	count := map[string]int{}
-
-	for _, item := range items {
-		pkg := path.Dir(item.File)
-		coverage[pkg] += item.Coverage
-		count[pkg]++
-	}
-
-	res := make([]CoverageItem, 0, len(items))
-
-	for pkg, cov := range coverage {
-		res = append(res, CoverageItem{File: pkg, Coverage: cov / float64(count[pkg])})
-	}
-
-	return res
-}
-
-func shortenPaths(items []CoverageItem, oldRoot, newRoot string) {
+func shortenPaths(items []FileCoverage, oldRoot, newRoot string) {
 	if newRoot == "" {
 		return
 	}
@@ -104,7 +41,57 @@ func shortenPaths(items []CoverageItem, oldRoot, newRoot string) {
 	}
 }
 
-func process(items []CoverageItem) *PathTree {
+func mergeFiles(files []FileCoverage) []FileCoverage {
+	covered := map[string]int{}
+	uncovered := map[string]int{}
+	uniqueFiles := make(map[string]FileCoverage, len(files))
+
+	for _, f := range files {
+		covered[f.File] += f.Coverage.Covered
+		uncovered[f.File] += f.Coverage.Uncovered
+		uniqueFiles[f.File] = FileCoverage{File: f.File}
+	}
+
+	merged := make([]FileCoverage, 0, len(uniqueFiles))
+
+	for _, f := range uniqueFiles {
+		f.Coverage.Covered = covered[f.File]
+		f.Coverage.Uncovered = uncovered[f.File]
+		f.Coverage.Ratio = float64(covered[f.File]) / float64(covered[f.File]+uncovered[f.File]) * 100
+
+		merged = append(merged, f)
+	}
+
+	return merged
+}
+
+func mergePackages(files []FileCoverage) []PkgCoverage {
+	covered := map[string]int{}
+	uncovered := map[string]int{}
+	uniquePackages := make(map[string]PkgCoverage, len(files))
+
+	for _, f := range files {
+		pkg := path.Dir(f.File)
+
+		covered[pkg] += f.Coverage.Covered
+		uncovered[pkg] += f.Coverage.Uncovered
+		uniquePackages[pkg] = PkgCoverage{Pkg: pkg}
+	}
+
+	merged := make([]PkgCoverage, 0, len(uniquePackages))
+
+	for _, p := range uniquePackages {
+		p.Coverage.Covered = covered[p.Pkg]
+		p.Coverage.Uncovered = uncovered[p.Pkg]
+		p.Coverage.Ratio = float64(covered[p.Pkg]) / float64(covered[p.Pkg]+uncovered[p.Pkg]) * 100
+
+		merged = append(merged, p)
+	}
+
+	return merged
+}
+
+func process(items []PkgCoverage) *PathTree {
 	tree := &PathTree{}
 
 	populateTree(items, tree)
@@ -115,49 +102,48 @@ func process(items []CoverageItem) *PathTree {
 	sortByDepth(items)
 
 	for _, item := range items {
-		merge(tree, item.File)
+		merge(tree, item.Pkg)
 	}
 
 	return tree
 }
 
-func populateTree(items []CoverageItem, tree *PathTree) {
-	for _, item := range items {
-		if item.Coverage != 0.0 { // default golang behaviour
-			tree.Put(item.File, item.Coverage)
-		}
+func populateTree(packages []PkgCoverage, tree *PathTree) {
+	for _, p := range packages {
+		tree.Put(p.Pkg, p.Coverage)
 	}
 }
 
-func populateItemsMap(items []CoverageItem) map[string]CoverageItem {
-	d := make(map[string]CoverageItem, len(items))
+func populateItemsMap(items []PkgCoverage) map[string]PkgCoverage {
+	d := make(map[string]PkgCoverage, len(items))
 	for _, item := range items {
-		d[item.File] = item
+		d[item.Pkg] = item
 	}
 
 	return d
 }
 
-func addMissingParents(items []CoverageItem, itemsMap map[string]CoverageItem, tree *PathTree) {
+func addMissingParents(items []PkgCoverage, itemsMap map[string]PkgCoverage, tree *PathTree) {
 	var curPath string
 
 	for _, item := range items {
-		parts := strings.Split(item.File, "/")
+		parts := strings.Split(item.Pkg, "/")
 
 		for i := 1; i < len(parts); i++ {
 			curPath = strings.Join(parts[:i], "/")
 			if _, ok := itemsMap[curPath]; !ok {
-				itemsMap[curPath] = CoverageItem{File: curPath}
+				itemsMap[curPath] = PkgCoverage{Pkg: curPath}
 
-				n := tree.Get(curPath)
-				n.Value = -1.
+				if n := tree.Get(curPath); n != nil {
+					n.Coverage.Ratio = -1.
+				}
 			}
 		}
 	}
 }
 
-func populateItems(itemsMap map[string]CoverageItem) []CoverageItem {
-	items := make([]CoverageItem, 0, len(itemsMap))
+func populateItems(itemsMap map[string]PkgCoverage) []PkgCoverage {
+	items := make([]PkgCoverage, 0, len(itemsMap))
 	for _, item := range itemsMap {
 		items = append(items, item)
 	}
@@ -165,10 +151,10 @@ func populateItems(itemsMap map[string]CoverageItem) []CoverageItem {
 	return items
 }
 
-func sortByDepth(items []CoverageItem) {
+func sortByDepth(items []PkgCoverage) {
 	sort.Slice(items, func(i, j int) bool {
-		f1 := strings.Count(items[i].File, "/")
-		f2 := strings.Count(items[j].File, "/")
+		f1 := strings.Count(items[i].Pkg, "/")
+		f2 := strings.Count(items[j].Pkg, "/")
 
 		return f1 > f2
 	})
@@ -183,23 +169,33 @@ func merge(tree *PathTree, leaf string) {
 	}
 
 	var (
-		total float64
-		count int
+		covered   int
+		uncovered int
+		ratio     float64
 	)
 
 	if parent.Children != nil {
 		for _, child := range parent.Children {
-			count++
+			covered += child.Coverage.Covered
+			uncovered += child.Coverage.Uncovered
+		}
 
-			total += child.Value
+		ratio = float64(covered) / float64(covered+uncovered) * 100
+	}
+
+	stats := CoverageStats{
+		Covered:   covered,
+		Uncovered: uncovered,
+		Ratio:     ratio,
+	}
+
+	if parent.Coverage.Ratio >= 0 {
+		stats = CoverageStats{
+			Covered:   parent.Coverage.Covered + covered,
+			Uncovered: parent.Coverage.Uncovered + uncovered,
+			Ratio:     float64(parent.Coverage.Covered) / float64(parent.Coverage.Covered+parent.Coverage.Uncovered) * 100,
 		}
 	}
 
-	if parent.Value >= 0 {
-		count++
-
-		total += parent.Value
-	}
-
-	parent.Value = total / float64(count)
+	parent.Coverage = stats
 }

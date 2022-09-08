@@ -95,24 +95,11 @@ This is what I created this tool for. You may get a nice top-level package cover
 ```
 
 ## How it works
-It calls `go tool cover -html` under the hood then parses the output to populate a prefix tree of paths and coverages.
-Then it traverses the tree from the further leaves to top merging the coverage info. 
+It parses the coverage profile to populate a prefix tree of paths and coverages.
+Then it traverses the tree from the furthermost leaves to top merging the coverage info. 
 Then it draws the tree up to the given depth.
 
 ### What's next?
-#### Add support for alternative outputs.
-You maybe surprised, but `go tool cover` will generate different figures for `-func` and `-html` params... 
-At the moment `-html` format is used.
-
-#### Parse stdin for input instead of calling `go tool cover` directly
-At the moment we call `go tool cover` under the hood. What if we analysed the stdin instead:
-`go tool cover -html=coverage.out -o report.html` && `cat report.html | prettycov -depth=1`
-
-#### Configure default coverage calculation behaviour
-By default, golang tool simply ignores files with no tests (with zero coverage). 
-At the moment `prettycov` keeps this in mind and does the same thing. However, if you want to get an honest report 
-there should be an option to include zero-covered files into the summary.
-
 
 #### Add tests and run `prettycov` in the CI to get the report for this project
 This project was born spontaneously when I was on vacation. I didn't have much time, so just coded the idea with no tests.

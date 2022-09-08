@@ -71,7 +71,7 @@ lint-all: ## run linters
 
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
-	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov.go
+	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov/...
 
 deps: ## install deps
 	@echo -e "$(OK_COLOR)==> Installing dependencies$(NO_COLOR)"
