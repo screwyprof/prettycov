@@ -149,7 +149,15 @@ func addMissingParents(items []CoverageItem, itemsMap map[string]CoverageItem, t
 			if _, ok := itemsMap[curPath]; !ok {
 				itemsMap[curPath] = CoverageItem{File: curPath}
 
+				fmt.Println("missing path", curPath)
 				n := tree.Get(curPath)
+
+				if n == nil {
+					fmt.Println("missing node", curPath)
+
+					continue
+				}
+
 				n.Value = -1.
 			}
 		}
