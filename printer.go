@@ -22,7 +22,8 @@ func displayTree(w io.Writer, tree *PathTree, depth uint, padding string, root b
 
 	index := 0
 	for k, v := range tree.Children {
-		_, _ = fmt.Fprintf(w, "%s%s - %.2f\n", padding+symbol(root, getBoxType(index, len(tree.Children))), k, v.Value)
+		_, _ = fmt.Fprintf(w, "%s%s - %.2f\n",
+			padding+symbol(root, getBoxType(index, len(tree.Children))), k, v.Coverage.Ratio)
 		displayTree(w, v, depth, padding+symbol(root, childSymbol(index, len(tree.Children))), false, key+"/"+k)
 		index++
 	}
