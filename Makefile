@@ -1,12 +1,10 @@
 # The binary name.
 BINARY ?= prettycov
 
-# This repo's root import path.
-PKG := github.com/screwyprof/prettycov
-
 ## DO NOT EDIT BELLOW THIS LINE
-GO_FILES = $(shell find . -name "*.go" | grep -v vendor | uniq)
+GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" | grep -v vendor | uniq)
 LOCAL_PACKAGES="github.com/screwyprof/prettycov"
+COVERAGE := coverage.out
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
 # from it. Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
@@ -30,13 +28,23 @@ else
 	OPEN := xdg-open
 endif
 
+# bash, not sh: `echo -e` below prints a literal "-e" under dash, which is /bin/sh on the Ubuntu
+# runners. -e -o pipefail applies to every recipe line, so a failing command anywhere in a pipe
+# fails the target — without it `go tool cover ... | column` reported success when cover errored.
 SHELL := bash
+.SHELLFLAGS := -eu -o pipefail -c
+
+# `go test -coverprofile` writes the profile even when the suite fails, so without this a failed
+# run leaves a partial coverage.out behind and the next report reads it and exits 0.
+.DELETE_ON_ERROR:
+
+# Nothing here gains from -j, and coverage.out has one producer that several targets can ask for.
+# Serialising removes any chance of two runs writing that file at once.
+.NOTPARALLEL:
 
 OK_COLOR=\033[32;01m
 NO_COLOR=\033[0m
 MAKE_COLOR=\033[36m%-20s\033[0m
-
-IGNORE_COVERAGE_FOR=-e .*_gen.go -e backend-server.go -e  backend-types.go -e internal -e pkg/web3signer/client -e pkg/eth2/spec -e test_helpers.go -e .*test
 
 all: build lint test ## build application, run linters and tests
 
@@ -49,27 +57,44 @@ fmt: ## format code
 	@gofumpt -l -w .
 	@gci write $(GO_FILES) -s standard  -s default -s "prefix($(LOCAL_PACKAGES))"
 
-test:
+# One recipe produces the profile, and it is a real file rule so make can tell when it is stale.
+# The reports depend on the file rather than on `test`, so they rebuild it when a source has
+# changed and reuse it otherwise, instead of re-running the suite to re-read the same numbers.
+$(COVERAGE): $(GO_FILES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
-	@set -euo pipefail && go test -json -v -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=coverage.tmp ./... | tparse -follow
-	@set -euo pipefail && cat coverage.tmp | grep -v $(IGNORE_COVERAGE_FOR) > coverage.out && rm coverage.tmp
+	@go test -json -v -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./... | tparse -follow
 
-test-cover-txt: ## show plain coverage report in console
+# `make test` must always run the suite, so it drops the profile first rather than letting make
+# decide it is up to date.
+test: ## run tests and write the coverage profile
+	@rm -f $(COVERAGE)
+	@$(MAKE) --no-print-directory $(COVERAGE)
+
+test-cover-txt: $(COVERAGE) ## show plain coverage report in console
 	@echo -e "$(OK_COLOR)==> Generating coverage report$(NO_COLOR)"
-	@go tool cover -func coverage.out | tr -s '\t' ' ' | column -t -c2
+	@go tool cover -func $(COVERAGE) | tr -s '\t' ' ' | column -t -c2
 
-test-cover-html: ## show html coverage report
+# Written to a file rather than handed straight to a browser, so the report survives on a machine
+# with no display instead of the target silently doing nothing. Same best-effort open as the SVG.
+coverage.html: $(COVERAGE)
 	@echo -e "$(OK_COLOR)==> Generating coverage report$(NO_COLOR)"
-	@go tool cover -html=coverage.out
+	@go tool cover -html=$< -o $@
 
-test-cover-total: # show total coverage.out
+test-cover-html: coverage.html ## show html coverage report
+	@$(OPEN) $< 2>/dev/null || echo "==> $< written ($(OPEN) unavailable)"
+
+# Statements, not lines: Go instruments statements, so this will not match a line-based service
+# such as codecov.
+test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
-	@go tool cover -func coverage.out  | tail -n 1 | rev | cut -f1 | rev
+	@go tool cover -func $(COVERAGE) | tail -n 1 | rev | cut -f1 | rev
+
+coverage.svg: $(COVERAGE)
+	@go-cover-treemap -coverprofile $< > $@
 
 # Opening is best-effort: the SVG is the deliverable, and CI/containers have no display.
-test-cover-svg: # generate pretty coverage picture
-	@go-cover-treemap -coverprofile coverage.out > coverage.svg
-	@$(OPEN) coverage.svg 2>/dev/null || echo "==> coverage.svg written ($(OPEN) unavailable)"
+test-cover-svg: coverage.svg ## generate pretty coverage picture
+	@$(OPEN) $< 2>/dev/null || echo "==> $< written ($(OPEN) unavailable)"
 
 lint: ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
@@ -97,7 +122,7 @@ FAKE_HASH := sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 nix-hash: ## recompute flake.nix vendorHash (run after go.mod/go.sum change)
 	@echo -e "$(OK_COLOR)==> Recomputing vendorHash$(NO_COLOR)"
 	@sed -i.bak -E 's|vendorHash = "sha256-[^"]*"|vendorHash = "$(FAKE_HASH)"|' flake.nix
-	@hash=$$(nix build --no-link .#default 2>&1 | grep -oE 'sha256-[A-Za-z0-9+/=]{44}' | grep -v '^$(FAKE_HASH)$$' | head -1); \
+	@hash=$$( { nix build --no-link .#default 2>&1 || true; } | grep -oE 'sha256-[A-Za-z0-9+/=]{44}' | grep -v '^$(FAKE_HASH)$$' | head -1 || true); \
 	if [ -z "$$hash" ]; then \
 		echo "could not determine vendorHash; restoring"; mv flake.nix.bak flake.nix; exit 1; \
 	fi; \
