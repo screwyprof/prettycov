@@ -105,9 +105,7 @@ nix-hash: ## recompute flake.nix vendorHash (run after go.mod/go.sum change)
 	rm -f flake.nix.bak flake.nix.bak2; \
 	echo "vendorHash = $$hash"
 
-# ./VERSION holds the LAST released version; bump it, then run this. Note v0.1.3 currently tags the
-# unmerged "Debug panic" commit (50dc089) rather than anything on main — that tag gets repointed once
-# this lands, and the next release is 0.1.4. `git tag --merged main` shows what actually shipped.
+# ./VERSION holds the last released version — bump it, then run this.
 release: ## tag a release from ./VERSION
 	@v="v$$(cat VERSION)"; \
 	if ! git diff --quiet || ! git diff --cached --quiet; then \
