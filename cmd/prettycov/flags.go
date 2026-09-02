@@ -46,6 +46,7 @@ func parseFlags() flags {
 	)
 
 	flag.Usage = showUsage
+
 	flag.Parse()
 
 	return flags{

@@ -12,9 +12,9 @@ type PathTree struct {
 func (n *PathTree) Put(key string, value CoverageStats) bool {
 	node := n
 	isNew := false
-	parts := strings.Split(key, "/")
+	parts := strings.SplitSeq(key, "/")
 
-	for _, part := range parts {
+	for part := range parts {
 		child, ok := node.Children[part]
 		if !ok {
 			if node.Children == nil {
@@ -36,9 +36,9 @@ func (n *PathTree) Put(key string, value CoverageStats) bool {
 
 func (n *PathTree) Get(key string) *PathTree {
 	node := n
-	parts := strings.Split(key, "/")
+	parts := strings.SplitSeq(key, "/")
 
-	for _, part := range parts {
+	for part := range parts {
 		if node = node.Children[part]; node == nil {
 			return nil
 		}

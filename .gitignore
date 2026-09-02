@@ -20,3 +20,7 @@ coverage.svg
 # IDEs
 .idea/
 .vscode/
+
+# direnv's materialised devshell (per-checkout, never committed)
+/.direnv/
+.envrc

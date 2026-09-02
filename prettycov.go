@@ -22,6 +22,11 @@ type PkgCoverage struct {
 	Coverage CoverageStats
 }
 
+// ratio returns the percentage of covered statements, or NaN when there are none.
+func ratio(covered, uncovered int) float64 {
+	return float64(covered) / float64(covered+uncovered) * 100
+}
+
 func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
 	shortenPaths(files, curRoot, newRoot)
 
@@ -57,7 +62,7 @@ func mergeFiles(files []FileCoverage) []FileCoverage {
 	for _, f := range uniqueFiles {
 		f.Coverage.Covered = covered[f.File]
 		f.Coverage.Uncovered = uncovered[f.File]
-		f.Coverage.Ratio = float64(covered[f.File]) / float64(covered[f.File]+uncovered[f.File]) * 100
+		f.Coverage.Ratio = ratio(covered[f.File], uncovered[f.File])
 
 		merged = append(merged, f)
 	}
@@ -83,7 +88,7 @@ func mergePackages(files []FileCoverage) []PkgCoverage {
 	for _, p := range uniquePackages {
 		p.Coverage.Covered = covered[p.Pkg]
 		p.Coverage.Uncovered = uncovered[p.Pkg]
-		p.Coverage.Ratio = float64(covered[p.Pkg]) / float64(covered[p.Pkg]+uncovered[p.Pkg]) * 100
+		p.Coverage.Ratio = ratio(covered[p.Pkg], uncovered[p.Pkg])
 
 		merged = append(merged, p)
 	}
@@ -169,9 +174,9 @@ func merge(tree *PathTree, leaf string) {
 	}
 
 	var (
-		covered   int
-		uncovered int
-		ratio     float64
+		covered    int
+		uncovered  int
+		childRatio float64
 	)
 
 	if parent.Children != nil {
@@ -180,20 +185,20 @@ func merge(tree *PathTree, leaf string) {
 			uncovered += child.Coverage.Uncovered
 		}
 
-		ratio = float64(covered) / float64(covered+uncovered) * 100
+		childRatio = ratio(covered, uncovered)
 	}
 
 	stats := CoverageStats{
 		Covered:   covered,
 		Uncovered: uncovered,
-		Ratio:     ratio,
+		Ratio:     childRatio,
 	}
 
 	if parent.Coverage.Ratio >= 0 {
 		stats = CoverageStats{
 			Covered:   parent.Coverage.Covered + covered,
 			Uncovered: parent.Coverage.Uncovered + uncovered,
-			Ratio:     float64(parent.Coverage.Covered) / float64(parent.Coverage.Covered+parent.Coverage.Uncovered) * 100,
+			Ratio:     ratio(parent.Coverage.Covered, parent.Coverage.Uncovered),
 		}
 	}
 

@@ -21,6 +21,13 @@ ifeq ($(UNAME_S),Linux)
 	LDFLAGS += -extldflags -static
 endif
 
+## `open` is macOS-only; the freedesktop equivalent is xdg-open. Same uname switch as above.
+ifeq ($(UNAME_S),Darwin)
+	OPEN := open
+else
+	OPEN := xdg-open
+endif
+
 SHELL := bash
 
 OK_COLOR=\033[32;01m
@@ -57,9 +64,10 @@ test-cover-total: # show total coverage.out
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
 	@go tool cover -func coverage.out  | tail -n 1 | rev | cut -f1 | rev
 
+# Opening is best-effort: the SVG is the deliverable, and CI/containers have no display.
 test-cover-svg: # generate pretty coverage picture
 	@go-cover-treemap -coverprofile coverage.out > coverage.svg
-	@open coverage.svg
+	@$(OPEN) coverage.svg 2>/dev/null || echo "==> coverage.svg written ($(OPEN) unavailable)"
 
 lint: ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
@@ -73,12 +81,11 @@ install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
 	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov/...
 
+# Versions live in go.mod's `tool` block, not here, so there is ONE place to bump them. The nix
+# devShell already supplies these at the same versions; this target is for everyone who isn't in it.
 deps: ## install deps
 	@echo -e "$(OK_COLOR)==> Installing dependencies$(NO_COLOR)"
-	go install mvdan.cc/gofumpt@v0.3.1
-	go install github.com/daixiang0/gci@v0.4.3
-	go install github.com/mfridman/tparse@v0.11.1
-	go install github.com/nikolaydubina/go-cover-treemap@latest
+	go install tool
 
 clean: ## cleans-up artifacts
 	@echo -e "$(OK_COLOR)==> Cleaning up$(NO_COLOR)"
