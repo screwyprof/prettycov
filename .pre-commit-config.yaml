@@ -1,6 +1,11 @@
 # Hooks shell out to the Makefile rather than pinning tools themselves. Nix users get the binaries
 # from the devShell, everyone else from `make deps` (GOBIN) — so one config serves both, and tool
 # versions stay single-sourced in go.mod's `tool` block instead of being duplicated here.
+#
+# golangci-lint is the one exception: it is NOT a go.mod tool, because adding it takes go.mod from
+# 44 to 235 lines and go.sum from 99 to 1002 for a ~500-line CLI. It comes from the devShell, or
+# from the developer's own install, and is version-pinned for CI in .github/workflows/go.yml.
+# The go-lint hook therefore fails loudly when it is absent, rather than silently skipping.
 repos:
   - repo: local
     hooks:
@@ -18,9 +23,15 @@ repos:
         types: [go]
         pass_filenames: false
 
+      # Deliberately FAILS rather than skipping when golangci-lint is missing: contributors are
+      # expected to lint. `make deps` cannot supply it (see the note above), so the failure names
+      # both ways to get it instead of leaving a bare "command not found".
       - id: go-lint
         name: golangci-lint
-        entry: make lint
+        entry: >-
+          bash -c 'command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not found.
+          Enter the nix devShell, or install v2.13.1 (the version CI pins) from
+          https://golangci-lint.run/docs/welcome/install/"; exit 1; }; make lint'
         language: system
         types: [go]
         pass_filenames: false

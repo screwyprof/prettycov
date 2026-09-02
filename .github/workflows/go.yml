@@ -13,8 +13,8 @@ jobs:
         with:
           # Single-sourced from go.mod (currently 1.27) so CI can never drift from the module again.
           go-version-file: go.mod
-          # On by default in v4+, but stated explicitly: `make deps` compiles four tools from
-          # source, so the module + build cache is worth more here than the default implies.
+          # On by default in v4+, but stated explicitly: the test job's `make deps` compiles four
+          # tools from source, so the module + build cache is worth more here than the default implies.
           cache: true
           cache-dependency-path: go.sum
 
