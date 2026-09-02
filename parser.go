@@ -8,13 +8,7 @@ import (
 	"golang.org/x/tools/cover"
 )
 
-// ErrInvalidProfile reports a profile that could be read but not understood.
-//
-// The cover package offers nothing to match on: it builds every error with fmt.Errorf and %v, so
-// they carry no wrapped chain and there are no exported sentinels or types. Callers would be left
-// matching message text, which changes whenever x/tools does. This gives them something stable
-// instead. Failures to open the file keep their own cause, so errors.Is(err, fs.ErrNotExist) and
-// friends still work.
+// ErrInvalidProfile reports a profile that could be read but not parsed.
 var ErrInvalidProfile = errors.New("invalid coverage profile")
 
 // ParseProfile reads a coverage profile produced by `go test -coverprofile`.
@@ -55,7 +49,6 @@ func parse(profiles []*cover.Profile) []FileCoverage {
 			Coverage: CoverageStats{
 				Covered:   covered,
 				Uncovered: uncovered,
-				Ratio:     ratio(covered, uncovered),
 			},
 		})
 	}

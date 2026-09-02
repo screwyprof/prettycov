@@ -2,7 +2,6 @@ package prettycov_test
 
 import (
 	"io/fs"
-	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -80,8 +79,8 @@ func TestParseProfileSumsStatementsPerFile(t *testing.T) {
 		byFile[item.File] = item.Coverage
 	}
 
-	assert.Equal(t, prettycov.CoverageStats{Covered: 3, Uncovered: 2, Ratio: 60}, byFile["m/a.go"])
-	assert.Equal(t, prettycov.CoverageStats{Covered: 4, Uncovered: 0, Ratio: 100}, byFile["m/b.go"])
+	assert.Equal(t, prettycov.CoverageStats{Covered: 3, Uncovered: 2}, byFile["m/a.go"])
+	assert.Equal(t, prettycov.CoverageStats{Covered: 4, Uncovered: 0}, byFile["m/b.go"])
 }
 
 // `go test -coverpkg` emits the same block once per test binary that loaded the package. Those
@@ -99,13 +98,13 @@ func TestParseProfileMergesRepeatedBlocks(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, items, 1)
-	assert.Equal(t, prettycov.CoverageStats{Covered: 3, Uncovered: 0, Ratio: 100}, items[0].Coverage)
+	assert.Equal(t, prettycov.CoverageStats{Covered: 3, Uncovered: 0}, items[0].Coverage)
 }
 
-// A package with no statements gets Ratio = NaN, and NaN does not equal itself, so two identical
-// results compare unequal. Pinned here so a change to it is deliberate; it also renders as the
-// literal "NaN" in the tree output.
-func TestRatioOfNoStatementsIsNaN(t *testing.T) {
+// A package with no statements must still produce a comparable result. Storing a derived ratio
+// put a NaN in the struct, and NaN does not equal itself, so two identical parses compared
+// unequal — breaking any caller that compares stats, not just the display.
+func TestCoverageStatsAreComparable(t *testing.T) {
 	t.Parallel()
 
 	path := writeProfile(t, "mode: atomic\nm/doc.go:1.1,2.2 0 0\n")
@@ -117,8 +116,7 @@ func TestRatioOfNoStatementsIsNaN(t *testing.T) {
 	second, err := prettycov.ParseProfile(path)
 	require.NoError(t, err)
 
-	assert.True(t, math.IsNaN(first[0].Coverage.Ratio), "want NaN for a package with no statements")
-	assert.NotEqual(t, first, second, "two identical parses compare unequal because of the NaN")
+	assert.Equal(t, first, second, "two identical parses must compare equal")
 }
 
 func writeProfile(t *testing.T, content string) string {
