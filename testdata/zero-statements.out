@@ -1,0 +1,3 @@
+mode: atomic
+m/empty/doc.go:1.1,2.2 0 0
+m/real/a.go:1.1,2.2 3 1

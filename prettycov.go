@@ -2,7 +2,6 @@ package prettycov
 
 import (
 	"path"
-	"sort"
 	"strings"
 )
 
@@ -27,23 +26,63 @@ func ratio(covered, uncovered int) float64 {
 	return float64(covered) / float64(covered+uncovered) * 100
 }
 
+// Process turns per-file coverage into a tree in which every node reports its own statements plus
+// those of everything beneath it. The files argument is not modified.
 func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
-	shortenPaths(files, curRoot, newRoot)
+	packages := mergePackages(mergeFiles(shortenPaths(files, curRoot, newRoot)))
 
-	files = mergeFiles(files)
-	packages := mergePackages(files)
+	tree := &PathTree{}
+	for _, pkg := range packages {
+		tree.Put(pkg.Pkg, pkg.Coverage)
+	}
 
-	return process(packages)
+	return rollUp(tree)
 }
 
-func shortenPaths(items []FileCoverage, oldRoot, newRoot string) {
-	if newRoot == "" {
-		return
+// rollUp returns a copy of n in which every node's coverage is its own statements plus those of
+// each descendant, counted exactly once. A directory can be both a package and the parent of
+// packages, so the two contributions are summed rather than conflated: that conflation is what
+// made a node's totals grow by a factor of its child count.
+func rollUp(node *PathTree) *PathTree {
+	covered, uncovered := node.Coverage.Covered, node.Coverage.Uncovered
+
+	var children map[string]*PathTree
+
+	if len(node.Children) > 0 {
+		children = make(map[string]*PathTree, len(node.Children))
+
+		for name, child := range node.Children {
+			rolled := rollUp(child)
+			children[name] = rolled
+
+			covered += rolled.Coverage.Covered
+			uncovered += rolled.Coverage.Uncovered
+		}
 	}
 
-	for i := range items {
-		items[i].File = strings.Replace(items[i].File, oldRoot, newRoot, 1)
+	return &PathTree{
+		Coverage: CoverageStats{
+			Covered:   covered,
+			Uncovered: uncovered,
+			Ratio:     ratio(covered, uncovered),
+		},
+		Children: children,
 	}
+}
+
+func shortenPaths(items []FileCoverage, oldRoot, newRoot string) []FileCoverage {
+	if newRoot == "" {
+		return items
+	}
+
+	shortened := make([]FileCoverage, len(items))
+
+	for i, item := range items {
+		item.File = strings.Replace(item.File, oldRoot, newRoot, 1)
+		shortened[i] = item
+	}
+
+	return shortened
 }
 
 func mergeFiles(files []FileCoverage) []FileCoverage {
@@ -94,113 +133,4 @@ func mergePackages(files []FileCoverage) []PkgCoverage {
 	}
 
 	return merged
-}
-
-func process(items []PkgCoverage) *PathTree {
-	tree := &PathTree{}
-
-	populateTree(items, tree)
-	itemsMap := populateItemsMap(items)
-	addMissingParents(items, itemsMap, tree)
-
-	items = populateItems(itemsMap)
-	sortByDepth(items)
-
-	for _, item := range items {
-		merge(tree, item.Pkg)
-	}
-
-	return tree
-}
-
-func populateTree(packages []PkgCoverage, tree *PathTree) {
-	for _, p := range packages {
-		tree.Put(p.Pkg, p.Coverage)
-	}
-}
-
-func populateItemsMap(items []PkgCoverage) map[string]PkgCoverage {
-	d := make(map[string]PkgCoverage, len(items))
-	for _, item := range items {
-		d[item.Pkg] = item
-	}
-
-	return d
-}
-
-func addMissingParents(items []PkgCoverage, itemsMap map[string]PkgCoverage, tree *PathTree) {
-	var curPath string
-
-	for _, item := range items {
-		parts := strings.Split(item.Pkg, "/")
-
-		for i := 1; i < len(parts); i++ {
-			curPath = strings.Join(parts[:i], "/")
-			if _, ok := itemsMap[curPath]; !ok {
-				itemsMap[curPath] = PkgCoverage{Pkg: curPath}
-
-				if n := tree.Get(curPath); n != nil {
-					n.Coverage.Ratio = -1.
-				}
-			}
-		}
-	}
-}
-
-func populateItems(itemsMap map[string]PkgCoverage) []PkgCoverage {
-	items := make([]PkgCoverage, 0, len(itemsMap))
-	for _, item := range itemsMap {
-		items = append(items, item)
-	}
-
-	return items
-}
-
-func sortByDepth(items []PkgCoverage) {
-	sort.Slice(items, func(i, j int) bool {
-		f1 := strings.Count(items[i].Pkg, "/")
-		f2 := strings.Count(items[j].Pkg, "/")
-
-		return f1 > f2
-	})
-}
-
-func merge(tree *PathTree, leaf string) {
-	pkg := path.Dir(leaf)
-
-	parent := tree.Get(pkg)
-	if parent == nil {
-		return
-	}
-
-	var (
-		covered    int
-		uncovered  int
-		childRatio float64
-	)
-
-	if parent.Children != nil {
-		for _, child := range parent.Children {
-			covered += child.Coverage.Covered
-			uncovered += child.Coverage.Uncovered
-		}
-
-		childRatio = ratio(covered, uncovered)
-	}
-
-	stats := CoverageStats{
-		Covered:   covered,
-		Uncovered: uncovered,
-		Ratio:     childRatio,
-	}
-
-	if parent.Coverage.Ratio >= 0 {
-		stats = CoverageStats{
-			Covered:   parent.Coverage.Covered + covered,
-			Uncovered: parent.Coverage.Uncovered + uncovered,
-			Ratio:     ratio(parent.Coverage.Covered, parent.Coverage.Uncovered),
-		}
-	}
-
-	parent.Coverage = stats
 }
