@@ -55,7 +55,6 @@ func parse(profiles []*cover.Profile) []FileCoverage {
 			Coverage: CoverageStats{
 				Covered:   covered,
 				Uncovered: uncovered,
-				Ratio:     ratio(covered, uncovered),
 			},
 		})
 	}

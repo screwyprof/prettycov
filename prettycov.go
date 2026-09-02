@@ -8,7 +8,18 @@ import (
 type CoverageStats struct {
 	Covered   int
 	Uncovered int
-	Ratio     float64
+}
+
+// Ratio reports the percentage of statements covered. ok is false when there are none to cover,
+// which is not 0% — there is nothing to report. Derived rather than stored: a stored percentage
+// can disagree with the counts beside it, which is exactly how the roll-up used to go wrong.
+func (c CoverageStats) Ratio() (pct float64, ok bool) {
+	total := c.Covered + c.Uncovered
+	if total == 0 {
+		return 0, false
+	}
+
+	return float64(c.Covered) / float64(total) * 100, true
 }
 
 type FileCoverage struct {
@@ -19,11 +30,6 @@ type FileCoverage struct {
 type PkgCoverage struct {
 	Pkg      string
 	Coverage CoverageStats
-}
-
-// ratio returns the percentage of covered statements, or NaN when there are none.
-func ratio(covered, uncovered int) float64 {
-	return float64(covered) / float64(covered+uncovered) * 100
 }
 
 // Process turns per-file coverage into a tree in which every node reports its own statements plus
@@ -64,7 +70,6 @@ func rollUp(node *PathTree) *PathTree {
 		Coverage: CoverageStats{
 			Covered:   covered,
 			Uncovered: uncovered,
-			Ratio:     ratio(covered, uncovered),
 		},
 		Children: children,
 	}
@@ -101,7 +106,6 @@ func mergeFiles(files []FileCoverage) []FileCoverage {
 	for _, f := range uniqueFiles {
 		f.Coverage.Covered = covered[f.File]
 		f.Coverage.Uncovered = uncovered[f.File]
-		f.Coverage.Ratio = ratio(covered[f.File], uncovered[f.File])
 
 		merged = append(merged, f)
 	}
@@ -127,7 +131,6 @@ func mergePackages(files []FileCoverage) []PkgCoverage {
 	for _, p := range uniquePackages {
 		p.Coverage.Covered = covered[p.Pkg]
 		p.Coverage.Uncovered = uncovered[p.Pkg]
-		p.Coverage.Ratio = ratio(covered[p.Pkg], uncovered[p.Pkg])
 
 		merged = append(merged, p)
 	}

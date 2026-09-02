@@ -95,8 +95,39 @@ func TestProcessCountsEachStatementOnce(t *testing.T) {
 			for path, want := range tc.want {
 				node := tree.Get(path)
 				require.NotNilf(t, node, "path %q missing from tree", path)
-				assert.InDeltaf(t, want, node.Coverage.Ratio, ratioTolerance, "coverage at %q", path)
+
+				pct, ok := node.Coverage.Ratio()
+				require.Truef(t, ok, "no statements at %q", path)
+				assert.InDeltaf(t, want, pct, ratioTolerance, "coverage at %q", path)
 			}
+		})
+	}
+}
+
+func TestCoverageStatsRatio(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		stats   prettycov.CoverageStats
+		wantPct float64
+		wantOK  bool
+	}{
+		{name: "all covered", stats: prettycov.CoverageStats{Covered: 4}, wantPct: 100, wantOK: true},
+		{name: "none covered", stats: prettycov.CoverageStats{Uncovered: 4}, wantPct: 0, wantOK: true},
+		{name: "partly covered", stats: prettycov.CoverageStats{Covered: 1, Uncovered: 3}, wantPct: 25, wantOK: true},
+		// Not 0%: there is nothing to cover, so there is no percentage to report.
+		{name: "no statements", stats: prettycov.CoverageStats{}, wantPct: 0, wantOK: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			pct, ok := tc.stats.Ratio()
+
+			assert.Equal(t, tc.wantOK, ok)
+			assert.InDelta(t, tc.wantPct, pct, ratioTolerance)
 		})
 	}
 }

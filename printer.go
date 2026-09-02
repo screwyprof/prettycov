@@ -22,11 +22,22 @@ func displayTree(w io.Writer, tree *PathTree, depth uint, padding string, root b
 
 	index := 0
 	for k, v := range tree.Children {
-		_, _ = fmt.Fprintf(w, "%s%s - %.2f\n",
-			padding+symbol(root, getBoxType(index, len(tree.Children))), k, v.Coverage.Ratio)
+		_, _ = fmt.Fprintf(w, "%s%s - %s\n",
+			padding+symbol(root, getBoxType(index, len(tree.Children))), k, formatRatio(v.Coverage))
 		displayTree(w, v, depth, padding+symbol(root, childSymbol(index, len(tree.Children))), false, key+"/"+k)
 		index++
 	}
+}
+
+// formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to
+// print "NaN", which is what 0/0 produces in float division.
+func formatRatio(stats CoverageStats) string {
+	pct, ok := stats.Ratio()
+	if !ok {
+		return "n/a"
+	}
+
+	return fmt.Sprintf("%.2f", pct)
 }
 
 type BoxType int

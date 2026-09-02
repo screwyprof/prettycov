@@ -37,16 +37,10 @@ func TestProcessMatchesProfileTotals(t *testing.T) {
 				node := tree.Get(dir)
 				require.NotNilf(t, node, "%q is in the profile but missing from the tree", dir)
 
+				// Counts only. The ratio is derived from these by CoverageStats.Ratio, so it
+				// cannot disagree with them — which it could when it was a stored field, and did.
 				assert.Equalf(t, want.Covered, node.Coverage.Covered, "covered statements at %q", dir)
 				assert.Equalf(t, want.Uncovered, node.Coverage.Uncovered, "uncovered statements at %q", dir)
-
-				// The counts can be right while the percentage is not: the old roll-up derived a
-				// parent's ratio from its own statements alone, ignoring the children it had just
-				// added in. Check the reported ratio actually describes the reported counts.
-				if total := want.Covered + want.Uncovered; total > 0 {
-					wantRatio := float64(want.Covered) / float64(total) * 100
-					assert.InDeltaf(t, wantRatio, node.Coverage.Ratio, ratioTolerance, "ratio at %q", dir)
-				}
 			}
 		})
 	}
