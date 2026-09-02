@@ -32,14 +32,12 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 			}
 		}
 
-		coverage := float64(covered) / float64(covered+uncovered) * 100
-
 		items = append(items, FileCoverage{
 			File: p.FileName,
 			Coverage: CoverageStats{
 				Covered:   covered,
 				Uncovered: uncovered,
-				Ratio:     coverage,
+				Ratio:     ratio(covered, uncovered),
 			},
 		})
 	}

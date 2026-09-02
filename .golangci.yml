@@ -1,45 +1,24 @@
-# https://golangci-lint.run/usage/configuration/#config-file
+# https://golangci-lint.run/docs/configuration/file/
+version: "2"
+
 run:
-  deadline: 20m
-  skip-dirs-use-default: true
-  timeout: 1m
-
-modules-download-mode: readonly
-
+  modules-download-mode: readonly
 linters:
-  disable-all: true
+  default: none
   enable:
-    #- exhaustivestruct
     - asciicheck
-    #- asmdecl
-    #- assign
-    #- atomic
-    #- atomicalign
     - bodyclose
-    #- bools
-    #- buildtag
-    #- cgocall
-    #- composites
-    #- copylocks
+    - copyloopvar
     - cyclop
-    - deadcode
-    #- deepequalerrors
-    - depguard
     - dogsled
     - dupl
     - durationcheck
+    - err113
     - errcheck
     - errorlint
-    #- errorsas
     - exhaustive
-    - exportloopref
-    #- fieldalignment
-    #- findcall
-    #- forbidigo
     - forcetypeassert
-    #- framepointer
     - funlen
-    - gci
     - gochecknoglobals
     - gochecknoinits
     - gocognit
@@ -48,115 +27,105 @@ linters:
     - gocyclo
     - godot
     - godox
-    - goerr113
-    - gofmt
-    - gofumpt
     - goheader
-    - goimports
-    #- gomnd
     - gomoddirectives
-    - gomodguard
+    - gomodguard_v2
     - goprintffuncname
     - gosec
-    - gosimple
     - govet
-    #- httpresponse
-    #- ifaceassert
     - importas
     - ineffassign
     - lll
-    #- loopclosure
-    #- lostcancel
     - makezero
     - misspell
     - nakedret
     - nestif
     - nilerr
-    #- nilfunc
-    #- nilness
     - nlreturn
     - noctx
     - nolintlint
     - paralleltest
     - prealloc
     - predeclared
-    #- printf
-    #- reflectvaluecompare
     - revive
     - rowserrcheck
-    #- shadow
-    #- shift
-    #- sigchanyzer
-    #- sortslice
     - sqlclosecheck
     - staticcheck
-    #- stdmethods
-    #- stringintconv
-    - structcheck
-    #- structtag
-    - stylecheck
     - tagliatelle
-    #- testinggoroutine
     - testpackage
-    #- tests
     - thelper
     - tparallel
-    - typecheck
     - unconvert
-    #- unmarshal
     - unparam
-    #- unreachable
-    #- unsafeptr
     - unused
-    #- unusedresult
-    #- unusedwrite
-    - varcheck
     - wastedassign
     - whitespace
     - wrapcheck
-    - wsl
+    - wsl_v5
+  settings:
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    gocyclo:
+      min-complexity: 10
+    govet:
+      enable:
+        - shadow
+    # Keep in sync with the golines formatter below: same budget, same tab cost,
+    # so `golangci-lint fmt` actually fixes what lll reports.
+    lll:
+      line-length: 120
+      tab-width: 4
+    nolintlint:
+      allow-unused: true
+    wrapcheck:
+      # Substrings of signatures to ignore; overrides wrapcheck's default set.
+      # See https://github.com/tomarrell/wrapcheck#configuration
+      ignore-sigs:
+        - fmt.Errorf(
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Exclude some linters from running on test files.
+      - linters:
+          - dupl
+          - funlen
+          - gosec
+        path: _test\.go
+      - linters:
+          - dupl
+          - funlen
+          - gosec
+        path: test_helpers\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  # Show only new issues created after git revision `REV`
+  # Show only new issues created after git revision `REV`.
   new-from-rev: main
-
-  exclude-rules:
-    # Exclude some linters from running on tests files.
-    - path: _test\.go
-      linters:
-        - funlen
-        - gosec
-        - dupl
-
-    - path: test_helpers\.go
-      linters:
-        - funlen
-        - gosec
-        - dupl
-output:
-  sort-results: true
-
-linters-settings:
-  golint:
-    min-confidence: 0
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-  gofmt:
-    auto-fix: false
-  govet:
-    check-shadowing: true
-  gocyclo:
-    min-complexity: 10
-  gci:
-    sections:
-      - standard
-      - default
-      - prefix(gitlab.com/screwyprof/prettycov)
-  nolintlint:
-    allow-unused: true # report any unused nolint directives
-  wrapcheck:
-    # An array of strings that specify substrings of signatures to ignore.
-    # If this set, it will override the default set of ignored signatures.
-    # See https://github.com/tomarrell/wrapcheck#configuration for more information.
-    ignoreSigs:
-      - fmt.Errorf(
+formatters:
+  enable:
+    - gofumpt
+    - gci
+    - golines
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/screwyprof/prettycov)
+    golines:
+      max-len: 120
+      tab-len: 4
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

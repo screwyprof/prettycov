@@ -2,13 +2,15 @@
 BINARY ?= prettycov
 
 # This repo's root import path.
-PKG := gitlab.com/screwyprof/prettycov
+PKG := github.com/screwyprof/prettycov
 
 ## DO NOT EDIT BELLOW THIS LINE
 GO_FILES = $(shell find . -name "*.go" | grep -v vendor | uniq)
-LOCAL_PACKAGES="gitlab.com/screwyprof/prettycov"
+LOCAL_PACKAGES="github.com/screwyprof/prettycov"
 
-VERSION := $(shell git describe --abbrev=0 --tags 2> /dev/null || echo 'v0.0.0')+$(shell git rev-parse --short HEAD)
+# ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
+# from it. Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
+VERSION := v$(shell cat VERSION)+$(shell git rev-parse --short HEAD)
 
 # warning: -w will disable runtime profiling and affect debugging
 # see https://stackoverflow.com/questions/22267189/what-does-the-w-flag-mean-when-passed-in-via-the-ldflags-option-to-the-go-comman
@@ -19,6 +21,13 @@ UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
 	# see http://tbg.github.io/linking-golang-go-statically-cgo-testing
 	LDFLAGS += -extldflags -static
+endif
+
+## `open` is macOS-only; the freedesktop equivalent is xdg-open. Same uname switch as above.
+ifeq ($(UNAME_S),Darwin)
+	OPEN := open
+else
+	OPEN := xdg-open
 endif
 
 SHELL := bash
@@ -57,9 +66,10 @@ test-cover-total: # show total coverage.out
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
 	@go tool cover -func coverage.out  | tail -n 1 | rev | cut -f1 | rev
 
+# Opening is best-effort: the SVG is the deliverable, and CI/containers have no display.
 test-cover-svg: # generate pretty coverage picture
 	@go-cover-treemap -coverprofile coverage.out > coverage.svg
-	@open coverage.svg
+	@$(OPEN) coverage.svg 2>/dev/null || echo "==> coverage.svg written ($(OPEN) unavailable)"
 
 lint: ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
@@ -73,12 +83,45 @@ install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
 	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov/...
 
+# Versions live in go.mod's `tool` block, not here, so there is ONE place to bump them. The nix
+# devShell already supplies these at the same versions; this target is for everyone who isn't in it.
 deps: ## install deps
 	@echo -e "$(OK_COLOR)==> Installing dependencies$(NO_COLOR)"
-	go install mvdan.cc/gofumpt@v0.3.1
-	go install github.com/daixiang0/gci@v0.4.3
-	go install github.com/mfridman/tparse@v0.11.1
-	go install github.com/nikolaydubina/go-cover-treemap@latest
+	go install tool
+
+# buildGoModule needs a fixed-output hash for the module set, and nix only reveals the correct one
+# by failing a build with a wrong one. So: write a known-bad hash, read the `got:` line, write that.
+# `sed -i.bak` rather than `sed -i` because BSD sed (macOS) requires the suffix.
+FAKE_HASH := sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+
+nix-hash: ## recompute flake.nix vendorHash (run after go.mod/go.sum change)
+	@echo -e "$(OK_COLOR)==> Recomputing vendorHash$(NO_COLOR)"
+	@sed -i.bak -E 's|vendorHash = "sha256-[^"]*"|vendorHash = "$(FAKE_HASH)"|' flake.nix
+	@hash=$$(nix build --no-link .#default 2>&1 | grep -oE 'sha256-[A-Za-z0-9+/=]{44}' | grep -v '^$(FAKE_HASH)$$' | head -1); \
+	if [ -z "$$hash" ]; then \
+		echo "could not determine vendorHash; restoring"; mv flake.nix.bak flake.nix; exit 1; \
+	fi; \
+	sed -i.bak2 -E "s|vendorHash = \"$(FAKE_HASH)\"|vendorHash = \"$$hash\"|" flake.nix; \
+	rm -f flake.nix.bak flake.nix.bak2; \
+	echo "vendorHash = $$hash"
+
+# ./VERSION holds the last released version — bump it, then run this.
+release: ## tag a release from ./VERSION
+	@v="v$$(cat VERSION)"; \
+	if ! git diff --quiet || ! git diff --cached --quiet; then \
+		echo "working tree is dirty; commit first"; exit 1; \
+	fi; \
+	if git rev-parse "$$v" >/dev/null 2>&1; then \
+		echo "$$v already exists — bump ./VERSION first"; exit 1; \
+	fi; \
+	echo -e "$(OK_COLOR)==> Tagging $$v$(NO_COLOR)"; \
+	git tag -a "$$v" -m "$$v" && git push origin "$$v"
+
+# The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit
+# on PATH (pip install pre-commit / brew install pre-commit).
+hooks: ## install git pre-commit hooks
+	@echo -e "$(OK_COLOR)==> Installing git hooks$(NO_COLOR)"
+	@pre-commit install
 
 clean: ## cleans-up artifacts
 	@echo -e "$(OK_COLOR)==> Cleaning up$(NO_COLOR)"
@@ -93,4 +136,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt
 .PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-svg
-.PHONY: lint lint-all install deps clean help
+.PHONY: lint lint-all install deps hooks nix-hash release clean help

@@ -42,6 +42,7 @@ func handleCommands(params flags) {
 func failOnError(err error) {
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "An error occurred: %v\n", err)
+
 		os.Exit(2)
 	}
 }
