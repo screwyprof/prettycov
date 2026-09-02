@@ -8,15 +8,7 @@ import (
 	"golang.org/x/tools/cover"
 )
 
-// ErrInvalidProfile reports a profile that could be read but not understood.
-//
-// The cover package offers almost nothing to match on: it reports every malformed profile with
-// fmt.Errorf and %v, so those carry no wrapped chain and there is no sentinel or type behind them.
-// Callers would be left matching message text, which changes whenever x/tools does. This gives
-// them something stable instead.
-//
-// Errors that merely pass through it keep their own cause, so errors.Is still reaches them: a
-// failure to open the file, and the bufio.Scanner errors ParseProfilesFromReader returns verbatim.
+// ErrInvalidProfile reports a profile that could be read but not parsed.
 var ErrInvalidProfile = errors.New("invalid coverage profile")
 
 // ParseProfile reads a coverage profile produced by `go test -coverprofile`.
