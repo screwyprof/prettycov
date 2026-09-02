@@ -62,7 +62,7 @@
             version = pkgs.lib.fileContents ./VERSION;
             src = ./.;
             # Covers the `tool` block's deps too, not just x/tools — bump this whenever go.mod moves.
-            vendorHash = "sha256-9zihyHQtL4beMcUUutAsfTHmc5OAgo2bYk0vQODPJCo=";
+            vendorHash = "sha256-/yo/wihKSIC3Ekl9UZqSkYowk/giVF/FHyI1ryCuJzI=";
           };
         };
     };

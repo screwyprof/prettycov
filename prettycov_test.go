@@ -1,25 +1,38 @@
 package prettycov_test
 
 import (
-	"math"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/screwyprof/prettycov"
 )
 
+// ratioTolerance is half a display digit: the report prints two decimals, so anything closer
+// than this is the same number as far as a reader is concerned.
+const ratioTolerance = 0.005
+
+// rollUpCase describes one tree shape and the percentage every named node must report. A slice
+// rather than a map keyed by name: map iteration is randomised, so a map would run these in a
+// different order every time and report failures in a different order too.
+type rollUpCase struct {
+	name  string
+	files []prettycov.FileCoverage
+	want  map[string]float64
+}
+
 // Every statement in a subtree must be counted exactly once when rolling up into a parent.
-// The shapes below are the ones that get this wrong; see the table for what each one probes.
+// The shapes below are the ones that got this wrong; see each case for what it probes.
 func TestProcessCountsEachStatementOnce(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]struct {
-		files []prettycov.FileCoverage
-		want  map[string]float64
-	}{
+	tests := []rollUpCase{
 		// A directory that is BOTH a package and a parent of packages. This is the shape that
 		// breaks in practice: scraper/ in the corpus profile has service.go and subscriber.go
-		// alongside a store/ subpackage, and reports 87.03% where the truth is 90.00%.
-		"dir is both package and parent": {
+		// beside a store/ subpackage, and reported 87.03% where the truth is 90.00%.
+		{
+			name: "dir is both package and parent",
 			files: []prettycov.FileCoverage{
 				file("m/scraper/service.go", 8, 2),
 				file("m/scraper/store/store.go", 5, 5),
@@ -30,9 +43,10 @@ func TestProcessCountsEachStatementOnce(t *testing.T) {
 			},
 		},
 
-		// Sibling subtrees whose child counts differ. Each subtree's totals get scaled by its
-		// own number of children, so the parent's weighted average skews.
-		"siblings with differing child counts": {
+		// Sibling subtrees whose child counts differ. Each subtree's totals were scaled by its
+		// own number of children, skewing the parent's weighted average.
+		{
+			name: "siblings with differing child counts",
 			files: []prettycov.FileCoverage{
 				file("m/x/a/f.go", 2, 0),
 				file("m/y/a/f.go", 0, 2),
@@ -46,8 +60,9 @@ func TestProcessCountsEachStatementOnce(t *testing.T) {
 			},
 		},
 
-		// Guard against over-correcting: the simple cases must keep working.
-		"single package under root": {
+		// Guards against over-correcting: the simple cases must keep working.
+		{
+			name: "single package under root",
 			files: []prettycov.FileCoverage{
 				file("m/pkg/a/a.go", 3, 1),
 			},
@@ -57,26 +72,45 @@ func TestProcessCountsEachStatementOnce(t *testing.T) {
 				"m/pkg/a": 75.00,
 			},
 		},
+
+		// A package whose files all sit at the same level, with no children at all.
+		{
+			name: "flat package",
+			files: []prettycov.FileCoverage{
+				file("m/a.go", 1, 3),
+				file("m/b.go", 1, 1),
+			},
+			want: map[string]float64{
+				"m": 33.33, // 2 covered of 6
+			},
+		},
 	}
 
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			tree := prettycov.Process(tc.files, "", "")
 
 			for path, want := range tc.want {
 				node := tree.Get(path)
-				if node == nil {
-					t.Fatalf("path %q missing from tree", path)
-				}
-
-				if got := node.Coverage.Ratio; !closeEnough(got, want) {
-					t.Errorf("%s: got %.2f%%, want %.2f%%", path, got, want)
-				}
+				require.NotNilf(t, node, "path %q missing from tree", path)
+				assert.InDeltaf(t, want, node.Coverage.Ratio, ratioTolerance, "coverage at %q", path)
 			}
 		})
 	}
+}
+
+// Process must not write through the slice it is handed.
+func TestProcessDoesNotModifyItsInput(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{file("example.com/m/pkg/a.go", 1, 1)}
+	before := files[0].File
+
+	prettycov.Process(files, "example.com/m", "m")
+
+	assert.Equal(t, before, files[0].File, "Process rewrote the caller's slice")
 }
 
 func file(name string, covered, uncovered int) prettycov.FileCoverage {
@@ -84,8 +118,4 @@ func file(name string, covered, uncovered int) prettycov.FileCoverage {
 		File:     name,
 		Coverage: prettycov.CoverageStats{Covered: covered, Uncovered: uncovered},
 	}
-}
-
-func closeEnough(got, want float64) bool {
-	return math.Abs(got-want) < 0.005
 }
