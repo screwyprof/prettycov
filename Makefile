@@ -34,6 +34,14 @@ endif
 SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 
+# `go test -coverprofile` writes the profile even when the suite fails, so without this a failed
+# run leaves a partial coverage.out behind and the next report reads it and exits 0.
+.DELETE_ON_ERROR:
+
+# Nothing here gains from -j, and coverage.out has one producer that several targets can ask for.
+# Serialising removes any chance of two runs writing that file at once.
+.NOTPARALLEL:
+
 OK_COLOR=\033[32;01m
 NO_COLOR=\033[0m
 MAKE_COLOR=\033[36m%-20s\033[0m
@@ -49,15 +57,18 @@ fmt: ## format code
 	@gofumpt -l -w .
 	@gci write $(GO_FILES) -s standard  -s default -s "prefix($(LOCAL_PACKAGES))"
 
-test: ## run tests and write the coverage profile
+# One recipe produces the profile, and it is a real file rule so make can tell when it is stale.
+# The reports depend on the file rather than on `test`, so they rebuild it when a source has
+# changed and reuse it otherwise, instead of re-running the suite to re-read the same numbers.
+$(COVERAGE): $(GO_FILES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
-	@go test -json -v -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$(COVERAGE) ./... | tparse -follow
+	@go test -json -v -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./... | tparse -follow
 
-# The reports below read the profile, so they need one to exist. Depending on the file rather than
-# on `test` means a report regenerates it when absent but reuses it when present, instead of
-# re-running the whole suite every time you want to look at the numbers again.
-$(COVERAGE):
-	@$(MAKE) --no-print-directory test
+# `make test` must always run the suite, so it drops the profile first rather than letting make
+# decide it is up to date.
+test: ## run tests and write the coverage profile
+	@rm -f $(COVERAGE)
+	@$(MAKE) --no-print-directory $(COVERAGE)
 
 test-cover-txt: $(COVERAGE) ## show plain coverage report in console
 	@echo -e "$(OK_COLOR)==> Generating coverage report$(NO_COLOR)"
@@ -65,10 +76,12 @@ test-cover-txt: $(COVERAGE) ## show plain coverage report in console
 
 # Written to a file rather than handed straight to a browser, so the report survives on a machine
 # with no display instead of the target silently doing nothing. Same best-effort open as the SVG.
-test-cover-html: $(COVERAGE) ## show html coverage report
+coverage.html: $(COVERAGE)
 	@echo -e "$(OK_COLOR)==> Generating coverage report$(NO_COLOR)"
-	@go tool cover -html=$(COVERAGE) -o coverage.html
-	@$(OPEN) coverage.html 2>/dev/null || echo "==> coverage.html written ($(OPEN) unavailable)"
+	@go tool cover -html=$< -o $@
+
+test-cover-html: coverage.html ## show html coverage report
+	@$(OPEN) $< 2>/dev/null || echo "==> $< written ($(OPEN) unavailable)"
 
 # Statements, not lines: Go instruments statements, so this will not match a line-based service
 # such as codecov.
@@ -76,10 +89,12 @@ test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
 	@go tool cover -func $(COVERAGE) | tail -n 1 | rev | cut -f1 | rev
 
+coverage.svg: $(COVERAGE)
+	@go-cover-treemap -coverprofile $< > $@
+
 # Opening is best-effort: the SVG is the deliverable, and CI/containers have no display.
-test-cover-svg: $(COVERAGE) ## generate pretty coverage picture
-	@go-cover-treemap -coverprofile $(COVERAGE) > coverage.svg
-	@$(OPEN) coverage.svg 2>/dev/null || echo "==> coverage.svg written ($(OPEN) unavailable)"
+test-cover-svg: coverage.svg ## generate pretty coverage picture
+	@$(OPEN) $< 2>/dev/null || echo "==> $< written ($(OPEN) unavailable)"
 
 lint: ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
