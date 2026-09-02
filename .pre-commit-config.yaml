@@ -1,8 +1,33 @@
+# Hooks shell out to the Makefile rather than pinning tools themselves. Nix users get the binaries
+# from the devShell, everyone else from `make deps` (GOBIN) — so one config serves both, and tool
+# versions stay single-sourced in go.mod's `tool` block instead of being duplicated here.
 repos:
-- repo: git://github.com/dnephin/pre-commit-golang
-  rev: v0.5.0
-  hooks:
-    - id: golangci-lint
-    - id: go-unit-tests
-    - id: go-build
-    - id: go-mod-tidy
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: gofumpt + gci
+        entry: make fmt
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-build
+        name: go build
+        entry: go build ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-lint
+        name: golangci-lint
+        entry: make lint
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-mod-tidy
+        name: go mod tidy
+        entry: go mod tidy
+        language: system
+        files: (^go\.mod$|^go\.sum$|\.go$)
+        pass_filenames: false

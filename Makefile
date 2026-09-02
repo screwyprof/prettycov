@@ -2,11 +2,11 @@
 BINARY ?= prettycov
 
 # This repo's root import path.
-PKG := gitlab.com/screwyprof/prettycov
+PKG := github.com/screwyprof/prettycov
 
 ## DO NOT EDIT BELLOW THIS LINE
 GO_FILES = $(shell find . -name "*.go" | grep -v vendor | uniq)
-LOCAL_PACKAGES="gitlab.com/screwyprof/prettycov"
+LOCAL_PACKAGES="github.com/screwyprof/prettycov"
 
 VERSION := $(shell git describe --abbrev=0 --tags 2> /dev/null || echo 'v0.0.0')+$(shell git rev-parse --short HEAD)
 
@@ -87,6 +87,12 @@ deps: ## install deps
 	@echo -e "$(OK_COLOR)==> Installing dependencies$(NO_COLOR)"
 	go install tool
 
+# The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit
+# on PATH (pip install pre-commit / brew install pre-commit).
+hooks: ## install git pre-commit hooks
+	@echo -e "$(OK_COLOR)==> Installing git hooks$(NO_COLOR)"
+	@pre-commit install
+
 clean: ## cleans-up artifacts
 	@echo -e "$(OK_COLOR)==> Cleaning up$(NO_COLOR)"
 	@rm -rf ./coverage.*
@@ -100,4 +106,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt
 .PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-svg
-.PHONY: lint lint-all install deps clean help
+.PHONY: lint lint-all install deps hooks clean help

@@ -38,10 +38,20 @@
               pkgs.go-cover-treemap
               pkgs.util-linux
               pkgs.xdg-utils
+              # .pre-commit-config.yaml drives the git hooks; non-nix users bring their own.
+              pkgs.pre-commit
               # `make` targets shell out to these: VERSION uses git describe, and SHELL := bash.
               pkgs.gnumake
               pkgs.bashInteractive
             ];
+
+            # Register the hook on shell entry so nix users never have to remember `make hooks`.
+            # Guarded and quiet: entering the shell must not fail because of it.
+            shellHook = ''
+              if [ -d .git ] && ! grep -q pre-commit .git/hooks/pre-commit 2>/dev/null; then
+                pre-commit install >/dev/null 2>&1 || true
+              fi
+            '';
           };
 
           # buildGo127Module, not plain buildGoModule: otherwise the shell compiles with 1.27 and the
