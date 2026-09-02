@@ -1,5 +1,12 @@
 name: Go
-on: [pull_request, push]
+
+# Pull requests cover branches; push covers main. Listing both unscoped ran everything twice —
+# pushing to a branch with an open PR fires `push` for the branch ref AND `pull_request`
+# (synchronize) for the moved head, so every commit built the same SHA in two identical runs.
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 # This repo predates GitHub's 2023 switch to a read-only default, so GITHUB_TOKEN would otherwise
 # resolve to Contents/Actions/Deployments: write and be handed to every third-party action in the
