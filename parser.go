@@ -10,11 +10,13 @@ import (
 
 // ErrInvalidProfile reports a profile that could be read but not understood.
 //
-// The cover package offers nothing to match on: it builds every error with fmt.Errorf and %v, so
-// they carry no wrapped chain and there are no exported sentinels or types. Callers would be left
-// matching message text, which changes whenever x/tools does. This gives them something stable
-// instead. Failures to open the file keep their own cause, so errors.Is(err, fs.ErrNotExist) and
-// friends still work.
+// The cover package offers almost nothing to match on: it reports every malformed profile with
+// fmt.Errorf and %v, so those carry no wrapped chain and there is no sentinel or type behind them.
+// Callers would be left matching message text, which changes whenever x/tools does. This gives
+// them something stable instead.
+//
+// Errors that merely pass through it keep their own cause, so errors.Is still reaches them: a
+// failure to open the file, and the bufio.Scanner errors ParseProfilesFromReader returns verbatim.
 var ErrInvalidProfile = errors.New("invalid coverage profile")
 
 // ParseProfile reads a coverage profile produced by `go test -coverprofile`.
