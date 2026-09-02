@@ -36,8 +36,6 @@ OK_COLOR=\033[32;01m
 NO_COLOR=\033[0m
 MAKE_COLOR=\033[36m%-20s\033[0m
 
-IGNORE_COVERAGE_FOR=-e .*_gen.go -e backend-server.go -e  backend-types.go -e internal -e pkg/web3signer/client -e pkg/eth2/spec -e test_helpers.go -e .*test
-
 all: build lint test ## build application, run linters and tests
 
 build: ## build application
@@ -51,16 +49,18 @@ fmt: ## format code
 
 test:
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
-	@set -euo pipefail && go test -json -v -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=coverage.tmp ./... | tparse -follow
-	@set -euo pipefail && cat coverage.tmp | grep -v $(IGNORE_COVERAGE_FOR) > coverage.out && rm coverage.tmp
+	@set -euo pipefail && go test -json -v -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=coverage.out ./... | tparse -follow
 
 test-cover-txt: ## show plain coverage report in console
 	@echo -e "$(OK_COLOR)==> Generating coverage report$(NO_COLOR)"
 	@go tool cover -func coverage.out | tr -s '\t' ' ' | column -t -c2
 
+# Written to a file rather than handed straight to a browser, so the report survives on a machine
+# with no display instead of the target silently doing nothing. Same best-effort open as the SVG.
 test-cover-html: ## show html coverage report
 	@echo -e "$(OK_COLOR)==> Generating coverage report$(NO_COLOR)"
-	@go tool cover -html=coverage.out
+	@go tool cover -html=coverage.out -o coverage.html
+	@$(OPEN) coverage.html 2>/dev/null || echo "==> coverage.html written ($(OPEN) unavailable)"
 
 test-cover-total: # show total coverage.out
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
