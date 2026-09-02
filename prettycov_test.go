@@ -29,7 +29,7 @@ func TestProcessCountsEachStatementOnce(t *testing.T) {
 
 	tests := []rollUpCase{
 		// A directory that is BOTH a package and a parent of packages. This is the shape that
-		// breaks in practice: scraper/ in the corpus profile has service.go and subscriber.go
+		// breaks in practice: scraper/ in the delegator profile has service.go and subscriber.go
 		// beside a store/ subpackage, and reported 87.03% where the truth is 90.00%.
 		{
 			name: "dir is both package and parent",

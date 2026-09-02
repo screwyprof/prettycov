@@ -1,0 +1,5 @@
+mode: atomic
+m/scraper/service.go:1.1,3.2 6 1
+m/scraper/subscriber.go:1.1,2.2 2 0
+m/scraper/store/store.go:1.1,4.2 5 1
+m/scraper/store/rows.go:1.1,2.2 5 0
