@@ -3,30 +3,50 @@ package prettycov
 import (
 	"fmt"
 	"io"
-	"strings"
+	"maps"
+	"slices"
 )
 
+// DisplayTree writes tree as an indented report, depth levels deep, counting levels the way
+// `tree -L` does. A collapsed run of directories is the one row it renders as.
 func DisplayTree(w io.Writer, tree *PathTree, depth uint) {
-	displayTree(w, tree, depth, " ", true, "")
+	displayTree(w, tree, depth, " ", true)
 }
 
-func displayTree(w io.Writer, tree *PathTree, depth uint, padding string, root bool, key string) {
-	curDepth := strings.Count(key, "/")
-	if uint(curDepth) > depth {
+func displayTree(w io.Writer, tree *PathTree, depth uint, padding string, root bool) {
+	if tree == nil || depth == 0 {
 		return
 	}
 
-	if tree == nil {
-		return
-	}
+	// Sorted, because this output gets diffed between runs and map order is randomised.
+	names := slices.Sorted(maps.Keys(tree.Children))
 
-	index := 0
-	for k, v := range tree.Children {
+	for i, name := range names {
+		label, node := collapse(name, tree.Children[name])
+
 		_, _ = fmt.Fprintf(w, "%s%s - %s\n",
-			padding+symbol(root, getBoxType(index, len(tree.Children))), k, formatRatio(v.Coverage))
-		displayTree(w, v, depth, padding+symbol(root, childSymbol(index, len(tree.Children))), false, key+"/"+k)
-		index++
+			padding+symbol(root, getBoxType(i, len(names))), label, formatRatio(node.Coverage))
+		displayTree(w, node, depth-1, padding+symbol(root, childSymbol(i, len(names))), false)
 	}
+}
+
+// collapse folds a run of directories that each hold nothing but the next one into a single row,
+// so a module path does not spend three levels on "github.com", "owner", "repo" before reaching
+// anything worth reading. A directory that is a package in its own right is never folded away:
+// it contributes statements, so its totals differ from its child's.
+func collapse(label string, node *PathTree) (string, *PathTree) {
+	for len(node.Children) == 1 {
+		name := slices.Collect(maps.Keys(node.Children))[0]
+
+		child := node.Children[name]
+		if child.Coverage != node.Coverage {
+			break
+		}
+
+		label, node = label+"/"+name, child
+	}
+
+	return label, node
 }
 
 // formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to

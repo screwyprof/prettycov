@@ -40,7 +40,7 @@ func parseFlags() flags {
 		profile = flag.String("profile", "", "coverage profile path")
 		curRoot = flag.String("old", "", "old project's root package")
 		newRoot = flag.String("new", "", "new project's root package")
-		depth   = flag.Uint("depth", 1, "nesting to show from top to bottom starting from 0")
+		depth   = flag.Uint("depth", 1, "levels of the tree to show, like tree -L")
 		help    = flag.Bool("help", false, "show help")
 		info    = flag.Bool("version", false, "show version")
 	)

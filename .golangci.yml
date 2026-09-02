@@ -92,10 +92,12 @@ linters:
       - legacy
       - std-error-handling
     rules:
-      # Exclude some linters from running on test files.
+      # Exclude some linters from running on test files. goconst among them: a path repeated
+      # across two table cases is a fixture, not a constant waiting to be named.
       - linters:
           - dupl
           - funlen
+          - goconst
           - gosec
         path: _test\.go
       - linters:

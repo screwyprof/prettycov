@@ -27,30 +27,25 @@ Run `prettycov` or `prettycov help` or `prettycov --help` to get build-in usage 
 ### Show coverage summary up to the given depth
 You must specify the path to the coverage profile via `-profile` flag.
 
-You may also specify `-depth` to set the maximum depth (starting from 0) of the resulting tree:
+You may also specify `-depth` to set how many levels of the tree to show, the way `tree -L` counts them:
 
 ```shell
-❯ prettycov -profile=coverage.out -depth=5
- github.com - 91.08
- └ screwyprof - 91.08
-   └ skeleton - 91.08
-     ├ internal - 85.73
-     │ ├ delivery - 100.00
-     │ │ └ rest - 100.00
-     │ ├ app - 57.18
-     │ │ ├ modzap - 16.70
-     │ │ ├ modcfg - 75.00
-     │ │ ├ modrel - 87.00
-     │ │ └ fxlogger - 50.00
-     │ └ adapter - 100.00
-     │   └ postgres - 100.00
-     ├ cert - 100.00
-     │ └ usecase - 100.00
-     │   ├ issuecert - 100.00
-     │   └ viewcert - 100.00
-     └ tests - 87.50
-       └ integration - 87.50
-         └ postgres - 87.50
+❯ prettycov -profile=coverage.out -depth=3
+ github.com/screwyprof/delegator - 94.01
+ ├ pkg - 96.41
+ │ ├ clock - 100.00
+ │ ├ httpkit - 97.50
+ │ ├ logger - 96.88
+ │ ├ pgxdb - 90.00
+ │ └ tzkt - 100.00
+ ├ scraper - 90.00
+ │ ├ config - 100.00
+ │ └ store - 77.97
+ └ web - 95.15
+   ├ api - 100.00
+   ├ handler - 89.66
+   ├ store/pgxstore - 96.49
+   └ tezos - 100.00
 ```
 
 ### Show coverage summary with replaced paths
@@ -58,46 +53,39 @@ Sometimes the project may have a long project path (package path to be more prec
 In this case you may want to replace it with a shorter name:
 
 ```shell
-❯ prettycov -profile=coverage.out -depth=5 -old github.com/screwyprof/skeleton -new unicorn
- unicorn - 91.08
- ├ tests - 87.50
- │ └ integration - 87.50
- │   └ postgres - 87.50
- │     └ app - 87.50
- ├ cert - 100.00
- │ └ usecase - 100.00
- │   ├ issuecert - 100.00
- │   └ viewcert - 100.00
- └ internal - 85.73
-   ├ app - 57.18
-   │ ├ fxlogger - 50.00
-   │ ├ modcfg - 75.00
-   │ ├ modrel - 87.00
-   │ └ modzap - 16.70
-   ├ delivery - 100.00
-   │ └ rest - 100.00
-   │   ├ apierr - 100.00
-   │   ├ req - 100.00
-   │   └ handler - 100.00
-   └ adapter - 100.00
-     └ postgres - 100.00
+❯ prettycov -profile=coverage.out -depth=3 -old github.com/screwyprof/delegator -new delegator
+ delegator - 94.01
+ ├ pkg - 96.41
+ │ ├ clock - 100.00
+ │ ├ httpkit - 97.50
+ │ ├ logger - 96.88
+ │ ├ pgxdb - 90.00
+ │ └ tzkt - 100.00
+ ├ scraper - 90.00
+ │ ├ config - 100.00
+ │ └ store - 77.97
+ └ web - 95.15
+   ├ api - 100.00
+   ├ handler - 89.66
+   ├ store/pgxstore - 96.49
+   └ tezos - 100.00
 ```
 
 ### Getting top-level coverage info
 This is what I created this tool for. You may get a nice top-level package coverage:
 
 ```shell
-❯ prettycov -profile=coverage.out -old github.com/screwyprof/skeleton -new unicorn -depth=1
- unicorn - 91.08
- ├ cert - 100.00
- ├ internal - 85.73
- └ tests - 87.50
+❯ prettycov -profile=coverage.out -depth=2
+ github.com/screwyprof/delegator - 94.01
+ ├ pkg - 96.41
+ ├ scraper - 90.00
+ └ web - 95.15
 ```
 
 ## How it works
 It parses the coverage profile to populate a prefix tree of paths and coverages.
 Then it traverses the tree from the furthermost leaves to top merging the coverage info. 
-Then it draws the tree up to the given depth.
+Then it draws the tree to the given number of levels. A run of directories that each hold nothing but the next one renders as a single row.
 
 ### What's next?
 
