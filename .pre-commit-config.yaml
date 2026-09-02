@@ -31,3 +31,12 @@ repos:
         language: system
         files: (^go\.mod$|^go\.sum$|\.go$)
         pass_filenames: false
+
+      # Keeps flake.nix's vendorHash in step with the module set automatically. No-op without nix,
+      # so non-nix users are never blocked by a hook they can't satisfy.
+      - id: nix-vendor-hash
+        name: nix vendorHash
+        entry: bash -c 'command -v nix >/dev/null 2>&1 || exit 0; make nix-hash'
+        language: system
+        files: ^(go\.mod|go\.sum)$
+        pass_filenames: false

@@ -8,7 +8,6 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
-      # FOLLOW ours, or flake-parts drags in a SECOND nixpkgs-lib: two evaluations of anything shared.
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
   };
@@ -58,7 +57,9 @@
           # package with the nixpkgs default, which is the toolchain split this pin exists to avoid.
           packages.default = pkgs.buildGo127Module {
             pname = "prettycov";
-            version = "0.0.1-alpha";
+            # A flake's `self` exposes rev/shortRev/revCount but NOT tags, so `git describe` is
+            # impossible here. ./VERSION is the one thing both nix and the Makefile can read.
+            version = pkgs.lib.fileContents ./VERSION;
             src = ./.;
             # Covers the `tool` block's deps too, not just x/tools — bump this whenever go.mod moves.
             vendorHash = "sha256-9zihyHQtL4beMcUUutAsfTHmc5OAgo2bYk0vQODPJCo=";
