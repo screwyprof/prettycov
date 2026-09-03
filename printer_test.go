@@ -69,6 +69,30 @@ func TestDisplayTreeKeepsPrintableUnicode(t *testing.T) {
 	assert.Contains(t, render(t, tree, 2), "héllo-世界")
 }
 
+// A nil tree is nothing to draw, not a crash. Nothing in the CLI passes one, so only a caller of
+// the library would find this — gobco reported the condition as never once true.
+func TestRowsHandlesANilTree(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, prettycov.Rows(nil, 3))
+	assert.Empty(t, render(t, nil, 3))
+}
+
+// colorize asks the writer whether it is a terminal, and Stat can fail — a closed file is the
+// reachable way there. Failing that question means no colour, not a panic.
+func TestDisplayTreeStaysPlainWhenTheWriterCannotBeStatted(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp(t.TempDir(), "closed")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	tree := prettycov.Process(printerFiles(), "", "")
+
+	// ColorAuto, so the terminal check actually runs; the file is closed, so Stat errors.
+	prettycov.DisplayTree(f, tree, prettycov.Options{Depth: 1, Color: prettycov.ColorAuto})
+}
+
 // Coverage output gets diffed between CI runs, so the same tree must render byte-identically
 // every time. Ranging over a map does not give that.
 func TestDisplayTreeIsDeterministic(t *testing.T) {

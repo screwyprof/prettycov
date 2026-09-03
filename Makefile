@@ -10,6 +10,7 @@ LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
 # Counter files from the binary tests, folded into $(COVERAGE) below.
 COVERDATA := .covdata
+GOBCO_VERSION := v1.3.4
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
 # from it. Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
@@ -116,6 +117,16 @@ test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
 	@go tool cover -func $(COVERAGE) | awk 'END{print $$NF}'
 
+# Go measures statements, not branches: `return a && b` is one statement, covered the moment it
+# runs, whichever way it evaluates. gobco instruments the conditions themselves and says which
+# were never true or never false. Pinned and run with `go run pkg@version`, which leaves go.mod
+# and go.sum untouched, so this stays a tool you reach for rather than a dependency.
+cover-branches: ## report conditions never evaluated both ways
+	@echo -e "$(OK_COLOR)==> Condition coverage$(NO_COLOR)"
+	@for pkg in . ./internal/app; do \
+		go run github.com/rillig/gobco@$(GOBCO_VERSION) $$pkg | grep -v "^ok\b" || true; \
+	done
+
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
 test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
@@ -180,5 +191,5 @@ help: ## show this help
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
-.PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-tree
+.PHONY: test cover-branches test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all install hooks nix-hash release clean help
