@@ -3,8 +3,14 @@ BINARY ?= prettycov
 
 ## DO NOT EDIT BELLOW THIS LINE
 GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" | grep -v vendor | uniq)
+# Fixtures are inputs too. Without them a changed profile or golden file leaves the report targets
+# reading a coverage.out that predates it, and make calls the file up to date.
+FIXTURES := $(shell find . -path "*/testdata/*" -type f -not -path "./.direnv/*")
 LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
+# Counter files from the binary tests, folded into $(COVERAGE) below.
+COVERDATA := .covdata
+GOBCO_VERSION := v1.3.4
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
 # from it. Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
@@ -12,7 +18,7 @@ VERSION := v$(shell cat VERSION)+$(shell git rev-parse --short HEAD)
 
 # warning: -w will disable runtime profiling and affect debugging
 # see https://stackoverflow.com/questions/22267189/what-does-the-w-flag-mean-when-passed-in-via-the-ldflags-option-to-the-go-comman
-LDFLAGS = -w -s -X main.version=$(VERSION)
+LDFLAGS = -w -s -X github.com/screwyprof/prettycov/internal/app.version=$(VERSION)
 
 ## build statically on linux
 UNAME_S := $(shell uname -s)
@@ -48,9 +54,12 @@ MAKE_COLOR=\033[36m%-20s\033[0m
 
 all: build lint test ## build application, run linters and tests
 
+# No -race here: it is a test tool, not a build flag. It also needs cgo, which silently undid the
+# static linking below — the binary came out dynamically linked against the host glibc — and cost
+# a second of race-runtime startup on a program whose work takes a millisecond.
 build: ## build application
 	@echo -e "$(OK_COLOR)==> Building application$(NO_COLOR)"
-	go build -race -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
+	go build -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
 
 # golangci-lint comes from the devShell or the developer's own install, not go.mod, so the targets
 # needing it say where to get it rather than dying with "command not found".
@@ -69,9 +78,19 @@ fmt: require-golangci ## format code
 # One recipe produces the profile, and it is a real file rule so make can tell when it is stale.
 # The reports depend on the file rather than on `test`, so they rebuild it when a source has
 # changed and reuse it otherwise, instead of re-running the suite to re-read the same numbers.
-$(COVERAGE): $(GO_FILES)
+#
+# The last step folds in the binary tests: they run a compiled prettycov, so its execution is
+# absent from the suite's own profile. Appending merges, because readers of this format sum blocks
+# they see twice. Guarded — `go test -run` filtered to other tests writes no counters at all.
+$(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
-	@go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
+	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
+	@PRETTYCOV_COVERDIR=$(PWD)/$(COVERDATA) \
+		go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
+	@if [ -n "$$(ls -A $(COVERDATA) 2>/dev/null)" ]; then \
+		go tool covdata textfmt -i=$(COVERDATA) -o=$(COVERDATA)/binary.txt && \
+		tail -n +2 $(COVERDATA)/binary.txt >> $@; \
+	fi
 
 # `make test` must always run the suite, so it drops the profile first rather than letting make
 # decide it is up to date.
@@ -81,7 +100,7 @@ test: ## run tests and write the coverage profile
 
 test-cover-txt: $(COVERAGE) ## show plain coverage report in console
 	@echo -e "$(OK_COLOR)==> Generating coverage report$(NO_COLOR)"
-	@go tool cover -func $(COVERAGE) | tr -s '\t' ' ' | column -t -c2
+	@go tool cover -func $(COVERAGE) | tr -s '\t' ' ' | column -t
 
 # Written to a file rather than handed straight to a browser, so the report survives on a machine
 # with no display instead of the target silently doing nothing. Opening it is best-effort.
@@ -96,7 +115,17 @@ test-cover-html: coverage.html ## show html coverage report
 # such as codecov.
 test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
-	@go tool cover -func $(COVERAGE) | tail -n 1 | rev | cut -f1 | rev
+	@go tool cover -func $(COVERAGE) | awk 'END{print $$NF}'
+
+# Go measures statements, not branches: `return a && b` is one statement, covered the moment it
+# runs, whichever way it evaluates. gobco instruments the conditions themselves and says which
+# were never true or never false. Pinned and run with `go run pkg@version`, which leaves go.mod
+# and go.sum untouched, so this stays a tool you reach for rather than a dependency.
+cover-branches: ## report conditions never evaluated both ways
+	@echo -e "$(OK_COLOR)==> Condition coverage$(NO_COLOR)"
+	@for pkg in . ./internal/app; do \
+		go run github.com/rillig/gobco@$(GOBCO_VERSION) $$pkg | grep -v "^ok\b" || true; \
+	done
 
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
@@ -152,6 +181,7 @@ hooks: ## install git pre-commit hooks
 clean: ## cleans-up artifacts
 	@echo -e "$(OK_COLOR)==> Cleaning up$(NO_COLOR)"
 	@rm -rf ./coverage.*
+	@rm -rf ./$(COVERDATA)
 	@rm -rf ./prettycov
 
 help: ## show this help
@@ -161,5 +191,5 @@ help: ## show this help
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
-.PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-tree
+.PHONY: test cover-branches test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all install hooks nix-hash release clean help

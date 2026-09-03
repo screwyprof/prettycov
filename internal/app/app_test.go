@@ -1,7 +1,8 @@
-package main
+package app_test
 
 import (
 	"bytes"
+	_ "embed"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,11 +10,22 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/screwyprof/prettycov/internal/app"
 )
 
-const profile = "mode: atomic\n" +
-	"m/a/a.go:1.1,2.2 6 1\n" + // 6 covered
-	"m/b/b.go:1.1,2.2 4 0\n" // 4 not covered -> 60% overall
+// Literal, not app's own constants: a script sees these numbers, so renumbering one has to fail.
+const (
+	codeOK     = 0
+	codeBelow  = 1
+	codeFailed = 2
+)
+
+// 6 of 10 statements covered, so the report reads 60.00 and a -fail-under above that fails.
+// Copied in cmd/prettycov/testdata/sixty-percent.out too: go:embed cannot reach out of its own package. Change both.
+//
+//go:embed testdata/sixty-percent.out
+var profile string
 
 func TestRunRendersTheReport(t *testing.T) {
 	t.Parallel()
@@ -21,9 +33,9 @@ func TestRunRendersTheReport(t *testing.T) {
 	path := writeProfile(t, profile)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := run([]string{"-profile", path, "-color", "never"}, stdout, stderr)
+	code := app.Run([]string{"-profile", path, "-color", "never"}, stdout, stderr)
 
-	assert.Equal(t, exitOK, code)
+	assert.Equal(t, codeOK, code)
 	assert.Contains(t, stdout.String(), "60.00")
 	assert.Empty(t, stderr.String())
 }
@@ -33,9 +45,9 @@ func TestRunAcceptsAPositionalProfile(t *testing.T) {
 	t.Parallel()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := run([]string{writeProfile(t, profile), "-color", "never"}, stdout, stderr)
+	code := app.Run([]string{writeProfile(t, profile), "-color", "never"}, stdout, stderr)
 
-	assert.Equal(t, exitOK, code)
+	assert.Equal(t, codeOK, code)
 	assert.Contains(t, stdout.String(), "60.00")
 }
 
@@ -45,14 +57,17 @@ func TestRunAcceptsAPositionalProfile(t *testing.T) {
 //nolint:paralleltest // t.Chdir cannot be combined with t.Parallel.
 func TestRunDefaultsToCoverageOutInTheWorkingDirectory(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, defaultProfile), []byte(profile), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "coverage.out"), []byte(profile), 0o600))
 
 	t.Chdir(dir)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := run([]string{"-color", "never"}, stdout, stderr)
 
-	assert.Equal(t, exitOK, code)
+	// No arguments at all, which is the truest form of this: a bare `prettycov`. Colour is off
+	// anyway, since a buffer is not a terminal.
+	code := app.Run(nil, stdout, stderr)
+
+	assert.Equal(t, codeOK, code, stderr.String())
 	assert.Contains(t, stdout.String(), "60.00")
 }
 
@@ -68,9 +83,9 @@ func TestRunReadsARelativePathWithADirectory(t *testing.T) {
 	t.Chdir(dir)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := run([]string{"sub/cov.out", "-color", "never"}, stdout, stderr)
+	code := app.Run([]string{"sub/cov.out", "-color", "never"}, stdout, stderr)
 
-	assert.Equal(t, exitOK, code, stderr.String())
+	assert.Equal(t, codeOK, code, stderr.String())
 	assert.Contains(t, stdout.String(), "60.00")
 }
 
@@ -86,33 +101,63 @@ func TestRunFailUnder(t *testing.T) {
 	}{
 		{
 			name: "below the threshold", profile: profile,
-			args: []string{"-fail-under", "80"}, wantCode: exitBelow,
+			args: []string{"-fail-under", "80"}, wantCode: codeBelow,
 			wantErr: "total coverage 60.00% is below 80.00%",
 		},
 		{
 			name: "at the threshold passes", profile: profile,
-			args: []string{"-fail-under", "60"}, wantCode: exitOK,
+			args: []string{"-fail-under", "60"}, wantCode: codeOK,
 		},
 		{
 			name: "unset means no gate", profile: profile,
-			args: []string{}, wantCode: exitOK,
+			args: []string{}, wantCode: codeOK,
 		},
 		{
 			// Silently passing here would make the gate useless on an empty or mis-pointed profile.
 			name: "nothing to cover cannot clear a threshold", profile: "mode: atomic\nm/d/doc.go:1.1,2.2 0 0\n",
-			args: []string{"-fail-under", "1"}, wantCode: exitBelow,
+			args: []string{"-fail-under", "1"}, wantCode: codeBelow,
 			wantErr: "no statements to cover",
 		},
 		{
 			// Zero is a real threshold: it asks only that the profile hold some statements. It
 			// must not silently mean "no gate", which is what a zero default would make it.
 			name: "zero still requires something to measure", profile: "mode: atomic\nm/d/doc.go:1.1,2.2 0 0\n",
-			args: []string{"-fail-under", "0"}, wantCode: exitBelow,
+			args: []string{"-fail-under", "0"}, wantCode: codeBelow,
 			wantErr: "no statements to cover",
 		},
 		{
 			name: "zero passes when there is anything at all", profile: profile,
-			args: []string{"-fail-under", "0"}, wantCode: exitOK,
+			args: []string{"-fail-under", "0"}, wantCode: codeOK,
+		},
+		{
+			name: "not a number", profile: profile,
+			args: []string{"-fail-under", "abc"}, wantCode: codeFailed,
+			wantErr: "want a percentage",
+		},
+		{
+			// The dangerous one: `total < NaN` is false, so this used to clear the gate at any
+			// coverage and print nothing. A CI config templating a bad value gets a diagnostic.
+			name: "NaN", profile: profile,
+			args: []string{"-fail-under", "nan"}, wantCode: codeFailed,
+			wantErr: "want a percentage",
+		},
+		{
+			name: "negative", profile: profile,
+			args: []string{"-fail-under", "-5"}, wantCode: codeFailed,
+			wantErr: "want a percentage",
+		},
+		{
+			// Unreachable rather than merely strict: nothing can cover 150% of its statements.
+			name: "above 100", profile: profile,
+			args: []string{"-fail-under", "150"}, wantCode: codeFailed,
+			wantErr: "want a percentage",
+		},
+		{
+			// The boundary itself is allowed: "everything must be covered" is a real thing to ask.
+			// Nothing pinned this, so tightening the check to >= would have gone unnoticed.
+			name: "exactly 100 is a threshold, not an error", profile: profile,
+			args: []string{"-fail-under", "100"}, wantCode: codeBelow,
+			wantErr: "is below 100.00%",
 		},
 		{
 			// Counts this large only come from a hand-written profile, and summing them wraps.
@@ -120,7 +165,7 @@ func TestRunFailUnder(t *testing.T) {
 			name: "counts that overflow past zero",
 			profile: "mode: set\nm/a.go:1.1,2.2 4611686018427387904 1\n" +
 				"m/b.go:3.1,4.2 9223372036854775807 0\nm/c.go:5.1,6.2 9223372036854775807 0\n",
-			args: []string{"-fail-under", "80"}, wantCode: exitFailed,
+			args: []string{"-fail-under", "80"}, wantCode: codeFailed,
 			wantErr: "statement counts overflow",
 		},
 		{
@@ -131,7 +176,7 @@ func TestRunFailUnder(t *testing.T) {
 			profile: "mode: set\nm/a.go:1.1,2.2 5 1\n" +
 				"m/b.go:3.1,4.2 9223372036854775807 0\nm/c.go:5.1,6.2 9223372036854775807 0\n" +
 				"m/d.go:7.1,8.2 12 0\n",
-			args: []string{"-fail-under", "30"}, wantCode: exitFailed,
+			args: []string{"-fail-under", "30"}, wantCode: codeFailed,
 			wantErr: "statement counts overflow",
 		},
 	}
@@ -144,7 +189,7 @@ func TestRunFailUnder(t *testing.T) {
 
 			args := append([]string{writeProfile(t, tc.profile), "-color", "never"}, tc.args...)
 
-			assert.Equal(t, tc.wantCode, run(args, stdout, stderr))
+			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
 
 			if tc.wantErr != "" {
 				assert.Contains(t, stderr.String(), tc.wantErr)
@@ -162,10 +207,10 @@ func TestRunColorFlag(t *testing.T) {
 		wantCode  int
 		wantColor bool
 	}{
-		{name: "always", value: "always", wantCode: exitOK, wantColor: true},
-		{name: "never", value: "never", wantCode: exitOK, wantColor: false},
-		{name: "auto into a buffer stays clean", value: "auto", wantCode: exitOK, wantColor: false},
-		{name: "rejected", value: "sometimes", wantCode: exitFailed},
+		{name: "always", value: "always", wantCode: codeOK, wantColor: true},
+		{name: "never", value: "never", wantCode: codeOK, wantColor: false},
+		{name: "auto into a buffer stays clean", value: "auto", wantCode: codeOK, wantColor: false},
+		{name: "rejected", value: "sometimes", wantCode: codeFailed},
 	}
 
 	for _, tc := range tests {
@@ -173,12 +218,12 @@ func TestRunColorFlag(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-			code := run([]string{writeProfile(t, profile), "-color", tc.value}, stdout, stderr)
+			code := app.Run([]string{writeProfile(t, profile), "-color", tc.value}, stdout, stderr)
 
 			require.Equal(t, tc.wantCode, code)
 
-			if tc.wantCode != exitOK {
-				assert.Contains(t, stderr.String(), "invalid -color")
+			if tc.wantCode != codeOK {
+				assert.Contains(t, stderr.String(), `invalid value "sometimes" for flag -color`)
 
 				return
 			}
@@ -218,9 +263,9 @@ func TestRunRejectsTwoProfiles(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-			code := run(tc.args(writeProfile(t, profile), writeProfile(t, profile)), stdout, stderr)
+			code := app.Run(tc.args(writeProfile(t, profile), writeProfile(t, profile)), stdout, stderr)
 
-			assert.Equal(t, exitFailed, code)
+			assert.Equal(t, codeFailed, code)
 			assert.Contains(t, stderr.String(), tc.wantErr)
 			assert.Empty(t, stdout.String(), "nothing rendered when the input is ambiguous")
 		})
@@ -233,9 +278,9 @@ func TestRunReportsAMissingProfileWithTheCommandThatMakesOne(t *testing.T) {
 	t.Parallel()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := run([]string{filepath.Join(t.TempDir(), "absent.out")}, stdout, stderr)
+	code := app.Run([]string{filepath.Join(t.TempDir(), "absent.out")}, stdout, stderr)
 
-	assert.Equal(t, exitFailed, code)
+	assert.Equal(t, codeFailed, code)
 	assert.Contains(t, stderr.String(), "cannot read coverage profile")
 	assert.Contains(t, stderr.String(), "go test -coverprofile=")
 	assert.Empty(t, stdout.String())
@@ -246,9 +291,9 @@ func TestRunReportsAMalformedProfileWithoutTheHint(t *testing.T) {
 	t.Parallel()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := run([]string{writeProfile(t, "not a profile\n")}, stdout, stderr)
+	code := app.Run([]string{writeProfile(t, "not a profile\n")}, stdout, stderr)
 
-	assert.Equal(t, exitFailed, code)
+	assert.Equal(t, codeFailed, code)
 	assert.Contains(t, stderr.String(), "invalid coverage profile")
 	assert.NotContains(t, stderr.String(), "go test -coverprofile=")
 }
@@ -273,7 +318,7 @@ func TestRunPrintsRequestedHelpOnStdout(t *testing.T) {
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
-			assert.Equal(t, exitOK, run(tc.args, stdout, stderr))
+			assert.Equal(t, codeOK, app.Run(tc.args, stdout, stderr))
 			assert.Contains(t, stdout.String(), "Prettycov:")
 			assert.Empty(t, stderr.String())
 
@@ -292,9 +337,9 @@ func TestRunTreatsArgsAfterDoubleDashAsPaths(t *testing.T) {
 	t.Parallel()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := run([]string{"--", writeProfile(t, profile), "-depth=2"}, stdout, stderr)
+	code := app.Run([]string{"--", writeProfile(t, profile), "-depth=2"}, stdout, stderr)
 
-	assert.Equal(t, exitFailed, code)
+	assert.Equal(t, codeFailed, code)
 	assert.Contains(t, stderr.String(), "at most one profile path")
 }
 
@@ -306,35 +351,10 @@ func TestRunReadsADashedProfileAfterDoubleDash(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(profile), 0o600))
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := run([]string{"-color", "never", "--", path}, stdout, stderr)
+	code := app.Run([]string{"-color", "never", "--", path}, stdout, stderr)
 
-	assert.Equal(t, exitOK, code, stderr.String())
+	assert.Equal(t, codeOK, code, stderr.String())
 	assert.Contains(t, stdout.String(), "60.00")
-}
-
-func TestPickVersion(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		stamped  string
-		recorded string
-		want     string
-	}{
-		{name: "the linker stamp wins", stamped: "v1.2.3", recorded: "v0.0.1", want: "v1.2.3"},
-		{name: "falls back to what the build recorded", recorded: "v0.0.1", want: "v0.0.1"},
-		// A nix build records no VCS metadata, so both sources come back empty. Printing nothing
-		// would leave `prettycov version` emitting a bare newline, which a script reads as a version.
-		{name: "never nothing", want: "(devel)"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			assert.Equal(t, tc.want, pickVersion(tc.stamped, tc.recorded))
-		})
-	}
 }
 
 // One typo used to print the message, then the whole usage, then the message again: 33 lines.
@@ -342,30 +362,27 @@ func TestRunKeepsABadFlagShort(t *testing.T) {
 	t.Parallel()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := run([]string{"-nope"}, stdout, stderr)
+	code := app.Run([]string{"-nope"}, stdout, stderr)
 
-	assert.Equal(t, exitFailed, code)
+	assert.Equal(t, codeFailed, code)
 	assert.Contains(t, stderr.String(), "not defined: -nope")
 	assert.Contains(t, stderr.String(), `run "prettycov -help" for usage`)
 	assert.NotContains(t, stderr.String(), "Prettycov:", "the usage text belongs behind -help")
 	assert.LessOrEqual(t, strings.Count(stderr.String(), "\n"), 3)
 }
 
-func TestRunHelpAndVersion(t *testing.T) {
+// `version` as a bare word is recognised before the flag package sees it, which would take it for
+// a profile path; -version is the ordinary flag. What the version actually says is the binary
+// tests' business — it depends on how the binary was linked, and nix stamps it during checkPhase.
+func TestRunAcceptsBothVersionSpellings(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		args     []string
-		wantOut  string
-		wantErr  string
-		wantCode int
+		name string
+		args []string
 	}{
-		// Help itself is covered by TestRunPrintsRequestedHelpOnStdout; -h is registered alongside
-		// -help so the flag package does not special-case it, keeping every help path identical.
-		{name: "version subcommand", args: []string{"version"}, wantOut: "(devel)", wantCode: exitOK},
-		{name: "version flag", args: []string{"-version"}, wantOut: "(devel)", wantCode: exitOK},
-		{name: "unknown flag", args: []string{"-nope"}, wantErr: "flag provided but not defined", wantCode: exitFailed},
+		{name: "subcommand", args: []string{"version"}},
+		{name: "flag", args: []string{"-version"}},
 	}
 
 	for _, tc := range tests {
@@ -374,15 +391,9 @@ func TestRunHelpAndVersion(t *testing.T) {
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
-			assert.Equal(t, tc.wantCode, run(tc.args, stdout, stderr))
-
-			if tc.wantOut != "" {
-				assert.Contains(t, stdout.String(), tc.wantOut)
-			}
-
-			if tc.wantErr != "" {
-				assert.Contains(t, stderr.String(), tc.wantErr)
-			}
+			assert.Equal(t, codeOK, app.Run(tc.args, stdout, stderr))
+			assert.NotEmpty(t, strings.TrimSpace(stdout.String()), "never a bare newline")
+			assert.Empty(t, stderr.String())
 		})
 	}
 }
