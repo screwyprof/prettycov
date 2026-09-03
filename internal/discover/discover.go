@@ -281,9 +281,7 @@ func modulePath(dir string) (string, error) {
 // packagesIn lists the module's own packages. Run from the module directory, ./... covers exactly
 // it and nothing else — which is the one job this pattern does correctly.
 func packagesIn(ctx context.Context, dir string, tags []string) ([]Package, error) {
-	const format = "{{.ImportPath}}\t{{.Dir}}\t{{len .TestGoFiles}}\t{{len .XTestGoFiles}}"
-
-	args := []string{"-e", "-f", format}
+	args := []string{"-e", "-f", listFormat}
 	if len(tags) > 0 {
 		args = append(args, "-tags="+strings.Join(tags, ","))
 	}
@@ -293,6 +291,23 @@ func packagesIn(ctx context.Context, dir string, tags []string) ([]Package, erro
 		return nil, err
 	}
 
+	return parsePackages(out)
+}
+
+// listFormat is one tab-separated row per package, and listColumns is how many fields that is.
+// They sit next to the code that reads them because nothing else keeps the two in step.
+const (
+	listFormat  = "{{.ImportPath}}\t{{.Dir}}\t{{len .TestGoFiles}}\t{{len .XTestGoFiles}}"
+	listColumns = 4
+)
+
+// parsePackages turns go list's rows into packages.
+//
+// It is separate from running go list because it is the only part with a decision in it, and the
+// only part reachable without a subprocess. A short row or an unparseable count is an error rather
+// than a zero: HasTests would silently become false, and a package that looks untested is exactly
+// the thing this package exists to tell apart from one that is.
+func parsePackages(out string) ([]Package, error) {
 	var packages []Package
 
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
@@ -301,17 +316,25 @@ func packagesIn(ctx context.Context, dir string, tags []string) ([]Package, erro
 		}
 
 		fields := strings.Split(line, "\t")
-		if len(fields) != 4 {
+		if len(fields) != listColumns {
 			return nil, fmt.Errorf("%w: %q", errBadListOutput, line)
 		}
 
-		internal, _ := strconv.Atoi(fields[2])
-		external, _ := strconv.Atoi(fields[3])
+		tests := 0
+
+		for _, count := range fields[2:] {
+			n, err := strconv.Atoi(count)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %q", errBadListOutput, line)
+			}
+
+			tests += n
+		}
 
 		packages = append(packages, Package{
 			ImportPath: fields[0],
 			Dir:        fields[1],
-			HasTests:   internal+external > 0,
+			HasTests:   tests > 0,
 		})
 	}
 

@@ -55,7 +55,7 @@ func TestScanFindsParentWorkspace(t *testing.T) {
 	repo, err := discover.Scan(t.Context(), filepath.Join(root, "services"))
 	require.NoError(t, err)
 
-	assert.Equal(t, filepath.Join(root, "go.work"), repo.Workspace)
+	assert.Equal(t, filepath.Join(root, "go.work"), repo.Workspace, "the go.work above the scanned root")
 
 	require.Len(t, repo.Modules, 1)
 	assert.True(t, repo.Modules[0].InWorkspace, "the workspace above lists this module")
@@ -85,8 +85,8 @@ func TestScanRecordsUnreadableDir(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, repo.Modules, 1)
 	require.NoError(t, repo.Modules[0].Err)
-	assert.Equal(t, []string{locked}, repo.Unreadable)
-	assert.Equal(t, "locked.test", repo.Modules[0].Path)
+	assert.Equal(t, []string{locked}, repo.Unreadable, "where the walk stopped")
+	assert.Equal(t, "locked.test", repo.Modules[0].Path, "the readable module is still reported")
 }
 
 // TestScanRejectsUnreadableRoot is the other side of that: a gap in the tree is worth reporting
@@ -99,7 +99,7 @@ func TestScanRejectsUnreadableRoot(t *testing.T) {
 	_, err := discover.Scan(t.Context(), missing)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), missing)
+	assert.Contains(t, err.Error(), missing, "the error names the path it could not read")
 }
 
 // TestScanRejectsMalformedWorkspace fails the scan outright, unlike an unreadable module. go does
@@ -117,7 +117,7 @@ func TestScanRejectsMalformedWorkspace(t *testing.T) {
 
 	_, err := discover.Scan(t.Context(), root)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parsing go.work")
+	assert.Contains(t, err.Error(), "parsing go.work", "the error names what could not be parsed")
 }
 
 // TestScanHonoursGOWORKOff reports no workspace when the environment turns workspace mode off,
@@ -129,7 +129,7 @@ func TestScanHonoursGOWORKOff(t *testing.T) {
 	repo, err := discover.Scan(t.Context(), extractArchive(t, filepath.Join("topologies", "workspace.txtar")))
 	require.NoError(t, err)
 
-	assert.Empty(t, repo.Workspace)
+	assert.Empty(t, repo.Workspace, "GOWORK=off means there is no workspace, not an empty one")
 	require.Len(t, repo.Modules, 2)
 
 	for _, module := range repo.Modules {
@@ -156,7 +156,7 @@ func TestScanRecordsUnlistableModule(t *testing.T) {
 	require.Len(t, repo.Modules, 2)
 
 	require.NoError(t, repo.Modules[0].Err, "the healthy module survives its neighbour")
-	assert.Len(t, repo.Modules[0].Packages, 1)
+	assert.Len(t, repo.Modules[0].Packages, 1, "the healthy module is listed in full")
 
 	// go's own diagnosis, not "exit status 1": the reason is only ever on stderr.
 	require.Error(t, repo.Modules[1].Err)
@@ -178,7 +178,7 @@ func TestScanReportsModuleWithoutPackages(t *testing.T) {
 
 	require.Len(t, repo.Modules, 1)
 	require.NoError(t, repo.Modules[0].Err)
-	assert.Empty(t, repo.Modules[0].Packages)
+	assert.Empty(t, repo.Modules[0].Packages, "a module with no Go files contributes none")
 }
 
 // write creates a file under root, making its directories.

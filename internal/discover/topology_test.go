@@ -42,6 +42,7 @@ func TestTopologies(t *testing.T) {
 			repo, err := discover.Scan(t.Context(), dir)
 			require.NoError(t, err)
 
+			assertScanInvariants(t, repo)
 			assert.Equal(t, want, observe(t, dir, repo))
 		})
 	}
@@ -152,6 +153,26 @@ func fill(counts map[string]int) map[string]int {
 	}
 
 	return counts
+}
+
+// assertScanInvariants checks what has to hold of any repository at all.
+func assertScanInvariants(t *testing.T, repo discover.Repo) {
+	t.Helper()
+
+	assert.Empty(t, repo.Unreadable, "directories the walk could not descend into")
+
+	owner := map[string]string{}
+
+	for _, module := range repo.Modules {
+		for _, pkg := range module.Packages {
+			// A package with no directory is a go list row misread; the same import path under
+			// two modules means a boundary was crossed. Both double-count in a merged profile.
+			assert.NotEmpty(t, pkg.Dir, "%s has no directory", pkg.ImportPath)
+			assert.NotContains(t, owner, pkg.ImportPath, "also in %s", owner[pkg.ImportPath])
+
+			owner[pkg.ImportPath] = module.Path
+		}
+	}
 }
 
 // skipTestDir mirrors the package's own skipDir, which these tests cannot reach from outside. Its

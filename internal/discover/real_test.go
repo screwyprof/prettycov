@@ -48,26 +48,6 @@ func TestScanRealRepos(t *testing.T) {
 	}
 }
 
-// assertScanInvariants checks what has to hold of any repository at all.
-func assertScanInvariants(t *testing.T, repo discover.Repo) {
-	t.Helper()
-
-	assert.Empty(t, repo.Unreadable, "directories the walk could not descend into")
-
-	owner := map[string]string{}
-
-	for _, module := range repo.Modules {
-		for _, pkg := range module.Packages {
-			// A package with no directory is a go list row misread; the same import path under
-			// two modules means a boundary was crossed. Both double-count in a merged profile.
-			assert.NotEmpty(t, pkg.Dir, "%s has no directory", pkg.ImportPath)
-			assert.NotContains(t, owner, pkg.ImportPath, "also in %s", owner[pkg.ImportPath])
-
-			owner[pkg.ImportPath] = module.Path
-		}
-	}
-}
-
 // assertNothingLost is the rule the whole harness exists for. Anything holding Go source is a
 // package discovery found, a directory the constraints exclude, or a bug.
 func assertNothingLost(t *testing.T, root string, lost []string) {
