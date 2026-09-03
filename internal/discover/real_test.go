@@ -1,19 +1,25 @@
 package discover_test
 
 import (
+	"errors"
+	"go/build"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/screwyprof/prettycov/internal/discover"
 )
 
-// TestScanRealRepos triangulates discovery against two independent counts on checkouts that are
-// not in this repository: a filesystem walk for directories holding Go source, and the naive
-// `go list ./...` every recipe starts from. Set PRETTYCOV_REAL to a colon-separated list of paths.
+// TestScanRealRepos triangulates discovery on checkouts that are not in this repository. Set
+// PRETTYCOV_REAL to a colon-separated list of paths, each optionally suffixed #tag,tag.
+//
+// Every directory holding Go source must either be a package discovery found, or be one go/build
+// says is excluded by constraints. Anything else is a package we lost, which is how the build-tag
+// defect surfaced: delegator's whole acceptance suite was missing and no count said so.
 func TestScanRealRepos(t *testing.T) {
 	t.Parallel()
 
@@ -36,6 +42,7 @@ func TestScanRealRepos(t *testing.T) {
 			repo, err := discover.Scan(t.Context(), root, tags...)
 			require.NoError(t, err)
 
+			found := map[string]bool{}
 			packages, tested, inWorkspace := 0, 0, 0
 
 			for _, m := range repo.Modules {
@@ -45,53 +52,87 @@ func TestScanRealRepos(t *testing.T) {
 
 				if m.Err != nil {
 					t.Logf("  unreadable: %s: %v", m.Dir, m.Err)
+
+					found[m.Dir] = true
 				}
 
 				packages += len(m.Packages)
 
 				for _, pkg := range m.Packages {
+					found[pkg.Dir] = true
+
 					if pkg.HasTests {
 						tested++
 					}
 				}
 			}
 
+			ctx := build.Default
+			ctx.BuildTags = tags
+
+			constrained, lost := classify(t, root, &ctx, found)
+
 			t.Logf("%-20s modules=%-3d in_workspace=%-3d packages=%-4d tested=%-4d | "+
-				"dirs_with_go=%-4d go_list_dotdotdot=%-4d",
+				"constrained_out=%-3d go_list_dotdotdot=%-4d",
 				filepath.Base(root), len(repo.Modules), inWorkspace, packages, tested,
-				dirsWithGo(t, root), countLines(goList(t, root, "./...")))
+				len(constrained), countLines(goList(t, root, "./...")))
+
+			for _, dir := range constrained {
+				t.Logf("  constrained out: %s", strings.TrimPrefix(dir, root+"/"))
+			}
+
+			assert.Empty(t, lost, "directories holding Go source that are neither a discovered "+
+				"package nor excluded by build constraints")
 		})
 	}
 }
 
-// dirsWithGo counts directories holding at least one non-test .go file, skipping what the go tool
-// skips. It is an independent estimate of the package set: no go tool answers it.
-func dirsWithGo(t *testing.T, root string) int {
+// classify splits the directories holding Go source that discovery did not report into the ones
+// go/build excludes by constraints and the ones nothing accounts for.
+//
+// go/build is the authority here rather than a file count: NoGoError means "no buildable Go source
+// files", and IgnoredGoFiles then names what the constraints hid.
+func classify(t *testing.T, root string, ctx *build.Context, found map[string]bool) (constrained, lost []string) {
 	t.Helper()
 
-	dirs := map[string]bool{}
-
-	require.NoError(t, filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	require.NoError(t, filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if d.IsDir() {
-			name := d.Name()
-			if path != root && (name == "vendor" || name == "testdata" ||
-				strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".")) {
+		if entry.IsDir() {
+			if path != root && skipTestDir(entry.Name()) {
 				return filepath.SkipDir
 			}
 
 			return nil
 		}
 
-		if strings.HasSuffix(d.Name(), ".go") {
-			dirs[filepath.Dir(path)] = true
+		dir := filepath.Dir(path)
+		if !strings.HasSuffix(entry.Name(), ".go") || found[dir] {
+			return nil
+		}
+
+		found[dir] = true
+
+		if constrainedOut(ctx, dir) {
+			constrained = append(constrained, dir)
+		} else {
+			lost = append(lost, dir)
 		}
 
 		return nil
 	}))
 
-	return len(dirs)
+	return constrained, lost
+}
+
+// constrainedOut reports whether every Go file in dir is excluded by build constraints.
+func constrainedOut(ctx *build.Context, dir string) bool {
+	pkg, err := ctx.ImportDir(dir, 0)
+	if _, ok := errors.AsType[*build.NoGoError](err); !ok {
+		return false
+	}
+
+	return len(pkg.IgnoredGoFiles) > 0
 }

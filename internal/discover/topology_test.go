@@ -153,6 +153,13 @@ func expectations(t *testing.T, comment []byte) map[string]int {
 	return want
 }
 
+// skipTestDir mirrors the package's own skipDir, which these tests cannot reach from outside. Its
+// job is to be an independent statement of the rule rather than a call to the code under test.
+func skipTestDir(name string) bool {
+	return name == "vendor" || name == "testdata" ||
+		strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".")
+}
+
 // countGoMod walks for go.mod the way discovery must: vendor holds whole modules that are not
 // yours, and the go tool ignores testdata and underscore-prefixed directories.
 func countGoMod(t *testing.T, dir string) int {
@@ -166,11 +173,8 @@ func countGoMod(t *testing.T, dir string) int {
 		}
 
 		if d.IsDir() {
-			name := d.Name()
-			if name == "vendor" || name == "testdata" || strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".") {
-				if path != dir {
-					return filepath.SkipDir
-				}
+			if path != dir && skipTestDir(d.Name()) {
+				return filepath.SkipDir
 			}
 
 			return nil
