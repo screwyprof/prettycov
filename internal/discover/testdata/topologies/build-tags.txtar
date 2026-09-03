@@ -1,0 +1,45 @@
+A package whose every file is behind a build tag. Shaped after delegator/web, where
+web_acceptance_test.go carries //go:build acceptance and is the only .go file in the directory.
+
+Such a directory is not a package. `go list ./...` does not match it, and -e does not rescue it —
+there is nothing to report an error about. So the numbers below are the ones you get by default,
+and the acceptance suite is missing from all of them.
+
+TestScanUsesBuildTags scans this same archive with the tag and finds the other package.
+
+modules_on_disk: 1
+go_list_m: 1
+go_list_dotdotdot: 1
+discovered_modules: 1
+discovered_packages: 1
+packages_with_tests: 1
+has_workspace: 0
+modules_in_workspace: 0
+-- go.mod --
+module tags.test
+
+go 1.27
+-- acceptance_test.go --
+//go:build acceptance
+
+package tags_test
+
+import "testing"
+
+func TestEndToEnd(t *testing.T) {
+	t.Log("the suite discovery misses without -tags=acceptance")
+}
+-- api/api.go --
+package api
+
+func Version() string { return "v1" }
+-- api/api_test.go --
+package api
+
+import "testing"
+
+func TestVersion(t *testing.T) {
+	if Version() != "v1" {
+		t.Fatal("no")
+	}
+}

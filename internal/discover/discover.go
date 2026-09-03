@@ -75,7 +75,12 @@ func skipDir(name string) bool {
 }
 
 // Scan finds every module in the tree rooted at dir.
-func Scan(ctx context.Context, dir string) (Repo, error) {
+//
+// tags are the build tags the caller will run tests under. They are not decoration: a directory
+// whose files are all excluded by constraints is not a package at all, so `go list ./...` does not
+// match it and -e does not rescue it. Discovery run without the tags the tests use silently misses
+// whole suites — delegator keeps its acceptance tests that way.
+func Scan(ctx context.Context, dir string, tags ...string) (Repo, error) {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return Repo{}, fmt.Errorf("resolving %q: %w", dir, err)
@@ -99,7 +104,7 @@ func Scan(ctx context.Context, dir string) (Repo, error) {
 			return Repo{}, err
 		}
 
-		packages, err := packagesIn(ctx, moduleDir)
+		packages, err := packagesIn(ctx, moduleDir, tags)
 		if err != nil {
 			return Repo{}, err
 		}
@@ -200,10 +205,15 @@ func modulePath(ctx context.Context, dir string) (string, error) {
 
 // packagesIn lists the module's own packages. Run from the module directory, ./... covers exactly
 // it and nothing else — which is the one job this pattern does correctly.
-func packagesIn(ctx context.Context, dir string) ([]Package, error) {
+func packagesIn(ctx context.Context, dir string, tags []string) ([]Package, error) {
 	const format = "{{.ImportPath}}\t{{.Dir}}\t{{len .TestGoFiles}}\t{{len .XTestGoFiles}}"
 
-	out, err := goList(ctx, dir, "-e", "-f", format, "./...")
+	args := []string{"-e", "-f", format}
+	if len(tags) > 0 {
+		args = append(args, "-tags="+strings.Join(tags, ","))
+	}
+
+	out, err := goList(ctx, dir, append(args, "./...")...)
 	if err != nil {
 		return nil, err
 	}

@@ -79,6 +79,31 @@ func TestTopologies(t *testing.T) {
 	}
 }
 
+// TestScanUsesBuildTags scans the build-tags fixture again, this time with the tag its acceptance
+// suite is behind. The counts in that fixture are what discovery reports without it: one package,
+// with the whole suite absent and nothing saying so.
+func TestScanUsesBuildTags(t *testing.T) {
+	t.Parallel()
+
+	ar, err := txtar.ParseFile(filepath.Join("testdata", "topologies", "build-tags.txtar"))
+	require.NoError(t, err)
+
+	repo, err := discover.Scan(t.Context(), extract(t, ar), "acceptance")
+	require.NoError(t, err)
+
+	require.Len(t, repo.Modules, 1)
+
+	paths := make([]string, 0, len(repo.Modules[0].Packages))
+
+	for _, pkg := range repo.Modules[0].Packages {
+		require.True(t, pkg.HasTests, "%s", pkg.ImportPath)
+
+		paths = append(paths, pkg.ImportPath)
+	}
+
+	assert.ElementsMatch(t, []string{"tags.test", "tags.test/api"}, paths)
+}
+
 // extract writes the archive to a temporary directory and returns it.
 func extract(t *testing.T, ar *txtar.Archive) string {
 	t.Helper()
