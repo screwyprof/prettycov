@@ -226,6 +226,62 @@ txtar because `cmd/go` uses it, diffs readably, and comes from `x/tools` (alread
 | workspace | 2 | 2 | 1 |
 | single | 1 | 1 | 2 |
 
+## Triangulation
+
+`TestScanRealRepos` (`PRETTYCOV_REAL=path1:path2`, `#tag,tag` optional) scans checkouts in
+`_reference/repos`. Every directory holding Go source must be a discovered package, a directory
+`go/build` says is excluded by constraints, or under a module that could not be read. 27 trees, 0
+unaccounted. `go list ./...` at the root is what a naive recipe sees.
+
+| repo | kind | modules | in go.work | packages | tested | constrained out | naive `./...` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| kubernetes | infra | 38 | 34 | 3158 | 1625 | 11 | 1472 |
+| cosmos-sdk | blockchain | 23 | – | 465 | 228 | 12 | 249 |
+| prysm | blockchain | 2 | – | 460 | 250 | 0 | 458 |
+| go-ethereum | blockchain | 2 | – | 205 | 139 | 8 | 204 |
+| mev-boost | blockchain | 1 | – | 10 | 4 | 0 | 10 |
+| grafana | web app | 39 | 34 | 1035 | 645 | 6 | 826 |
+| opentelemetry-go | lib | 28 | – | 419 | 137 | 1 | 285 |
+| moby | infra | 4 | – | 391 | 237 | 6 | 347 |
+| vault | infra | 13 | – | 375 | 230 | 9 | 272 |
+| grpc-go | lib | 10 | – | 352 | 155 | 0 | 262 |
+| cli (gh) | CLI | 1 | – | 311 | 251 | 0 | 311 |
+| hugo | static site | 4 | – | 192 | 143 | 1 | 192 |
+| terraform | infra | 11 | – | 191 | 134 | 1 | 179 |
+| etcd | infra | 14 | 14 | 180 | 99 | 4 | 12 |
+| ebiten | game engine | 1 | – | 172 | 44 | 10 | 172 |
+| prometheus | infra | 5 | 5 | 121 | 93 | 2 | 113 |
+| helm | CLI | 1 | – | 71 | 59 | 0 | 71 |
+| fyne | GUI toolkit | 1 | – | 68 | 46 | 2 | 68 |
+| bubbletea | TUI | 3 | – | 64 | 2 | 0 | 1 |
+| delegator | web app | 5 | 5 | 26 | 6 | 0 | 3 |
+| nats-server | infra | 1 | – | 21 | 13 | 0 | 21 |
+| gin | web framework | 1 | – | 7 | 6 | 0 | 7 |
+
+Constrained-out is never noise; it is always a category the project meant to exclude:
+
+| pattern | seen in |
+| --- | --- |
+| `//go:build tools` (tools.go) | prometheus, opentelemetry-go, terraform, moby (`man`) |
+| GOOS — windows, darwin, js, playstation5 | moby (5), kubernetes (3), ebiten (10), fyne (2) |
+| `//go:build ignore` | grafana (5) |
+| GOARCH/cgo — `cgo && amd64` | etcd (4) |
+| bespoke suite tags — `mage`, `fuzzing`, `_testonly`, `blackbox`, `system_test` | grafana, prometheus, vault (9), cosmos-sdk (5) |
+| `//go:build dummy` — a Go file whose only job is to stop `go mod vendor` pruning a C directory | go-ethereum, cosmos-sdk (7 each, both `libsecp256k1`) |
+| `//go:build acceptance` | delegator — the whole suite, invisible without the tag |
+
+Broken modules exist in released repositories and are not a synthetic worry:
+
+| repo | module | failure |
+| --- | --- | --- |
+| hugo | `internal/warpc/genwebp` | empty go.mod — a fence around a directory of C |
+| bubbletea | `tutorials` | `updates to go.mod needed; to update it: go mod tidy` |
+
+Aborting on either would have reported nothing for hugo's 192 packages or bubbletea's 64.
+
+Scale: 23 trees in 14s total. On grafana the walk is 13ms of 27,313 entries; the cost is one
+`go list` per module, run concurrently. The floor is the root module's own `go list`, 1.6s.
+
 ## Open
 
 - Discovery must use `GOWORK=off` + `go list -e` (workspace mode misreports identity of omitted modules).
