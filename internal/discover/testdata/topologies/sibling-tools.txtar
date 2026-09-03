@@ -5,6 +5,9 @@ module graph misses it exactly as it misses any nested module.
 modules_on_disk: 2
 go_list_m: 1
 go_list_dotdotdot: 1
+discovered_modules: 2
+discovered_packages: 2
+packages_with_tests: 0
 -- go.mod --
 module fixture.test/app
 

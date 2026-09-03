@@ -7,6 +7,9 @@ because an empty profile uploads as a coverage collapse with no explanation:
 modules_on_disk: 1
 go_list_m: 1
 go_list_dotdotdot: 1
+discovered_modules: 1
+discovered_packages: 1
+packages_with_tests: 1
 -- go.mod --
 module fixture.test/panics
 

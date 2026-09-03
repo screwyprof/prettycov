@@ -6,6 +6,9 @@ is readable straight from go.mod, so the coverpkg set is derivable, not guessed.
 modules_on_disk: 2
 go_list_m: 1
 go_list_dotdotdot: 1
+discovered_modules: 2
+discovered_packages: 2
+packages_with_tests: 1
 -- go.mod --
 module fixture.test/svc
 

@@ -7,6 +7,9 @@ pick a default and say which it picked.
 modules_on_disk: 3
 go_list_m: 2
 go_list_dotdotdot: 1
+discovered_modules: 3
+discovered_packages: 3
+packages_with_tests: 0
 -- go.work --
 go 1.27
 

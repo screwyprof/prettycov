@@ -5,6 +5,9 @@ behaved this way, so it is worth pinning.
 modules_on_disk: 1
 go_list_m: 1
 go_list_dotdotdot: 2
+discovered_modules: 1
+discovered_packages: 2
+packages_with_tests: 1
 -- go.mod --
 module fixture.test/untested
 

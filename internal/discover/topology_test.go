@@ -1,4 +1,4 @@
-package prettycov_test
+package discover_test
 
 import (
 	"os"
@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/tools/txtar"
+
+	"github.com/screwyprof/prettycov/internal/discover"
 )
 
 // Every recipe for building a coverage profile begins by deciding which packages exist, and every
@@ -43,6 +45,27 @@ func TestTopologies(t *testing.T) {
 				"go list -m — what the module graph reports")
 			assert.Equal(t, want["go_list_dotdotdot"], countLines(goList(t, dir, "./...")),
 				"go list ./... — what the default package pattern reaches")
+
+			// And what discovery makes of the same tree. Where these disagree with the two
+			// numbers above is precisely where a recipe built on go list under-measures.
+			modules, err := discover.Modules(t.Context(), dir)
+			require.NoError(t, err)
+
+			packages, tested := 0, 0
+
+			for _, m := range modules {
+				packages += len(m.Packages)
+
+				for _, pkg := range m.Packages {
+					if pkg.HasTests {
+						tested++
+					}
+				}
+			}
+
+			assert.Len(t, modules, want["discovered_modules"], "modules discovered")
+			assert.Equal(t, want["discovered_packages"], packages, "packages discovered")
+			assert.Equal(t, want["packages_with_tests"], tested, "packages carrying tests")
 		})
 	}
 }
