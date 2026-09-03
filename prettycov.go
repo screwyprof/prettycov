@@ -80,7 +80,8 @@ func rollUp(node *PathTree) *PathTree {
 // has to end on a separator: replacing the first match anywhere rewrote "github.com/rapid/api" to
 // "github.com/rcored/api" for -old=api, and a bare prefix rewrote the unrelated
 // "github.com/foobar" to "xbar" for -old=github.com/foo. An empty oldRoot matches at position 0,
-// so -new alone prepended itself to every path instead of replacing anything.
+// so -new alone prepended itself to every path instead of replacing anything. The separator is
+// implied, so a trailing slash on oldRoot is trimmed rather than left to fail every match.
 func shortenPaths(items []FileCoverage, oldRoot, newRoot string) []FileCoverage {
 	oldRoot = strings.TrimSuffix(oldRoot, "/")
 	if oldRoot == "" || newRoot == "" {

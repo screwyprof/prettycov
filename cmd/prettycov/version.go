@@ -26,9 +26,10 @@ func buildVersion() string {
 	return pickVersion(version, recorded)
 }
 
-// pickVersion is split out because the two sources it chooses between are both fixed for the life
-// of a process: under `go test` ReadBuildInfo always reports "(devel)", so the empty case — which
-// is what a nix build with no VCS metadata produces — is unreachable through buildVersion.
+// pickVersion is split out to make the precedence testable. Neither source is empty in a normal
+// build: the toolchain substitutes "(devel)" for a main module that has no version, with or
+// without VCS metadata, so the last case only comes up if the binary carries no build info at
+// all. Nothing reaches it through buildVersion, hence the direct test.
 func pickVersion(stamped, recorded string) string {
 	switch {
 	case stamped != "":

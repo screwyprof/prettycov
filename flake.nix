@@ -64,9 +64,9 @@
             # Covers the `tool` block's deps too, not just x/tools — bump this whenever go.mod moves.
             vendorHash = "sha256-/yo/wihKSIC3Ekl9UZqSkYowk/giVF/FHyI1ryCuJzI=";
             # Without this the version lives only in the derivation name and the binary answers
-            # "(devel)": a nix build records no VCS metadata, so debug.ReadBuildInfo has nothing.
+            # "(devel)": the source has no .git, so the toolchain stamps nothing of its own.
             # No +commit suffix, unlike the Makefile's dev builds — a nix build is pinned to a rev
-            # by definition, and reading self.shortRev here would rebuild on every commit.
+            # by definition, so the file is the whole story.
             ldflags = [
               "-s"
               "-w"

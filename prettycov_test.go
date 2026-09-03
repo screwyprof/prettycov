@@ -162,6 +162,11 @@ func TestProcessShortensTheRootPath(t *testing.T) {
 			old: "api", replace: "core", want: "github.com/rapid/api/svc",
 		},
 		{
+			// The separator is implied, so writing it out changes nothing.
+			name: "a trailing slash on the old root is the same root", file: "github.com/o/repo/pkg/a.go",
+			old: "github.com/o/repo/", replace: "repo", want: "repo/pkg",
+		},
+		{
 			// A prefix is not a root: "github.com/foo" starts "github.com/foobar" too, and cutting
 			// it there left the unrelated package as "xbar/svc".
 			name: "and only a whole path segment", file: "github.com/foobar/svc/a.go",
