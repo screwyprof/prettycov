@@ -68,7 +68,7 @@
             ldflags = [
               "-s"
               "-w"
-              "-X main.version=v${version}"
+              "-X github.com/screwyprof/prettycov/internal/app.version=v${version}"
             ];
           };
         };

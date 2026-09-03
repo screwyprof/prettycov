@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,6 +74,8 @@ func TestBinaryExitCodes(t *testing.T) {
 		args []string
 		want int
 	}{
+		// Bare `prettycov` reads ./coverage.out, as the README says.
+		{name: "no arguments at all", args: nil, want: codeOK},
 		{name: "clean run", args: []string{"-color", "never"}, want: codeOK},
 		{name: "above the threshold", args: []string{"-fail-under", "50"}, want: codeOK},
 		{name: "below the threshold", args: []string{"-fail-under", "90"}, want: codeBelow},
@@ -144,6 +147,42 @@ func TestBinaryWritesToTheRightStream(t *testing.T) {
 	}
 }
 
+// The linker stamp is a build-time path: move the package that holds the variable and -ldflags
+// keeps succeeding while stamping nothing, which is how a nix build once reported "(devel)".
+// Only a build can catch that, so it is checked here rather than by calling pickVersion.
+func TestBinaryReportsTheStampedVersion(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	stamped := filepath.Join(dir, "stamped")
+
+	ctx, cancel := context.WithTimeout(t.Context(), buildTimeout)
+	defer cancel()
+
+	build := exec.CommandContext(ctx, "go", "build", "-cover", "-covermode", "atomic",
+		"-ldflags", "-X github.com/screwyprof/prettycov/internal/app.version=v9.9.9-test",
+		"-o", stamped, ".")
+
+	out, err := build.CombinedOutput()
+	require.NoError(t, err, string(out))
+
+	got, errOut, code := runAt(t, stamped, "version")
+
+	require.Equal(t, codeOK, code, errOut)
+	assert.Equal(t, "v9.9.9-test\n", got)
+}
+
+// Without a stamp the version comes from the build info, and must still be something a script can
+// read. "(devel)" is what an unstamped build reports.
+func TestBinaryReportsAVersionWithoutAStamp(t *testing.T) {
+	t.Parallel()
+
+	got, errOut, code := runBinary(t, "version")
+
+	require.Equal(t, codeOK, code, errOut)
+	assert.NotEmpty(t, strings.TrimSpace(got))
+}
+
 // os.Args passed unsliced feeds the program's own path in as a positional.
 func TestBinaryPassesItsArguments(t *testing.T) {
 	t.Parallel()
@@ -172,13 +211,20 @@ func coverDir(t *testing.T) string {
 func runBinary(t *testing.T, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 
+	return runAt(t, binary, args...)
+}
+
+// runAt is runBinary for a binary built by the caller.
+func runAt(t *testing.T, bin string, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
+
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "coverage.out"), profile, 0o600))
 
 	var out, errOut bytes.Buffer
 
 	// t.Context ends with the test, so a hung binary is killed instead of hanging the run.
-	cmd := exec.CommandContext(t.Context(), binary, args...)
+	cmd := exec.CommandContext(t.Context(), bin, args...)
 	cmd.Dir = dir
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 

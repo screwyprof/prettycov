@@ -1,9 +1,8 @@
-package main
+package app
 
 import (
 	"fmt"
 	"io"
-	"os"
 )
 
 // Exit codes. Below is distinct from failed so a CI step can tell "coverage dropped" from
@@ -14,26 +13,11 @@ const (
 	exitFailed = 2
 )
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
-}
-
-// run is everything main does apart from exiting, so it can be tested. Nothing it calls exits.
-func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 {
-		switch args[0] {
-		case "help":
-			printUsage(stdout)
-
-			return exitOK
-		case "version":
-			printVersion(stdout)
-
-			return exitOK
-		}
-	}
-
-	cfg, err := parseFlags(args, stderr)
+// Run is the whole command apart from exiting: args excludes the program name, and the int is the
+// status to exit with — 0, 1 when coverage is below -fail-under, 2 when the tool could not run.
+// Nothing it calls exits, so a caller keeps control.
+func Run(args []string, stdout, stderr io.Writer) int {
+	cfg, err := parseFlags(args)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\nrun \"prettycov -help\" for usage\n", err)
 

@@ -14,7 +14,7 @@ VERSION := v$(shell cat VERSION)+$(shell git rev-parse --short HEAD)
 
 # warning: -w will disable runtime profiling and affect debugging
 # see https://stackoverflow.com/questions/22267189/what-does-the-w-flag-mean-when-passed-in-via-the-ldflags-option-to-the-go-comman
-LDFLAGS = -w -s -X main.version=$(VERSION)
+LDFLAGS = -w -s -X github.com/screwyprof/prettycov/internal/app.version=$(VERSION)
 
 ## build statically on linux
 UNAME_S := $(shell uname -s)

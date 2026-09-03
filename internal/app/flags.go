@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"errors"
@@ -125,9 +125,30 @@ func printUsage(w io.Writer) {
 	set.PrintDefaults()
 }
 
+// subcommand matches a bare `help` or `version`, which have to be recognised before the flag
+// package sees them: it would take either for a profile path.
+func subcommand(args []string) (config, bool) {
+	if len(args) == 0 {
+		return config{}, false
+	}
+
+	switch args[0] {
+	case "help":
+		return config{Help: true}, true
+	case "version":
+		return config{Version: true}, true
+	}
+
+	return config{}, false
+}
+
 // parseFlags reads args, which excludes the program name. The profile may be given as -profile or
 // as the sole positional argument, and defaults to ./coverage.out.
-func parseFlags(args []string, stderr io.Writer) (config, error) {
+func parseFlags(args []string) (config, error) {
+	if cfg, ok := subcommand(args); ok {
+		return cfg, nil
+	}
+
 	var (
 		cfg   config
 		color string
@@ -140,37 +161,44 @@ func parseFlags(args []string, stderr io.Writer) (config, error) {
 		return cfg, err
 	}
 
-	if len(positional) > 1 {
-		return cfg, fmt.Errorf("%w, got %d", errTooManyProfiles, len(positional))
-	}
-
-	// Naming the profile twice is a mistake either way, so say so rather than picking one.
-	if cfg.Profile != "" && len(positional) > 0 {
-		return cfg, fmt.Errorf("%w: -profile %q and %q", errTwoProfiles, cfg.Profile, positional[0])
-	}
-
-	mode, err := parseColor(color)
-	if err != nil {
+	if cfg.Profile, err = profilePath(cfg.Profile, positional); err != nil {
 		return cfg, err
 	}
 
-	cfg.Color = mode
+	if cfg.Color, err = parseColor(color); err != nil {
+		return cfg, err
+	}
 
+	// Zero is a legitimate threshold, so whether the gate was asked for cannot be read off the
+	// value — only off whether the flag appeared.
 	set.Visit(func(f *flag.Flag) {
 		if f.Name == "fail-under" {
 			cfg.Gate = true
 		}
 	})
 
-	if cfg.Profile == "" && len(positional) > 0 {
-		cfg.Profile = positional[0]
-	}
-
-	if cfg.Profile == "" {
-		cfg.Profile = defaultProfile
-	}
-
 	return cfg, nil
+}
+
+// profilePath settles which profile to read. Naming it both ways is a mistake rather than a
+// preference, so it is reported instead of resolved.
+func profilePath(flagged string, positional []string) (string, error) {
+	if len(positional) > 1 {
+		return "", fmt.Errorf("%w, got %d", errTooManyProfiles, len(positional))
+	}
+
+	if flagged != "" && len(positional) > 0 {
+		return "", fmt.Errorf("%w: -profile %q and %q", errTwoProfiles, flagged, positional[0])
+	}
+
+	switch {
+	case flagged != "":
+		return flagged, nil
+	case len(positional) > 0:
+		return positional[0], nil
+	default:
+		return defaultProfile, nil
+	}
 }
 
 func parseColor(name string) (prettycov.ColorMode, error) {
