@@ -51,7 +51,17 @@ Use `go list -m -f '{{.Path}}/...'` patterns for `-coverpkg` → constant size.
 | no | 0 | honest zero |
 | no | absent | never linked by any test binary |
 
-Rows 3 and 6 are invisible in every existing tool.
+Rows 3 and 6 are invisible in every existing tool. Row 3 is also unbounded and unsigned — measured
+on `internal/discover/testdata/states.txtar`, where one package's test panics:
+
+| what the lost package would have measured | true total | reported |
+| --- | --- | --- |
+| 100.0% | 42.9% | **33.3%** |
+| 0.0% | 20.0% | **33.3%** |
+
+The same number for opposite truths, because the profile is identical either way: the package is
+simply not in it. `go test` exits non-zero, which is the only signal, and `\|\| true` — delegator's,
+and there so one broken package does not fail the build — is precisely what discards it.
 
 ## Counting rules differ by design
 

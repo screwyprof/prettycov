@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/tools/txtar"
 
 	"github.com/screwyprof/prettycov/internal/discover"
 )
@@ -21,10 +20,9 @@ import (
 func TestScanUsesBuildTags(t *testing.T) {
 	t.Parallel()
 
-	ar, err := txtar.ParseFile(filepath.Join("testdata", "topologies", "build-tags.txtar"))
-	require.NoError(t, err)
+	root := extractArchive(t, filepath.Join("topologies", "build-tags.txtar"))
 
-	repo, err := discover.Scan(t.Context(), extract(t, ar), "acceptance")
+	repo, err := discover.Scan(t.Context(), root, "acceptance")
 
 	require.NoError(t, err)
 	require.Len(t, repo.Modules, 1)
@@ -43,10 +41,7 @@ func TestScanUsesBuildTags(t *testing.T) {
 func TestScanFindsParentWorkspace(t *testing.T) {
 	t.Parallel()
 
-	ar, err := txtar.ParseFile(filepath.Join("testdata", "topologies", "parent-workspace.txtar"))
-	require.NoError(t, err)
-
-	root := extract(t, ar)
+	root := extractArchive(t, filepath.Join("topologies", "parent-workspace.txtar"))
 
 	repo, err := discover.Scan(t.Context(), filepath.Join(root, "services"))
 	require.NoError(t, err)
@@ -122,10 +117,7 @@ func TestScanRejectsMalformedWorkspace(t *testing.T) {
 func TestScanHonoursGOWORKOff(t *testing.T) {
 	t.Setenv("GOWORK", "off")
 
-	ar, err := txtar.ParseFile(filepath.Join("testdata", "topologies", "workspace.txtar"))
-	require.NoError(t, err)
-
-	repo, err := discover.Scan(t.Context(), extract(t, ar))
+	repo, err := discover.Scan(t.Context(), extractArchive(t, filepath.Join("topologies", "workspace.txtar")))
 	require.NoError(t, err)
 
 	assert.Empty(t, repo.Workspace)

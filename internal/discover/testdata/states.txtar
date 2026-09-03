@@ -1,0 +1,72 @@
+One package of each kind a coverage profile can contain, so that what discovery says about a
+package can be checked against what the profile says about it.
+
+panics is the case that matters. Its test dies, so go writes no data for the package at all — not
+a zero, an absence — and the total is then computed over a smaller denominator. Measured on this
+tree: reported 33.3% whether the lost package would have been 100.0% (true total 42.9%) or 0.0%
+(true total 20.0%). The same number for opposite truths, so the error has no sign to correct for.
+
+Nothing downstream can notice. A profile does not record what was meant to be in it, and
+delegator's `|| true`, which exists so one broken package does not fail the build, is exactly the
+line that turns this into a green run.
+
+HasTests is the other half: it comes from the source, not the profile, so it still says panics was
+meant to have been measured.
+-- go.mod --
+module states.test
+
+go 1.27
+-- covered/c.go --
+package covered
+
+func A() int { return 1 }
+func B() int { return 2 }
+-- covered/c_test.go --
+package covered
+
+import "testing"
+
+func TestAB(t *testing.T) {
+	if A()+B() != 3 {
+		t.Fatal("no")
+	}
+}
+-- partial/p.go --
+package partial
+
+func P() int { return 1 }
+func Q() int { return 2 }
+-- partial/p_test.go --
+package partial
+
+import "testing"
+
+// Touches nothing of its own package, which is a zero the profile does record.
+func TestNothing(t *testing.T) {
+	if 1 != 1 {
+		t.Fatal("no")
+	}
+}
+-- panics/x.go --
+package panics
+
+func X() int { return 1 }
+func Y() int { return 2 }
+func Z() int { return 3 }
+func W() int { return 4 }
+-- panics/x_test.go --
+package panics
+
+import "testing"
+
+func TestBoom(t *testing.T) {
+	panic("the data for this package is now gone")
+}
+-- helper/h.go --
+package helper
+
+func H() int { return 42 }
+-- notest/n.go --
+package notest
+
+func N() int { return 7 }
