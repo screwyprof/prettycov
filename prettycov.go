@@ -15,7 +15,12 @@ type CoverageStats struct {
 // can disagree with the counts beside it, which is exactly how the roll-up used to go wrong.
 func (c CoverageStats) Ratio() (pct float64, ok bool) {
 	total := c.Covered + c.Uncovered
-	if total == 0 {
+
+	// Both counts are statement totals, so they are non-negative and covered is at most total.
+	// Breaking either means the sum overflowed, which a profile can arrange by declaring blocks
+	// of billions of statements. Report nothing rather than a number: the alternative was
+	// "-461168601842738790400.00", and 100.00 for a file with no covered statements at all.
+	if total <= 0 || c.Covered < 0 || c.Covered > total {
 		return 0, false
 	}
 

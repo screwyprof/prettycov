@@ -114,6 +114,16 @@ func TestRunFailUnder(t *testing.T) {
 			name: "zero passes when there is anything at all", profile: profile,
 			args: []string{"-fail-under", "0"}, wantCode: exitOK,
 		},
+		{
+			// Statement counts this large only come from a hand-written profile, and summing them
+			// wraps. It used to clear the gate at 100.00% with two uncovered blocks and one
+			// covered; a number that cannot be a percentage must not be read as one.
+			name: "counts that overflow clear no gate",
+			profile: "mode: set\nm/a.go:1.1,2.2 4611686018427387904 1\n" +
+				"m/b.go:3.1,4.2 9223372036854775807 0\nm/c.go:5.1,6.2 9223372036854775807 0\n",
+			args: []string{"-fail-under", "80"}, wantCode: exitBelow,
+			wantErr: "no statements to cover",
+		},
 	}
 
 	for _, tc := range tests {

@@ -118,6 +118,11 @@ func TestCoverageStatsRatio(t *testing.T) {
 		{name: "partly covered", stats: prettycov.CoverageStats{Covered: 1, Uncovered: 3}, wantPct: 25, wantOK: true},
 		// Not 0%: there is nothing to cover, so there is no percentage to report.
 		{name: "no statements", stats: prettycov.CoverageStats{}, wantPct: 0, wantOK: false},
+		// Statement counts are non-negative and covered is at most the total. Each of these says
+		// the sum overflowed, which a profile declaring blocks of billions of statements can do.
+		{name: "total wrapped negative", stats: prettycov.CoverageStats{Covered: 1, Uncovered: -3}, wantOK: false},
+		{name: "more covered than total", stats: prettycov.CoverageStats{Covered: 100, Uncovered: -2}, wantOK: false},
+		{name: "covered wrapped negative", stats: prettycov.CoverageStats{Covered: -1, Uncovered: 8}, wantOK: false},
 	}
 
 	for _, tc := range tests {
