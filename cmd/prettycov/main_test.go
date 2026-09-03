@@ -25,6 +25,7 @@ const (
 )
 
 // 6 of 10 statements covered, so the report reads 60.00 and a -fail-under above that fails.
+// Copied in internal/app/testdata/sixty-percent.out too: go:embed cannot reach out of its own package. Change both.
 //
 //go:embed testdata/sixty-percent.out
 var profile []byte

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strconv"
 
@@ -19,7 +20,7 @@ var (
 	errBadColor        = errors.New(`want "auto", "never" or "always"`)
 	errTooManyProfiles = errors.New("want at most one profile path")
 	errTwoProfiles     = errors.New("profile given twice")
-	errBadFailUnder    = errors.New("want a percentage")
+	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -85,8 +86,11 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	// A pointer, not a float with a default: zero is a legitimate threshold — it asks only that
 	// the profile hold some statements — so the value cannot say whether the flag was given.
 	set.Func("fail-under", "exit 1 when total coverage is below this `percentage`", func(s string) error {
+		// ParseFloat alone would take "nan", and `total < NaN` is false, so the gate would pass
+		// at any coverage and say nothing. Infinities and out-of-range values are the same kind
+		// of mistake: a threshold that cannot mean what it says.
 		pct, err := strconv.ParseFloat(s, 64)
-		if err != nil {
+		if err != nil || math.IsNaN(pct) || pct < 0 || pct > 100 {
 			// The flag package prefixes this with the flag name and the offending value, so
 			// wrapping would print that value twice.
 			//nolint:wrapcheck // see above.

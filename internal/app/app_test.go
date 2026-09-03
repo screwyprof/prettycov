@@ -22,6 +22,7 @@ const (
 )
 
 // 6 of 10 statements covered, so the report reads 60.00 and a -fail-under above that fails.
+// Copied in cmd/prettycov/testdata/sixty-percent.out too: go:embed cannot reach out of its own package. Change both.
 //
 //go:embed testdata/sixty-percent.out
 var profile string
@@ -129,8 +130,26 @@ func TestRunFailUnder(t *testing.T) {
 			args: []string{"-fail-under", "0"}, wantCode: codeOK,
 		},
 		{
-			name: "not a percentage", profile: profile,
+			name: "not a number", profile: profile,
 			args: []string{"-fail-under", "abc"}, wantCode: codeFailed,
+			wantErr: "want a percentage",
+		},
+		{
+			// The dangerous one: `total < NaN` is false, so this used to clear the gate at any
+			// coverage and print nothing. A CI config templating a bad value gets a diagnostic.
+			name: "NaN", profile: profile,
+			args: []string{"-fail-under", "nan"}, wantCode: codeFailed,
+			wantErr: "want a percentage",
+		},
+		{
+			name: "negative", profile: profile,
+			args: []string{"-fail-under", "-5"}, wantCode: codeFailed,
+			wantErr: "want a percentage",
+		},
+		{
+			// Unreachable rather than merely strict: nothing can cover 150% of its statements.
+			name: "above 100", profile: profile,
+			args: []string{"-fail-under", "150"}, wantCode: codeFailed,
 			wantErr: "want a percentage",
 		},
 		{
