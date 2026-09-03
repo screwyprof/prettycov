@@ -6,6 +6,8 @@ go_list_dotdotdot: 2
 discovered_modules: 1
 discovered_packages: 2
 packages_with_tests: 1
+has_workspace: 0
+modules_in_workspace: 0
 -- go.mod --
 module fixture.test/single
 

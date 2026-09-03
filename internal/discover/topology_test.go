@@ -48,12 +48,16 @@ func TestTopologies(t *testing.T) {
 
 			// And what discovery makes of the same tree. Where these disagree with the two
 			// numbers above is precisely where a recipe built on go list under-measures.
-			modules, err := discover.Modules(t.Context(), dir)
+			repo, err := discover.Scan(t.Context(), dir)
 			require.NoError(t, err)
 
-			packages, tested := 0, 0
+			packages, tested, inWorkspace := 0, 0, 0
 
-			for _, m := range modules {
+			for _, m := range repo.Modules {
+				if m.InWorkspace {
+					inWorkspace++
+				}
+
 				packages += len(m.Packages)
 
 				for _, pkg := range m.Packages {
@@ -63,9 +67,14 @@ func TestTopologies(t *testing.T) {
 				}
 			}
 
-			assert.Len(t, modules, want["discovered_modules"], "modules discovered")
+			assert.Len(t, repo.Modules, want["discovered_modules"], "modules discovered")
 			assert.Equal(t, want["discovered_packages"], packages, "packages discovered")
 			assert.Equal(t, want["packages_with_tests"], tested, "packages carrying tests")
+
+			// A module can be absent from a workspace, or there can be no workspace to be absent
+			// from. Only the first is a question about the module.
+			assert.Equal(t, want["has_workspace"] == 1, repo.Workspace != "", "go.work found")
+			assert.Equal(t, want["modules_in_workspace"], inWorkspace, "modules the workspace lists")
 		})
 	}
 }

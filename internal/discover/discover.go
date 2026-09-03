@@ -25,6 +25,21 @@ var (
 	errBadListOutput = errors.New("unexpected go list output")
 )
 
+// Repo is what a directory tree contains. The workspace lives here rather than on each module,
+// because "not in the workspace" and "there is no workspace" are different facts and a bool on
+// Module cannot tell them apart: every module in a repository without a go.work would claim the
+// same thing as the one module a go.work deliberately leaves out.
+type Repo struct {
+	// Dir is the root the walk started from.
+	Dir string
+
+	// Workspace is the path to the go.work governing this tree, empty when there is none. Only
+	// when it is set does Module.InWorkspace carry any meaning.
+	Workspace string
+
+	Modules []Module
+}
+
 // Module is one go.mod and the packages beneath it, up to the next module.
 type Module struct {
 	// Path is the module's import path, as declared in its go.mod.
@@ -33,8 +48,8 @@ type Module struct {
 	// Dir is the absolute directory holding the go.mod.
 	Dir string
 
-	// InWorkspace records whether a go.work at the root lists this module. False for every module
-	// when there is no workspace at all.
+	// InWorkspace records whether the repository's go.work lists this module. Meaningless unless
+	// Repo.Workspace is set.
 	InWorkspace bool
 
 	Packages []Package
@@ -59,21 +74,21 @@ func skipDir(name string) bool {
 		strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
 }
 
-// Modules finds every module in the tree rooted at dir.
-func Modules(ctx context.Context, dir string) ([]Module, error) {
+// Scan finds every module in the tree rooted at dir.
+func Scan(ctx context.Context, dir string) (Repo, error) {
 	root, err := filepath.Abs(dir)
 	if err != nil {
-		return nil, fmt.Errorf("resolving %q: %w", dir, err)
+		return Repo{}, fmt.Errorf("resolving %q: %w", dir, err)
 	}
 
 	dirs, err := moduleDirs(root)
 	if err != nil {
-		return nil, err
+		return Repo{}, err
 	}
 
-	inWorkspace, err := workspaceMembers(root)
+	workspace, inWorkspace, err := workspaceMembers(root)
 	if err != nil {
-		return nil, err
+		return Repo{}, err
 	}
 
 	modules := make([]Module, 0, len(dirs))
@@ -81,12 +96,12 @@ func Modules(ctx context.Context, dir string) ([]Module, error) {
 	for _, moduleDir := range dirs {
 		path, err := modulePath(ctx, moduleDir)
 		if err != nil {
-			return nil, err
+			return Repo{}, err
 		}
 
 		packages, err := packagesIn(ctx, moduleDir)
 		if err != nil {
-			return nil, err
+			return Repo{}, err
 		}
 
 		modules = append(modules, Module{
@@ -97,7 +112,7 @@ func Modules(ctx context.Context, dir string) ([]Module, error) {
 		})
 	}
 
-	return modules, nil
+	return Repo{Dir: root, Workspace: workspace, Modules: modules}, nil
 }
 
 // moduleDirs walks for go.mod. A directory holding one is a module root; the walk keeps going
@@ -134,14 +149,16 @@ func moduleDirs(root string) ([]string, error) {
 // workspaceMembers reads go.work, if there is one, and returns the directories it lists. The file
 // is parsed rather than queried through `go list -m`, because the question is what the workspace
 // names, not what the module graph resolves to.
-func workspaceMembers(root string) (map[string]bool, error) {
-	data, err := os.ReadFile(filepath.Join(root, "go.work"))
+func workspaceMembers(root string) (string, map[string]bool, error) {
+	file := filepath.Join(root, "go.work")
+
+	data, err := os.ReadFile(file)
 	if os.IsNotExist(err) {
-		return map[string]bool{}, nil
+		return "", map[string]bool{}, nil
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("reading go.work: %w", err)
+		return "", nil, fmt.Errorf("reading go.work: %w", err)
 	}
 
 	members := map[string]bool{}
@@ -162,7 +179,7 @@ func workspaceMembers(root string) (map[string]bool, error) {
 		}
 	}
 
-	return members, nil
+	return file, members, nil
 }
 
 // modulePath asks the go tool for the module's own path rather than parsing go.mod, so the answer
