@@ -25,14 +25,23 @@ func TestScanUsesBuildTags(t *testing.T) {
 	repo, err := discover.Scan(t.Context(), root, "acceptance")
 
 	require.NoError(t, err)
-	require.Len(t, repo.Modules, 1)
+	assert.Equal(t, map[string]bool{
+		"tags.test":     true,
+		"tags.test/api": true,
+	}, testedPackages(repo))
+}
 
-	paths := map[string]bool{}
-	for _, pkg := range repo.Modules[0].Packages {
-		paths[pkg.ImportPath] = pkg.HasTests
+// testedPackages maps every discovered import path to whether it carries tests.
+func testedPackages(repo discover.Repo) map[string]bool {
+	tested := map[string]bool{}
+
+	for _, module := range repo.Modules {
+		for _, pkg := range module.Packages {
+			tested[pkg.ImportPath] = pkg.HasTests
+		}
 	}
 
-	assert.Equal(t, map[string]bool{"tags.test": true, "tags.test/api": true}, paths)
+	return tested
 }
 
 // TestScanFindsParentWorkspace scans below the directory holding go.work. The go tool searches

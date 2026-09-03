@@ -37,21 +37,62 @@ func TestScanRealRepos(t *testing.T) {
 			repo, err := discover.Scan(t.Context(), root, tags...)
 			require.NoError(t, err)
 
-			sum := summarise(t, repo)
-			constrained, lost := classify(t, root, buildContext(tags), sum.accounted)
+			sum := summarise(repo)
+			constrained, lost := classify(t, root, buildContext(tags), accountedDirs(t, repo))
 
-			t.Logf("%-20s modules=%-3d in_workspace=%-3d packages=%-4d tested=%-4d | "+
-				"constrained_out=%-3d go_list_dotdotdot=%-4d",
-				filepath.Base(root), len(repo.Modules), sum.inWorkspace, sum.packages, sum.tested,
-				len(constrained), countLines(goList(t, root, "./...")))
+			report(t, root, sum, constrained, countLines(goList(t, root, "./...")))
 
-			for _, dir := range constrained {
-				t.Logf("  constrained out: %s", strings.TrimPrefix(dir, root+string(filepath.Separator)))
-			}
-
-			assert.Empty(t, lost, "directories holding Go source that are neither a discovered "+
-				"package nor excluded by build constraints")
+			assertScanInvariants(t, repo)
+			assertNothingLost(t, root, lost)
 		})
+	}
+}
+
+// assertScanInvariants checks what has to hold of any repository at all.
+func assertScanInvariants(t *testing.T, repo discover.Repo) {
+	t.Helper()
+
+	assert.Empty(t, repo.Unreadable, "directories the walk could not descend into")
+
+	owner := map[string]string{}
+
+	for _, module := range repo.Modules {
+		for _, pkg := range module.Packages {
+			// A package with no directory is a go list row misread; the same import path under
+			// two modules means a boundary was crossed. Both double-count in a merged profile.
+			assert.NotEmpty(t, pkg.Dir, "%s has no directory", pkg.ImportPath)
+			assert.NotContains(t, owner, pkg.ImportPath, "also in %s", owner[pkg.ImportPath])
+
+			owner[pkg.ImportPath] = module.Path
+		}
+	}
+}
+
+// assertNothingLost is the rule the whole harness exists for. Anything holding Go source is a
+// package discovery found, a directory the constraints exclude, or a bug.
+func assertNothingLost(t *testing.T, root string, lost []string) {
+	t.Helper()
+
+	assert.Empty(t, relativeTo(root, lost), "directories holding Go source that are neither a "+
+		"discovered package nor excluded by build constraints")
+}
+
+// report prints what the scan found. It is the output of a run, not an assertion: the numbers are
+// only meaningful next to the repository they came from.
+func report(t *testing.T, root string, sum totals, constrained []string, dotdotdot int) {
+	t.Helper()
+
+	t.Logf("%-20s modules=%-3d in_workspace=%-3d packages=%-4d tested=%-4d | "+
+		"constrained_out=%-3d go_list_dotdotdot=%-4d",
+		filepath.Base(root), sum.modules, sum.inWorkspace, sum.packages, sum.tested,
+		len(constrained), dotdotdot)
+
+	for _, dir := range relativeTo(root, constrained) {
+		t.Logf("  constrained out: %s", dir)
+	}
+
+	for _, unreadable := range sum.unreadable {
+		t.Logf("  unreadable: %s", unreadable)
 	}
 }
 
@@ -73,24 +114,18 @@ func buildContext(tags []string) *build.Context {
 	return &ctx
 }
 
-// totals is what a scan amounts to, plus the directories it accounts for.
+// totals is what a scan amounts to.
 type totals struct {
+	modules     int
 	packages    int
 	tested      int
 	inWorkspace int
-
-	// accounted holds every directory the scan explains, so classify can look only at the rest.
-	accounted map[string]bool
+	unreadable  []string
 }
 
-// summarise counts a scan and checks the invariants that hold on every repository.
-func summarise(t *testing.T, repo discover.Repo) totals {
-	t.Helper()
-
-	sum := totals{accounted: map[string]bool{}}
-	owner := map[string]string{}
-
-	assert.Empty(t, repo.Unreadable, "directories the walk could not descend into")
+// summarise counts a scan. It asserts nothing, so the numbers can be reported on a run that fails.
+func summarise(repo discover.Repo) totals {
+	sum := totals{modules: len(repo.Modules)}
 
 	for _, module := range repo.Modules {
 		if module.InWorkspace {
@@ -98,10 +133,7 @@ func summarise(t *testing.T, repo discover.Repo) totals {
 		}
 
 		if module.Err != nil {
-			// Nothing beneath an unreadable module can be accounted for, so it is not missing
-			// either. bubbletea ships a tutorials/go.mod that needs go mod tidy.
-			t.Logf("  unreadable: %s: %v", module.Dir, module.Err)
-			markTree(t, sum.accounted, module.Dir)
+			sum.unreadable = append(sum.unreadable, module.Dir+": "+module.Err.Error())
 
 			continue
 		}
@@ -109,15 +141,6 @@ func summarise(t *testing.T, repo discover.Repo) totals {
 		sum.packages += len(module.Packages)
 
 		for _, pkg := range module.Packages {
-			sum.accounted[pkg.Dir] = true
-
-			// A package with no directory is a go list row misread; the same import path twice
-			// means a module boundary was crossed. Both double-count in a merged profile.
-			assert.NotEmpty(t, pkg.Dir, "%s has no directory", pkg.ImportPath)
-			assert.NotContains(t, owner, pkg.ImportPath, "also in %s", owner[pkg.ImportPath])
-
-			owner[pkg.ImportPath] = module.Path
-
 			if pkg.HasTests {
 				sum.tested++
 			}
@@ -125,6 +148,30 @@ func summarise(t *testing.T, repo discover.Repo) totals {
 	}
 
 	return sum
+}
+
+// accountedDirs is every directory the scan explains, so classify can look only at the rest.
+//
+// A module that could not be read contributes its whole subtree: nothing below it can be listed,
+// which is not the same as missing. bubbletea ships a tutorials/go.mod that needs go mod tidy.
+func accountedDirs(t *testing.T, repo discover.Repo) map[string]bool {
+	t.Helper()
+
+	accounted := map[string]bool{}
+
+	for _, module := range repo.Modules {
+		if module.Err != nil {
+			markTree(t, accounted, module.Dir)
+
+			continue
+		}
+
+		for _, pkg := range module.Packages {
+			accounted[pkg.Dir] = true
+		}
+	}
+
+	return accounted
 }
 
 // classify splits the directories holding Go source that discovery did not report into the ones
@@ -188,4 +235,14 @@ func markTree(t *testing.T, accounted map[string]bool, root string) {
 
 		return err
 	}))
+}
+
+// relativeTo trims the checkout's own path, which is noise repeated on every line.
+func relativeTo(root string, dirs []string) []string {
+	trimmed := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		trimmed = append(trimmed, strings.TrimPrefix(dir, root+string(filepath.Separator)))
+	}
+
+	return trimmed
 }
