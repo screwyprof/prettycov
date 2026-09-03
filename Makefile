@@ -2,10 +2,10 @@
 BINARY ?= prettycov
 
 ## DO NOT EDIT BELLOW THIS LINE
-GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" | grep -v vendor | uniq)
+GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" -not -path "./_*" | grep -v vendor | uniq)
 # Fixtures are inputs too. Without them a changed profile or golden file leaves the report targets
 # reading a coverage.out that predates it, and make calls the file up to date.
-FIXTURES := $(shell find . -path "*/testdata/*" -type f -not -path "./.direnv/*")
+FIXTURES := $(shell find . -path "*/testdata/*" -type f -not -path "./.direnv/*" -not -path "./_*")
 LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
 # Counter files from the binary tests, folded into $(COVERAGE) below.
