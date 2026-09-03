@@ -7,14 +7,15 @@ import (
 	"slices"
 )
 
-// DisplayTree writes tree as an indented report, depth levels deep, counting levels the way
-// `tree -L` does. A collapsed run of directories is the one row it renders as.
+// DisplayTree writes tree as an indented report, showing depth levels below the top row. That is
+// how `tree -L` counts: `tree -L 1` prints the root and one level under it. A collapsed run of
+// directories is the one row it renders as.
 func DisplayTree(w io.Writer, tree *PathTree, depth uint) {
-	displayTree(w, tree, depth, " ", true)
+	displayTree(w, tree, depth, 0, " ", true)
 }
 
-func displayTree(w io.Writer, tree *PathTree, depth uint, padding string, root bool) {
-	if tree == nil || depth == 0 {
+func displayTree(w io.Writer, tree *PathTree, depth, level uint, padding string, root bool) {
+	if tree == nil || level > depth {
 		return
 	}
 
@@ -26,24 +27,19 @@ func displayTree(w io.Writer, tree *PathTree, depth uint, padding string, root b
 
 		_, _ = fmt.Fprintf(w, "%s%s - %s\n",
 			padding+symbol(root, getBoxType(i, len(names))), label, formatRatio(node.Coverage))
-		displayTree(w, node, depth-1, padding+symbol(root, childSymbol(i, len(names))), false)
+		displayTree(w, node, depth, level+1, padding+symbol(root, childSymbol(i, len(names))), false)
 	}
 }
 
 // collapse folds a run of directories that each hold nothing but the next one into a single row,
 // so a module path does not spend three levels on "github.com", "owner", "repo" before reaching
-// anything worth reading. A directory that is a package in its own right is never folded away:
-// it contributes statements, so its totals differ from its child's.
+// anything worth reading. A directory the profile named itself is never folded away, however few
+// statements it holds — a package whose files declare none still deserves its own row.
 func collapse(label string, node *PathTree) (string, *PathTree) {
-	for len(node.Children) == 1 {
-		name := slices.Collect(maps.Keys(node.Children))[0]
-
-		child := node.Children[name]
-		if child.Coverage != node.Coverage {
-			break
+	for !node.isPkg && len(node.Children) == 1 {
+		for name, child := range node.Children {
+			label, node = label+"/"+name, child
 		}
-
-		label, node = label+"/"+name, child
 	}
 
 	return label, node

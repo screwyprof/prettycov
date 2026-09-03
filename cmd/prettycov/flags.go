@@ -9,7 +9,7 @@ import (
 const usageMessage = "" +
 	`Prettycov:
 Given a coverage profile produced by 'go test'.
-	go test -coveragepkg=coverage.out ./...
+	go test -coverprofile=coverage.out ./...
 Show coverage summary of the top level packages:
 	prettycov -profile=coverage.out
 Show coverage summary for second level packages:
@@ -40,7 +40,7 @@ func parseFlags() flags {
 		profile = flag.String("profile", "", "coverage profile path")
 		curRoot = flag.String("old", "", "old project's root package")
 		newRoot = flag.String("new", "", "new project's root package")
-		depth   = flag.Uint("depth", 1, "levels of the tree to show, like tree -L")
+		depth   = flag.Uint("depth", 1, "levels to show below the top row, like tree -L")
 		help    = flag.Bool("help", false, "show help")
 		info    = flag.Bool("version", false, "show version")
 	)

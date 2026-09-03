@@ -45,7 +45,7 @@ func TestDisplayTreeSortsChildren(t *testing.T) {
 
 	tree := prettycov.Process(printerFiles(), "", "")
 
-	assert.Equal(t, []string{"m", "alpha/deep", "beta", "gamma"}, nodeNames(render(t, tree, 2)))
+	assert.Equal(t, []string{"m", "alpha/deep", "beta", "gamma"}, nodeNames(render(t, tree, 1)))
 }
 
 // A run of directories that each hold nothing but the next one is one row, not one row each.
@@ -59,7 +59,7 @@ func TestDisplayTreeCollapsesPassThroughDirs(t *testing.T) {
 		file("github.com/o/repo/web/b.go", 1, 1),
 	}, "", "")
 
-	assert.Equal(t, []string{"github.com/o/repo", "pkg", "web"}, nodeNames(render(t, tree, 2)))
+	assert.Equal(t, []string{"github.com/o/repo", "pkg", "web"}, nodeNames(render(t, tree, 1)))
 }
 
 // A directory that is a package in its own right keeps its own row even with a single child,
@@ -67,16 +67,41 @@ func TestDisplayTreeCollapsesPassThroughDirs(t *testing.T) {
 func TestDisplayTreeKeepsDirsThatAreAlsoPackages(t *testing.T) {
 	t.Parallel()
 
-	tree := prettycov.Process([]prettycov.FileCoverage{
-		file("m/x/own.go", 4, 0),
-		file("m/x/sub/s.go", 0, 4),
-	}, "", "")
+	tests := []struct {
+		name  string
+		files []prettycov.FileCoverage
+	}{
+		{
+			name: "own file with statements",
+			files: []prettycov.FileCoverage{
+				file("m/x/own.go", 4, 0),
+				file("m/x/sub/s.go", 0, 4),
+			},
+		},
+		{
+			// A doc.go holding only a package comment has no statements, so m/x's totals equal
+			// its child's. It is still a package and still gets a row.
+			name: "own file with no statements",
+			files: []prettycov.FileCoverage{
+				file("m/x/doc.go", 0, 0),
+				file("m/x/sub/s.go", 3, 1),
+			},
+		},
+	}
 
-	assert.Equal(t, []string{"m/x", "sub"}, nodeNames(render(t, tree, 2)))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process(tc.files, "", "")
+
+			assert.Equal(t, []string{"m/x", "sub"}, nodeNames(render(t, tree, 1)))
+		})
+	}
 }
 
-// -depth counts levels, like `tree -L`: depth=1 is one level, not two. A collapsed run counts as
-// the single row it renders as.
+// -depth counts levels below the root row, exactly as `tree -L` does: `tree -L 1` prints the root
+// and one level under it. A collapsed run counts as the single row it renders as.
 func TestDisplayTreeDepthCountsLevels(t *testing.T) {
 	t.Parallel()
 
@@ -85,8 +110,8 @@ func TestDisplayTreeDepthCountsLevels(t *testing.T) {
 		depth uint
 		want  []string
 	}{
-		{name: "one level", depth: 1, want: []string{"m"}},
-		{name: "two levels", depth: 2, want: []string{"m", "alpha/deep", "beta", "gamma"}},
+		{name: "root only", depth: 0, want: []string{"m"}},
+		{name: "one level down", depth: 1, want: []string{"m", "alpha/deep", "beta", "gamma"}},
 		{name: "beyond the tree", depth: 9, want: []string{"m", "alpha/deep", "beta", "gamma"}},
 	}
 

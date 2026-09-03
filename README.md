@@ -27,10 +27,10 @@ Run `prettycov` or `prettycov help` or `prettycov --help` to get build-in usage 
 ### Show coverage summary up to the given depth
 You must specify the path to the coverage profile via `-profile` flag.
 
-You may also specify `-depth` to set how many levels of the tree to show, the way `tree -L` counts them:
+You may also specify `-depth` to set how many levels to show below the top row, the way `tree -L` counts them. Set it past the depth of the tree to drill all the way down and find what is dragging coverage:
 
 ```shell
-❯ prettycov -profile=coverage.out -depth=3
+❯ prettycov -profile=coverage.out -depth=9
  github.com/screwyprof/delegator - 94.01
  ├ pkg - 96.41
  │ ├ clock - 100.00
@@ -41,9 +41,12 @@ You may also specify `-depth` to set how many levels of the tree to show, the wa
  ├ scraper - 90.00
  │ ├ config - 100.00
  │ └ store - 77.97
+ │   ├ dbrow - 100.00
+ │   └ pgxstore - 75.47
  └ web - 95.15
    ├ api - 100.00
    ├ handler - 89.66
+   │ └ bind - 85.71
    ├ store/pgxstore - 96.49
    └ tezos - 100.00
 ```
@@ -53,7 +56,7 @@ Sometimes the project may have a long project path (package path to be more prec
 In this case you may want to replace it with a shorter name:
 
 ```shell
-❯ prettycov -profile=coverage.out -depth=3 -old github.com/screwyprof/delegator -new delegator
+❯ prettycov -profile=coverage.out -depth=2 -old github.com/screwyprof/delegator -new delegator
  delegator - 94.01
  ├ pkg - 96.41
  │ ├ clock - 100.00
@@ -75,7 +78,7 @@ In this case you may want to replace it with a shorter name:
 This is what I created this tool for. You may get a nice top-level package coverage:
 
 ```shell
-❯ prettycov -profile=coverage.out -depth=2
+❯ prettycov -profile=coverage.out
  github.com/screwyprof/delegator - 94.01
  ├ pkg - 96.41
  ├ scraper - 90.00
@@ -85,7 +88,7 @@ This is what I created this tool for. You may get a nice top-level package cover
 ## How it works
 It parses the coverage profile to populate a prefix tree of paths and coverages.
 Then it traverses the tree from the furthermost leaves to top merging the coverage info. 
-Then it draws the tree to the given number of levels. A run of directories that each hold nothing but the next one renders as a single row.
+Then it draws the top row plus `-depth` levels beneath it. A run of directories that each hold nothing but the next one renders as a single row.
 
 ### What's next?
 

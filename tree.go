@@ -7,6 +7,11 @@ type Walker func(key string, value CoverageStats)
 type PathTree struct {
 	Coverage CoverageStats
 	Children map[string]*PathTree
+
+	// isPkg marks a node the profile named directly, as opposed to one created only to hold a
+	// child. It cannot be inferred from Coverage: a package whose files declare no statements
+	// contributes nothing, so its totals equal its child's.
+	isPkg bool
 }
 
 func (n *PathTree) Put(key string, value CoverageStats) bool {
@@ -30,6 +35,7 @@ func (n *PathTree) Put(key string, value CoverageStats) bool {
 	}
 
 	node.Coverage = value
+	node.isPkg = true
 
 	return isNew
 }
