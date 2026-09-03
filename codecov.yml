@@ -1,0 +1,17 @@
+# One statement here is unreachable by construction: version.go guards against debug.ReadBuildInfo
+# returning a nil *BuildInfo, which happens only for a binary carrying no build info at all. No
+# ordinary build produces one — checked with and without .git, and through nix — so no test can
+# reach it, and removing the guard would trade an impossible case for a nil dereference.
+#
+# At ~256 lines that single statement is 0.4%, and the default patch target is the project average,
+# so it fails every patch check on its own. The threshold below is that slack and nothing more.
+#
+# The project check keeps its default threshold of 0%: a real drop in overall coverage still fails.
+coverage:
+  status:
+    project:
+      default:
+        threshold: 0%
+    patch:
+      default:
+        threshold: 1%
