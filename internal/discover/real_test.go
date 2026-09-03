@@ -43,6 +43,10 @@ func TestScanRealRepos(t *testing.T) {
 					inWorkspace++
 				}
 
+				if m.Err != nil {
+					t.Logf("  unreadable: %s: %v", m.Dir, m.Err)
+				}
+
 				packages += len(m.Packages)
 
 				for _, pkg := range m.Packages {

@@ -1,0 +1,30 @@
+An unreadable go.mod beside a healthy module. Aborting here would be the wrong answer twice
+over: the rest of the tree is still worth reporting, and a module that cannot be read is a fact
+the report has to carry — the same distinction as a package whose tests panicked versus one that
+has none.
+
+go list -m at the root is unaffected: a nested module is not in the root's graph.
+
+modules_on_disk: 2
+go_list_m: 1
+go_list_dotdotdot: 1
+discovered_modules: 2
+discovered_packages: 1
+packages_with_tests: 0
+has_workspace: 0
+modules_in_workspace: 0
+modules_with_errors: 1
+-- go.mod --
+module broken.test
+
+go 1.27
+-- root.go --
+package broken
+
+func R() int { return 1 }
+-- bad/go.mod --
+this is not a go.mod
+-- bad/bad.go --
+package bad
+
+func B() int { return 2 }

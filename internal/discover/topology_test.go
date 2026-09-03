@@ -51,11 +51,15 @@ func TestTopologies(t *testing.T) {
 			repo, err := discover.Scan(t.Context(), dir)
 			require.NoError(t, err)
 
-			packages, tested, inWorkspace := 0, 0, 0
+			packages, tested, inWorkspace, broken := 0, 0, 0, 0
 
 			for _, m := range repo.Modules {
 				if m.InWorkspace {
 					inWorkspace++
+				}
+
+				if m.Err != nil {
+					broken++
 				}
 
 				packages += len(m.Packages)
@@ -75,6 +79,10 @@ func TestTopologies(t *testing.T) {
 			// from. Only the first is a question about the module.
 			assert.Equal(t, want["has_workspace"] == 1, repo.Workspace != "", "go.work found")
 			assert.Equal(t, want["modules_in_workspace"], inWorkspace, "modules the workspace lists")
+
+			// Absent from a fixture's comment this is zero, which is the assertion that matters
+			// everywhere else: a healthy tree must not quietly record a module it failed to read.
+			assert.Equal(t, want["modules_with_errors"], broken, "modules that could not be read")
 		})
 	}
 }

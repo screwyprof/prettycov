@@ -10,6 +10,7 @@
 package discover
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"golang.org/x/mod/modfile"
 )
 
 var (
@@ -53,6 +56,11 @@ type Module struct {
 	InWorkspace bool
 
 	Packages []Package
+
+	// Err is why this module could not be read, and leaves Path or Packages empty. One unreadable
+	// go.mod is not a reason to report nothing about the rest of the tree — a template, a fixture,
+	// or a half-finished module would otherwise hide every module beside it.
+	Err error
 }
 
 // Package is one importable directory.
@@ -99,25 +107,25 @@ func Scan(ctx context.Context, dir string, tags ...string) (Repo, error) {
 	modules := make([]Module, 0, len(dirs))
 
 	for _, moduleDir := range dirs {
-		path, err := modulePath(ctx, moduleDir)
-		if err != nil {
-			return Repo{}, err
-		}
-
-		packages, err := packagesIn(ctx, moduleDir, tags)
-		if err != nil {
-			return Repo{}, err
-		}
-
-		modules = append(modules, Module{
-			Path:        path,
-			Dir:         moduleDir,
-			InWorkspace: inWorkspace[moduleDir],
-			Packages:    packages,
-		})
+		modules = append(modules, scanModule(ctx, moduleDir, inWorkspace[moduleDir], tags))
 	}
 
 	return Repo{Dir: root, Workspace: workspace, Modules: modules}, nil
+}
+
+// scanModule reads one module, recording rather than returning its failure. Scan's own error is
+// reserved for what makes the whole tree unreadable.
+func scanModule(ctx context.Context, dir string, inWorkspace bool, tags []string) Module {
+	module := Module{Dir: dir, InWorkspace: inWorkspace}
+
+	module.Path, module.Err = modulePath(ctx, dir)
+	if module.Err != nil {
+		return module
+	}
+
+	module.Packages, module.Err = packagesIn(ctx, dir, tags)
+
+	return module
 }
 
 // moduleDirs walks for go.mod. A directory holding one is a module root; the walk keeps going
@@ -154,6 +162,11 @@ func moduleDirs(root string) ([]string, error) {
 // workspaceMembers reads go.work, if there is one, and returns the directories it lists. The file
 // is parsed rather than queried through `go list -m`, because the question is what the workspace
 // names, not what the module graph resolves to.
+//
+// modfile is cmd/go's own parser. A hand-rolled scan of the use block read two of grafana's 34
+// modules as absent, because it kept the trailing comments those lines carry:
+//
+//	. // skip:golangci-lint
 func workspaceMembers(root string) (string, map[string]bool, error) {
 	file := filepath.Join(root, "go.work")
 
@@ -166,22 +179,14 @@ func workspaceMembers(root string) (string, map[string]bool, error) {
 		return "", nil, fmt.Errorf("reading go.work: %w", err)
 	}
 
-	members := map[string]bool{}
-	inUseBlock := false
+	work, err := modfile.ParseWork(file, data, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("parsing go.work: %w", err)
+	}
 
-	for line := range strings.SplitSeq(string(data), "\n") {
-		line = strings.TrimSpace(line)
-
-		switch {
-		case line == "use (":
-			inUseBlock = true
-		case inUseBlock && line == ")":
-			inUseBlock = false
-		case inUseBlock && line != "":
-			members[filepath.Join(root, filepath.FromSlash(line))] = true
-		case strings.HasPrefix(line, "use "):
-			members[filepath.Join(root, filepath.FromSlash(strings.TrimSpace(line[4:])))] = true
-		}
+	members := make(map[string]bool, len(work.Use))
+	for _, use := range work.Use {
+		members[filepath.Join(root, filepath.FromSlash(use.Path))] = true
 	}
 
 	return file, members, nil
@@ -258,6 +263,14 @@ func goList(ctx context.Context, dir string, args ...string) (string, error) {
 
 	out, err := cmd.Output()
 	if err != nil {
+		// "exit status 1" names nothing. go puts the useful part — "go.mod:1: unknown directive"
+		// — on stderr, which Output leaves on the ExitError for exactly this.
+		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+			if stderr := bytes.TrimSpace(exit.Stderr); len(stderr) > 0 {
+				return "", fmt.Errorf("go list in %q: %w: %s", dir, err, stderr)
+			}
+		}
+
 		return "", fmt.Errorf("go list in %q: %w", dir, err)
 	}
 

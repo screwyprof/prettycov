@@ -1,6 +1,9 @@
 A go.work spanning two modules. ./... is module-scoped, so it sees only the root's
 packages; go list -m sees both modules. This is the delegator shape.
 
+The trailing comment on a use line is grafana's, verbatim in kind. Reading the line as a path
+rather than parsing it drops the module, and modules_in_workspace below is what catches that.
+
 modules_on_disk: 2
 go_list_m: 2
 go_list_dotdotdot: 1
@@ -13,7 +16,7 @@ modules_in_workspace: 2
 go 1.27
 
 use (
-	.
+	. // skip:golangci-lint
 	./svc
 )
 -- go.mod --
