@@ -17,7 +17,7 @@ go install github.com/screwyprof/prettycov/cmd/prettycov@latest
 
 ## How to use
 ### Getting built-in help
-Run `prettycov` or `prettycov help` or `prettycov --help` to get build-in usage info.
+Run `prettycov help`, `prettycov -help` or `prettycov -h` for the built-in usage info. Bare `prettycov` reads `./coverage.out` and prints the report.
 
 ### Run your tests with coverage
 `prettycov` works by parsing coverage profile, so the first thing to do is to run tests with coverage:
@@ -25,12 +25,12 @@ Run `prettycov` or `prettycov help` or `prettycov --help` to get build-in usage 
 `go test -cover -coverprofile=coverage.out` ./...
 
 ### Show coverage summary up to the given depth
-You must specify the path to the coverage profile via `-profile` flag.
+The profile defaults to `./coverage.out`. Name another one positionally (`prettycov path/to/cov.out`) or with `-profile`.
 
 You may also specify `-depth` to set how many levels to show below the top row, the way `tree -L` counts them. Set it past the depth of the tree to drill all the way down and find what is dragging coverage:
 
 ```shell
-❯ prettycov -profile=coverage.out -depth=9
+❯ prettycov -depth=9
  github.com/screwyprof/delegator - 94.01
  ├ pkg - 96.41
  │ ├ clock - 100.00
@@ -56,7 +56,7 @@ Sometimes the project may have a long project path (package path to be more prec
 In this case you may want to replace it with a shorter name:
 
 ```shell
-❯ prettycov -profile=coverage.out -depth=2 -old github.com/screwyprof/delegator -new delegator
+❯ prettycov -depth=2 -old github.com/screwyprof/delegator -new delegator
  delegator - 94.01
  ├ pkg - 96.41
  │ ├ clock - 100.00
@@ -78,12 +78,29 @@ In this case you may want to replace it with a shorter name:
 This is what I created this tool for. You may get a nice top-level package coverage:
 
 ```shell
-❯ prettycov -profile=coverage.out
+❯ prettycov
  github.com/screwyprof/delegator - 94.01
  ├ pkg - 96.41
  ├ scraper - 90.00
  └ web - 95.15
 ```
+
+### Fail below a threshold
+`-fail-under` exits 1 when total coverage is under the given percentage, so `prettycov` can gate CI. It stays distinct from exit 2, which means prettycov could not run at all:
+
+```shell
+❯ prettycov -fail-under=99
+ github.com/screwyprof/delegator - 94.01
+ ├ pkg - 96.41
+ ├ scraper - 90.00
+ └ web - 95.15
+total coverage 94.01% is below 99.00%
+❯ echo $?
+1
+```
+
+### Colour
+Percentages are graded red, yellow and green using only the base ANSI colours, so your own terminal theme decides the shades. Colour is on when writing to a terminal and off when piped, honouring [`NO_COLOR`](https://no-color.org) and `TERM=dumb`. Override with `-color=always` or `-color=never`.
 
 ## How it works
 It parses the coverage profile to populate a prefix tree of paths and coverages.

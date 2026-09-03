@@ -2,10 +2,13 @@ package prettycov_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -126,6 +129,145 @@ func TestDisplayTreeDepthCountsLevels(t *testing.T) {
 	}
 }
 
+// Only the base ANSI colours, so the user's own theme decides what red and green look like.
+// Anything from the 256-colour or truecolor range would name an exact shade and override it.
+func TestDisplayTreeGradesByThreshold(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{
+		file("m/bad/a.go", 1, 9),    // 10%  -> red
+		file("m/edge/e.go", 5, 5),   // 50%  -> yellow, the boundary belongs to the upper band
+		file("m/mid/b.go", 6, 4),    // 60%  -> yellow
+		file("m/ok/o.go", 8, 2),     // 80%  -> green, likewise
+		file("m/good/c.go", 10, 0),  // 100% -> green
+		file("m/none/doc.go", 0, 0), // nothing to grade
+	}
+
+	out := renderColor(t, prettycov.Process(files, "", ""), 1)
+
+	assert.Contains(t, out, "\x1b[31m10.00\x1b[0m", "red below 50")
+	assert.Contains(t, out, "\x1b[33m50.00\x1b[0m", "50 is yellow, not red")
+	assert.Contains(t, out, "\x1b[33m60.00\x1b[0m", "yellow in between")
+	assert.Contains(t, out, "\x1b[32m80.00\x1b[0m", "80 is green, not yellow")
+	assert.Contains(t, out, "\x1b[32m100.00\x1b[0m", "green at the top")
+	assert.Contains(t, out, "none - n/a", "nothing to cover is not a grade, so no colour")
+	assert.NotContains(t, out, "\x1b[38;", "no 256-colour or truecolor: that overrides the theme")
+	assert.NotContains(t, out, "\x1b[4", "no background colours")
+}
+
+//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
+func TestDisplayTreeColorMode(t *testing.T) {
+	tree := prettycov.Process(printerFiles(), "", "")
+
+	tests := []struct {
+		name      string
+		mode      prettycov.ColorMode
+		env       map[string]string
+		wantColor bool
+	}{
+		{name: "always, even into a pipe", mode: prettycov.ColorAlways, wantColor: true},
+		{name: "never", mode: prettycov.ColorNever, wantColor: false},
+		{name: "auto into a pipe stays clean", mode: prettycov.ColorAuto, wantColor: false},
+		{
+			name: "always ignores NO_COLOR, the caller asked",
+			mode: prettycov.ColorAlways, env: map[string]string{"NO_COLOR": "1"}, wantColor: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+
+			var buf bytes.Buffer
+
+			prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: 1, Color: tc.mode})
+
+			if tc.wantColor {
+				assert.Contains(t, buf.String(), "\x1b[")
+			} else {
+				assert.NotContains(t, buf.String(), "\x1b[")
+			}
+		})
+	}
+}
+
+// The auto heuristic's guards. A terminal cannot be faked here, so these pin the branches that
+// say no; the branch that says yes is only reachable against a real tty.
+//
+//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
+func TestDisplayTreeAutoColorGuards(t *testing.T) {
+	tree := prettycov.Process(printerFiles(), "", "")
+
+	tests := []struct {
+		name string
+		key  string
+		val  string
+	}{
+		{name: "NO_COLOR set", key: "NO_COLOR", val: "1"},
+		{name: "NO_COLOR set but empty still counts", key: "NO_COLOR", val: ""},
+		{name: "dumb terminal", key: "TERM", val: "dumb"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(tc.key, tc.val)
+
+			var buf bytes.Buffer
+
+			prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: 1})
+
+			assert.NotContains(t, buf.String(), "\x1b[")
+		})
+	}
+}
+
+// A real file is not a terminal, so auto must stay clean writing to one. Covers the branch a
+// bytes.Buffer cannot reach: the destination is an *os.File and gets stat'd.
+func TestDisplayTreeAutoColorToRegularFile(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "report.txt")
+
+	out, err := os.Create(path)
+	require.NoError(t, err)
+
+	prettycov.DisplayTree(out, prettycov.Process(printerFiles(), "", ""), prettycov.Options{Depth: 1})
+	require.NoError(t, out.Close())
+
+	written, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, written)
+	assert.NotContains(t, string(written), "\x1b[")
+}
+
+// Drawing a report is not worth a panic, so an unrecognised box type is a blank.
+func TestBoxTypeStringNeverPanics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		box  prettycov.BoxType
+		want string
+	}{
+		{name: "regular", box: prettycov.Regular, want: "├"},
+		{name: "last", box: prettycov.Last, want: "└"},
+		{name: "between", box: prettycov.Between, want: "│"},
+		{name: "after last", box: prettycov.AfterLast, want: " "},
+		{name: "out of range", box: prettycov.BoxType(99), want: " "},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.NotPanics(t, func() { assert.Equal(t, tc.want, tc.box.String()) })
+		})
+	}
+}
+
 // m/
 //
 //	├ alpha/deep/   (alpha holds only deep, so the two collapse into one row)
@@ -139,12 +281,14 @@ func printerFiles() []prettycov.FileCoverage {
 	}
 }
 
+// Colour is a property of the terminal, not of the tree, so it is off in these tests unless a
+// test is specifically about it.
 func render(t *testing.T, tree *prettycov.PathTree, depth uint) string {
 	t.Helper()
 
 	var buf bytes.Buffer
 
-	prettycov.DisplayTree(&buf, tree, depth)
+	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: prettycov.ColorNever})
 
 	return buf.String()
 }
@@ -165,4 +309,14 @@ func nodeNames(out string) []string {
 	}
 
 	return names
+}
+
+func renderColor(t *testing.T, tree *prettycov.PathTree, depth uint) string {
+	t.Helper()
+
+	var buf bytes.Buffer
+
+	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: prettycov.ColorAlways})
+
+	return buf.String()
 }

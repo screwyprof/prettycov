@@ -2,21 +2,29 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"io"
 	"runtime/debug"
 )
 
 var version string // set by the linker
 
-func showVersion() {
-	// When app is being installed using `go install prettycov@v1.2.3`, the ldflags won't be passed
-	// and the version will be empty. In this case, we try to populate version using build info.
-	if version == "" {
-		if info, ok := debug.ReadBuildInfo(); ok {
-			version = info.Main.Version
-		}
+func printVersion(w io.Writer) {
+	_, _ = fmt.Fprintln(w, buildVersion())
+}
+
+// buildVersion reads the version rather than caching it back into the linker variable. Writing to
+// that variable made two concurrent callers a data race, which main never hit because it only ever
+// asked once — the tests did.
+func buildVersion() string {
+	if version != "" {
+		return version
 	}
 
-	fmt.Println(version)
-	os.Exit(0)
+	// Installed with `go install prettycov@v1.2.3` the ldflags are not passed, so fall back to
+	// what the build recorded.
+	if info, ok := debug.ReadBuildInfo(); ok {
+		return info.Main.Version
+	}
+
+	return ""
 }
