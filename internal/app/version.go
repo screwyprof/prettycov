@@ -22,12 +22,16 @@ func buildVersion() string {
 	}
 
 	// `go install prettycov@v1.2.3` passes no ldflags, so fall back to what the build recorded.
-	// The toolchain writes "(devel)" for a main module with no version, so this is empty only if
-	// the binary carries no build info at all — which no ordinary build produces, and why the
-	// last line is the one statement in this package no test reaches.
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
-		return info.Main.Version
+	// Whatever that says is already the answer: the toolchain writes "(devel)" itself for a main
+	// module with no version, so there is nothing to check it against.
+	//
+	// The guard is for the pointer, not the value — it is nil when ok is false, and a binary
+	// carrying no build info at all is the only way there. No ordinary build produces one, which
+	// is why this is the single statement in the package no test reaches.
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "(devel)"
 	}
 
-	return "(devel)"
+	return info.Main.Version
 }
