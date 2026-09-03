@@ -149,6 +149,32 @@ delegator's `|| true` = `never`.
 **Cross-module coverage is possible** with `require` + `replace`: naming the sibling's import path
 in `-coverpkg` measures it. Verified (`mono2`).
 
+## go.work is curated, not derived
+
+Both projects **generate** `go.work` by walking for `go.mod` — the walk is upstream of the file.
+
+| project | generator | on disk | in go.work | dropped |
+| --- | --- | --- | --- | --- |
+| kubernetes | `hack/update-go-workspace.sh` @e2b96b2 — `go work edit -use .` + `git ls-files ':(glob)./staging/src/k8s.io/*/go.mod'` | 34 | 31 | `hack/tools`, `code-generator/examples`, `kms/internal/plugins/_mock` |
+| etcd | `scripts/update_go_workspace.sh` — copied from k/k, filter removed: `git ls-files ':(glob)**/go.mod'` | 13 | 13 | none — but `load_workspace_relative_modules_for_bom` subtracts `tools/*` again downstream |
+
+Header in both: `// This is a generated file. Do not edit directly.` etcd's `go_workspace_pass`
+fails CI when it drifts. `test_lib.sh` then derives test patterns from it:
+`go work edit -json | jq -r '.Use[].DiskPath + "/..."'`.
+
+What is dropped is always the same category: tooling, examples, mocks. Never product code.
+`_mock` is already outside the build (leading `_`), so a correct walk drops it for free.
+
+Measured on `not-in-workspace` (k8s-shaped, 4 uncovered statements in a code generator):
+
+| scope | total |
+| --- | --- |
+| go.work (2 modules) | **100.00%** |
+| whole tree (3 modules) | **42.86%** |
+
+`go tool cover -func` cannot read the wider profile at all: `no required module provides package
+k8s.test/hack/tools`. prettycov renders it.
+
 ## Corpus
 
 `internal/discover/testdata/topologies/*.txtar` — 9 shapes, each stating what the go tool reports.
@@ -164,7 +190,8 @@ txtar because `cmd/go` uses it, diffs readably, and comes from `x/tools` (alread
 
 ## Open
 
-- Module on disk but absent from `go.work`: include by default or respect the omission?
+- Module on disk but absent from `go.work`: discover always, report both totals, default the
+  headline to which? Discovery cannot be recovered downstream; a scope can. Undecided.
 - Discovery must use `GOWORK=off` + `go list -e` (workspace mode misreports identity of omitted modules).
 - etcd scale: unit suite 530s to compile+instrument with workspace-wide `-coverpkg`; no single
   suite's profile covers all 180 packages (116/106/108) — merging is required, not optional.

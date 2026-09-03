@@ -1,15 +1,26 @@
-A module on disk that the go.work deliberately omits. Discovery by filesystem walk
-finds three modules; the module graph reports two. Which is right is policy, not
-arithmetic: go.work says "these are the modules I am working on", so excluding it
-may be intentional — or it may be the module someone forgot to add. The tool has to
-pick a default and say which it picked.
+Modules on disk that the go.work leaves out. Shaped after kubernetes, whose
+hack/update-go-workspace.sh generates go.work from `git ls-files '**/go.mod'` but adds only the
+root and staging/src/k8s.io/*: at e2b96b2 that is 31 of the 34 modules on disk. The three it drops
+are hack/tools, code-generator/examples, and kms/internal/plugins/_mock — build tooling, examples,
+and a mock. etcd copied the same script and dropped the filter, so its go.work lists all 13
+modules, then subtracts the tools again downstream for the bill of materials.
+
+So the omission is deliberate in both, and in both it means the same thing: not the product.
+
+Which makes it a real choice, not arithmetic. Measuring the workspace gives 100.00% here;
+measuring the tree gives 42.86%, and the four uncovered statements are a code generator. Note
+also that go tool cover -func cannot read the wider profile at all — the omitted module is not
+required by the root, so it fails with "no required module provides package".
+
+_mock is dropped by the walk anyway, for a reason that has nothing to do with go.work: the go
+tool ignores underscore-prefixed directories, so it is not in the build to begin with.
 
 modules_on_disk: 3
 go_list_m: 2
 go_list_dotdotdot: 1
 discovered_modules: 3
 discovered_packages: 3
-packages_with_tests: 0
+packages_with_tests: 2
 has_workspace: 1
 modules_in_workspace: 2
 -- go.work --
@@ -17,29 +28,60 @@ go 1.27
 
 use (
 	.
-	./included
+	./staging/src/k8s.io/api
 )
 -- go.mod --
-module fixture.test/root
+module k8s.test/kubernetes
 
 go 1.27
 -- root.go --
-package root
+package kubernetes
 
-func R() int { return 1 }
--- included/go.mod --
-module fixture.test/included
+func Serve() int { return 1 }
+-- root_test.go --
+package kubernetes
+
+import "testing"
+
+func TestServe(t *testing.T) {
+	if Serve() != 1 {
+		t.Fatal("no")
+	}
+}
+-- staging/src/k8s.io/api/go.mod --
+module k8s.test/api
 
 go 1.27
--- included/inc.go --
-package included
+-- staging/src/k8s.io/api/api.go --
+package api
 
-func I() int { return 2 }
--- omitted/go.mod --
-module fixture.test/omitted
+func Version() string { return "v1" }
+-- staging/src/k8s.io/api/api_test.go --
+package api
+
+import "testing"
+
+func TestVersion(t *testing.T) {
+	if Version() != "v1" {
+		t.Fatal("no")
+	}
+}
+-- hack/tools/go.mod --
+module k8s.test/hack/tools
 
 go 1.27
--- omitted/omit.go --
-package omitted
+-- hack/tools/tools.go --
+package tools
 
-func O() int { return 3 }
+func Generate() int { return 1 }
+func Format() int   { return 2 }
+func Lint() int     { return 3 }
+func Vet() int      { return 4 }
+-- staging/src/k8s.io/kms/internal/plugins/_mock/go.mod --
+module k8s.test/kms/plugins/mock
+
+go 1.27
+-- staging/src/k8s.io/kms/internal/plugins/_mock/mock.go --
+package mock
+
+func Mock() int { return 0 }
