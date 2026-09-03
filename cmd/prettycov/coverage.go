@@ -26,7 +26,7 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 }
 
 func checkThreshold(cfg config, tree *prettycov.PathTree, stderr io.Writer) int {
-	if cfg.FailUnder <= 0 {
+	if !cfg.Gate {
 		return exitOK
 	}
 

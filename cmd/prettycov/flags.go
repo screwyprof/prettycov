@@ -16,6 +16,7 @@ const defaultProfile = "coverage.out"
 var (
 	errBadColor        = errors.New(`invalid -color, want "auto", "never" or "always"`)
 	errTooManyProfiles = errors.New("want at most one profile path")
+	errTwoProfiles     = errors.New("profile given twice")
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -63,6 +64,10 @@ type config struct {
 	FailUnder   float64
 	Help        bool
 	Version     bool
+
+	// Gate records that -fail-under was given at all. Zero is a legitimate threshold — it asks
+	// only that the profile hold some statements — so it cannot double as "no gate".
+	Gate bool
 }
 
 // newFlagSet wires the flags onto cfg. Shared by parsing and by printing usage, so the two cannot
@@ -117,12 +122,23 @@ func parseFlags(args []string, stderr io.Writer) (config, error) {
 		return cfg, fmt.Errorf("%w, got %d", errTooManyProfiles, len(positional))
 	}
 
+	// Naming the profile twice is a mistake either way, so say so rather than picking one.
+	if cfg.Profile != "" && len(positional) > 0 {
+		return cfg, fmt.Errorf("%w: -profile %q and %q", errTwoProfiles, cfg.Profile, positional[0])
+	}
+
 	mode, err := parseColor(color)
 	if err != nil {
 		return cfg, err
 	}
 
 	cfg.Color = mode
+
+	set.Visit(func(f *flag.Flag) {
+		if f.Name == "fail-under" {
+			cfg.Gate = true
+		}
+	})
 
 	if cfg.Profile == "" && len(positional) > 0 {
 		cfg.Profile = positional[0]

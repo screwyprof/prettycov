@@ -17,7 +17,7 @@ go install github.com/screwyprof/prettycov/cmd/prettycov@latest
 
 ## How to use
 ### Getting built-in help
-Run `prettycov` or `prettycov help` or `prettycov --help` to get build-in usage info.
+Run `prettycov help`, `prettycov -help` or `prettycov -h` for the built-in usage info. Bare `prettycov` reads `./coverage.out` and prints the report.
 
 ### Run your tests with coverage
 `prettycov` works by parsing coverage profile, so the first thing to do is to run tests with coverage:

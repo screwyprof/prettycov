@@ -37,10 +37,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	cfg, err := parseFlags(args, stderr)
 	if err != nil {
-		// ContinueOnError already reported a bad flag, and -h prints usage itself.
-		if !errors.Is(err, flag.ErrHelp) {
-			_, _ = fmt.Fprintf(stderr, "An error occurred: %v\n", err)
+		// -h is asking for help, not making a mistake: the flag package handles it itself and
+		// reports ErrHelp, which must exit like -help rather than like a bad flag.
+		if errors.Is(err, flag.ErrHelp) {
+			return exitOK
 		}
+
+		// ContinueOnError has already reported a bad flag.
+		_, _ = fmt.Fprintf(stderr, "An error occurred: %v\n", err)
 
 		return exitFailed
 	}

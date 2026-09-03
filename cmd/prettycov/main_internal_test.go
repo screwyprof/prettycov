@@ -102,6 +102,17 @@ func TestRunFailUnder(t *testing.T) {
 			args: []string{"-fail-under", "1"}, wantCode: exitBelow,
 			wantErr: "no statements to cover",
 		},
+		{
+			// Zero is a real threshold: it asks only that the profile hold some statements. It
+			// must not silently mean "no gate", which is what a zero default would make it.
+			name: "zero still requires something to measure", profile: "mode: atomic\nm/d/doc.go:1.1,2.2 0 0\n",
+			args: []string{"-fail-under", "0"}, wantCode: exitBelow,
+			wantErr: "no statements to cover",
+		},
+		{
+			name: "zero passes when there is anything at all", profile: profile,
+			args: []string{"-fail-under", "0"}, wantCode: exitOK,
+		},
 	}
 
 	for _, tc := range tests {
@@ -160,15 +171,39 @@ func TestRunColorFlag(t *testing.T) {
 	}
 }
 
-// Two paths is a mistake, not a request to merge them.
-func TestRunRejectsMoreThanOneProfile(t *testing.T) {
+// Naming the profile twice is a mistake, not a request to merge them — whichever way it is named.
+func TestRunRejectsTwoProfiles(t *testing.T) {
 	t.Parallel()
 
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := run([]string{writeProfile(t, profile), writeProfile(t, profile)}, stdout, stderr)
+	tests := []struct {
+		name    string
+		args    func(a, b string) []string
+		wantErr string
+	}{
+		{
+			name:    "two positionals",
+			args:    func(a, b string) []string { return []string{a, b} },
+			wantErr: "at most one profile path",
+		},
+		{
+			name:    "positional and -profile",
+			args:    func(a, b string) []string { return []string{a, "-profile", b} },
+			wantErr: "profile given twice",
+		},
+	}
 
-	assert.Equal(t, exitFailed, code)
-	assert.Contains(t, stderr.String(), "at most one profile path")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := run(tc.args(writeProfile(t, profile), writeProfile(t, profile)), stdout, stderr)
+
+			assert.Equal(t, exitFailed, code)
+			assert.Contains(t, stderr.String(), tc.wantErr)
+			assert.Empty(t, stdout.String(), "nothing rendered when the input is ambiguous")
+		})
+	}
 }
 
 func TestRunReportsAMissingProfile(t *testing.T) {
@@ -194,6 +229,9 @@ func TestRunHelpAndVersion(t *testing.T) {
 	}{
 		{name: "help subcommand", args: []string{"help"}, wantErr: "Prettycov:", wantCode: exitOK},
 		{name: "help flag", args: []string{"-help"}, wantErr: "Prettycov:", wantCode: exitOK},
+		// -h is not registered as a flag; the flag package handles it and reports ErrHelp. It is
+		// a request for help, not a mistake, so it must exit like the others.
+		{name: "short help flag", args: []string{"-h"}, wantErr: "Prettycov:", wantCode: exitOK},
 		{name: "version subcommand", args: []string{"version"}, wantOut: "\n", wantCode: exitOK},
 		{name: "version flag", args: []string{"-version"}, wantOut: "\n", wantCode: exitOK},
 		{name: "unknown flag", args: []string{"-nope"}, wantErr: "flag provided but not defined", wantCode: exitFailed},
