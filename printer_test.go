@@ -30,6 +30,46 @@ func TestDisplayTreeRendersBothRatioBranches(t *testing.T) {
 	assert.NotContains(t, out, "NaN")
 }
 
+// Paths reach the terminal, so a control character in one must not. Cursor movement is the case
+// that goes past garbled output: "\x1b[1A\x1b[2K" erases the row above and writes over it, and
+// above the first child is the total.
+func TestDisplayTreeNeutralisesEscapesFromTheProfile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		pkg  string
+	}{
+		{name: "cursor up and erase", pkg: "m/\x1b[1A\x1b[2Kforged"},
+		{name: "colour", pkg: "m/\x1b[31mred"},
+		{name: "carriage return", pkg: "m/\roverwritten"},
+		{name: "bell", pkg: "m/\anoisy"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process([]prettycov.FileCoverage{file(tc.pkg+"/a.go", 1, 1)}, "", "")
+
+			out := render(t, tree, 3)
+
+			assert.NotContains(t, out, "\x1b", "escape reached the terminal")
+			assert.NotContains(t, out, "\r")
+			assert.NotContains(t, out, "\a")
+		})
+	}
+}
+
+// Only control characters are touched. A path is allowed to be non-ASCII.
+func TestDisplayTreeKeepsPrintableUnicode(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/héllo-世界/a.go", 1, 1)}, "", "")
+
+	assert.Contains(t, render(t, tree, 2), "héllo-世界")
+}
+
 // Coverage output gets diffed between CI runs, so the same tree must render byte-identically
 // every time. Ranging over a map does not give that.
 func TestDisplayTreeIsDeterministic(t *testing.T) {

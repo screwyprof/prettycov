@@ -6,6 +6,8 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"strings"
+	"unicode"
 )
 
 // Colour thresholds, in percent. Cosmetic: they grade a row at a glance and are deliberately not
@@ -107,7 +109,7 @@ func (r renderer) display(tree *PathTree, level uint, padding string) {
 		root := level == 0
 
 		_, _ = fmt.Fprintf(r.w, "%s%s - %s\n",
-			padding+symbol(root, getBoxType(i, len(names))), label, formatRatio(node.Coverage, r.color))
+			padding+symbol(root, getBoxType(i, len(names))), sanitize(label), formatRatio(node.Coverage, r.color))
 		r.display(node, level+1, padding+symbol(root, childSymbol(i, len(names))))
 	}
 }
@@ -124,6 +126,20 @@ func collapse(label string, node *PathTree) (string, *PathTree) {
 	}
 
 	return label, node
+}
+
+// sanitize replaces control characters in a label. Chiefly hygiene — a stray control byte in a
+// path garbles the report, which is why ls and git quote them too. It also stops a spoof: a
+// package named "\x1b[1A\x1b[2Kforged" erases the row above and writes over it, and above the
+// first child is the total. Only control characters go; a path may be non-ASCII.
+func sanitize(label string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return '�'
+		}
+
+		return r
+	}, label)
 }
 
 // formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to
