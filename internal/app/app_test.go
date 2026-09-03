@@ -345,25 +345,18 @@ func TestRunKeepsABadFlagShort(t *testing.T) {
 	assert.LessOrEqual(t, strings.Count(stderr.String(), "\n"), 3)
 }
 
-func TestRunHelpAndVersion(t *testing.T) {
+// `version` as a bare word is recognised before the flag package sees it, which would take it for
+// a profile path; -version is the ordinary flag. What the version actually says is the binary
+// tests' business — it depends on how the binary was linked, and nix stamps it during checkPhase.
+func TestRunAcceptsBothVersionSpellings(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		args     []string
-		wantOut  string
-		wantErr  string
-		wantCode int
+		name string
+		args []string
 	}{
-		// Help itself is covered by TestRunPrintsRequestedHelpOnStdout; -h is registered alongside
-		// -help so the flag package does not special-case it, keeping every help path identical.
-		//
-		// The version's value is not asserted here: it depends on how the test binary was linked,
-		// and nix stamps it during checkPhase. What it must be is covered by the binary tests,
-		// which control the build. Here it only has to be non-empty.
-		{name: "version subcommand", args: []string{"version"}, wantCode: codeOK},
-		{name: "version flag", args: []string{"-version"}, wantCode: codeOK},
-		{name: "unknown flag", args: []string{"-nope"}, wantErr: "flag provided but not defined", wantCode: codeFailed},
+		{name: "subcommand", args: []string{"version"}},
+		{name: "flag", args: []string{"-version"}},
 	}
 
 	for _, tc := range tests {
@@ -372,15 +365,9 @@ func TestRunHelpAndVersion(t *testing.T) {
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
-			assert.Equal(t, tc.wantCode, app.Run(tc.args, stdout, stderr))
-
-			if tc.wantOut != "" {
-				assert.Contains(t, stdout.String(), tc.wantOut)
-			}
-
-			if tc.wantErr != "" {
-				assert.Contains(t, stderr.String(), tc.wantErr)
-			}
+			assert.Equal(t, codeOK, app.Run(tc.args, stdout, stderr))
+			assert.NotEmpty(t, strings.TrimSpace(stdout.String()), "never a bare newline")
+			assert.Empty(t, stderr.String())
 		})
 	}
 }
