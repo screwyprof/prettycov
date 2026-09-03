@@ -124,18 +124,30 @@ detection (`if [[ $(cat ./cov/$2) == "mode: atomic" ]]`), no `-failfast` (flappe
 
 ## Design decisions
 
-**Ours:** discovery (filesystem walk, not `go list -m`) · `-coverpkg` derivation incl. `replace`d
-siblings · module iteration · merge + validation · completeness reporting.
+**Governing rule: do what `go test ./...` would do if it worked on every topology.** Never diverge
+from the toolchain's semantics — only from its scope, which is the part that is broken.
+
+That rule already settles most of the open questions, without a flag for any of them:
+
+| question | answered by | how |
+| --- | --- | --- |
+| do untested packages count? | yes | a package with no `_test.go` still emits every statement at count 0 |
+| counting mode? | statements | no knob |
+| exclusions? | none | `./...` excludes nothing |
+| modules absent from `go.work`? | included | `./...` never consults `go.work` for scope |
+
+**Ours:** discovery (filesystem walk, not `go list -m`) · module iteration · merge + validation ·
+completeness reporting.
 
 **Not ours:** building/running tests · flag semantics · profile formats · suite definition ·
-what to exclude.
+what to exclude · `-coverpkg` (see below).
 
 **Flag contract** — own only what makes the merge valid; forward the rest unparsed after `--`:
 
 | flag | who |
 | --- | --- |
 | `-coverprofile` | ours, always (temp per run); error if user passes it |
-| `-coverpkg` | derived, user-overridable |
+| `-coverpkg` | **theirs** — forwarded, never derived |
 | `-covermode` | normalised across runs (mode mismatch = merge failure) |
 | everything else | forwarded, never declared — this is what killed goverage |
 
@@ -146,8 +158,23 @@ Per-suite profiles → user-named. Merged result → user-named.
 configurable — `--fail-on=test` (default) / `incomplete` / `never`. NATS's policy = `incomplete`;
 delegator's `|| true` = `never`.
 
-**Cross-module coverage is possible** with `require` + `replace`: naming the sibling's import path
-in `-coverpkg` measures it. Verified (`mono2`).
+**`-coverpkg` is a divergence from `./...`, not a repair for it.** Measured on one module,
+`TestQuad` calling `helper.Double`:
+
+| invocation | total |
+| --- | --- |
+| `go test -coverprofile ./...` | 50.0% (`helper` 0.0%) |
+| `go test -coverpkg=./... -coverprofile ./...` | 100.0% |
+
+Plain `./...` attributes coverage only to the package whose own test binary produced it. So
+deriving `-coverpkg` would silently inflate every number against the rule above. It is the user's
+flag, for when tests live outside the code's module (etcd `tests/`, NATS `-coverpkg=./server
+./test`). delegator's Makefile uses it, so its published figure is the inflated kind.
+
+Consequence: per-module `./...` + merge needs no cross-module attribution, so `replace`-target
+resolution has no caller. `nested-replace` stays a record that it is *possible* — verified
+(`mono2`: `require` + `replace`, naming the sibling's import path in `-coverpkg` measures it) —
+not a thing to build.
 
 ## go.work is curated, not derived
 
@@ -201,8 +228,9 @@ txtar because `cmd/go` uses it, diffs readably, and comes from `x/tools` (alread
 
 ## Open
 
-- Module on disk but absent from `go.work`: discover always, report both totals, default the
-  headline to which? Discovery cannot be recovered downstream; a scope can. Undecided.
 - Discovery must use `GOWORK=off` + `go list -e` (workspace mode misreports identity of omitted modules).
 - etcd scale: unit suite 530s to compile+instrument with workspace-wide `-coverpkg`; no single
   suite's profile covers all 180 packages (116/106/108) — merging is required, not optional.
+
+Closed: module on disk but absent from `go.work` — included, because `./...` does not consult
+`go.work`, and the file is not readable as intent anyway.
