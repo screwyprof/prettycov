@@ -36,8 +36,8 @@
               # Both formats and reports: `make fmt` and `make lint`. Not a go.mod tool — see the
               # note on require-golangci in the Makefile for why.
               pkgs.golangci-lint
-              # `make test` pipes `go test -json` through it. Also a go.mod tool, so non-nix users
-              # get the same version from `make deps`.
+              # No make target uses it: `make test` prints go test's own output. Kept because
+              # `go test -json ./... | tparse` is a useful thing to reach for by hand.
               pkgs.tparse
               # column(1), which `make test-cover-txt` aligns its report with.
               pkgs.util-linux
@@ -67,7 +67,7 @@
             version = pkgs.lib.fileContents ./VERSION;
             src = ./.;
             # Covers the `tool` block's deps too, not just x/tools — bump this whenever go.mod moves.
-            vendorHash = "sha256-hzXxg3GKucNEWB7Q/WumrBxtArs+2601jkZH7dnpp3Q=";
+            vendorHash = "sha256-GmlblQLcnXecv3gv8129QkjoB1pHbouyIrdlujMuWk8=";
             # Without this the version lives only in the derivation name and the binary answers
             # "(devel)": the source has no .git, so the toolchain stamps nothing of its own.
             # No +commit suffix, unlike the Makefile's dev builds — a nix build is pinned to a rev

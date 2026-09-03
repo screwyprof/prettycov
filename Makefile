@@ -74,7 +74,7 @@ fmt: require-golangci ## format code
 # changed and reuse it otherwise, instead of re-running the suite to re-read the same numbers.
 $(COVERAGE): $(GO_FILES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
-	@go test -json -v -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./... | tparse -follow
+	@go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
 
 # `make test` must always run the suite, so it drops the profile first rather than letting make
 # decide it is up to date.
@@ -117,12 +117,6 @@ lint-all: require-golangci ## run linters
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
 	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov/...
-
-# Versions live in go.mod's `tool` block, not here, so there is ONE place to bump them. The nix
-# devShell already supplies these at the same versions; this target is for everyone who isn't in it.
-deps: ## install deps
-	@echo -e "$(OK_COLOR)==> Installing dependencies$(NO_COLOR)"
-	go install tool
 
 # buildGoModule needs a fixed-output hash for the module set, and nix only reveals the correct one
 # by failing a build with a wrong one. So: write a known-bad hash, read the `got:` line, write that.
@@ -171,4 +165,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
 .PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-all install deps hooks nix-hash release clean help
+.PHONY: lint lint-all install hooks nix-hash release clean help
