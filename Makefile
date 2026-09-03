@@ -3,7 +3,9 @@ BINARY ?= prettycov
 
 ## DO NOT EDIT BELLOW THIS LINE
 GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" | grep -v vendor | uniq)
-LOCAL_PACKAGES="github.com/screwyprof/prettycov"
+# Unquoted: gci is handed `prefix($(LOCAL_PACKAGES))` inside double quotes already, and the tree
+# report below passes it as a flag value where a stray pair of quotes would become part of the path.
+LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
@@ -89,6 +91,11 @@ test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
 	@go tool cover -func $(COVERAGE) | tail -n 1 | rev | cut -f1 | rev
 
+# Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
+# binary, so a change to the printer shows up here before it is ever released.
+test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
+	@go run ./cmd/prettycov -profile=$(COVERAGE) -old=$(LOCAL_PACKAGES) -new=$(BINARY) -depth=2
+
 coverage.svg: $(COVERAGE)
 	@go-cover-treemap -coverprofile $< > $@
 
@@ -160,5 +167,5 @@ help: ## show this help
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt
-.PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-svg
+.PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-svg test-cover-tree
 .PHONY: lint lint-all install deps hooks nix-hash release clean help

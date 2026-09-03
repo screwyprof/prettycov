@@ -79,6 +79,17 @@ jobs:
           make deps
           make test
 
+      # Dogfooding: the tool's report on its own profile, written to the run summary so it is
+      # visible without opening the log. Reuses the coverage.out `make test` just wrote.
+      - name: Coverage tree
+        run: |
+          {
+            echo '### Coverage'
+            echo '```'
+            make test-cover-tree
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
         with:
