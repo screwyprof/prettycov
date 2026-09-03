@@ -53,9 +53,12 @@ MAKE_COLOR=\033[36m%-20s\033[0m
 
 all: build lint test ## build application, run linters and tests
 
+# No -race here: it is a test tool, not a build flag. It also needs cgo, which silently undid the
+# static linking below — the binary came out dynamically linked against the host glibc — and cost
+# a second of race-runtime startup on a program whose work takes a millisecond.
 build: ## build application
 	@echo -e "$(OK_COLOR)==> Building application$(NO_COLOR)"
-	go build -race -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
+	go build -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
 
 # golangci-lint comes from the devShell or the developer's own install, not go.mod, so the targets
 # needing it say where to get it rather than dying with "command not found".
