@@ -158,8 +158,19 @@ Both projects **generate** `go.work` by walking for `go.mod` — the walk is ups
 | kubernetes | `hack/update-go-workspace.sh` @e2b96b2 — `go work edit -use .` + `git ls-files ':(glob)./staging/src/k8s.io/*/go.mod'` | 34 | 31 | `hack/tools`, `code-generator/examples`, `kms/internal/plugins/_mock` |
 | etcd | `scripts/update_go_workspace.sh` — copied from k/k, filter removed: `git ls-files ':(glob)**/go.mod'` | 13 | 13 | none — but `load_workspace_relative_modules_for_bom` subtracts `tools/*` again downstream |
 
-Header in both: `// This is a generated file. Do not edit directly.` etcd's `go_workspace_pass`
-fails CI when it drifts. `test_lib.sh` then derives test patterns from it:
+Both **commit** `go.work` and `go.work.sum` (`git ls-files` confirms; neither `.gitignore`s them).
+Nothing regenerates them at build time — a human runs the update script and commits the result.
+Header in both: `// This is a generated file. Do not edit directly.`
+
+Verification differs, and the difference matters:
+
+| project | verify | catches a new module missing from go.work? |
+| --- | --- | --- |
+| kubernetes | `hack/verify-go-workspace.sh` → `kube::verify::generated` re-runs the update script and diffs | yes |
+| etcd | `PASSES="go_workspace" ./scripts/test.sh` → `go mod download` then `git status --porcelain go.work.sum` | no — checks the **sum** file only |
+
+So a committed `go.work` can be stale, and the file alone cannot say whether an absent module was
+filtered on purpose or simply never added. etcd then derives its test patterns from that file:
 `go work edit -json | jq -r '.Use[].DiskPath + "/..."'`.
 
 What is dropped is always the same category: tooling, examples, mocks. Never product code.
