@@ -1,0 +1,27 @@
+A package with no test files at all. Present in the profile with zero counts, which
+is the distinction that matters: measured-and-zero, not absent. Go has not always
+behaved this way, so it is worth pinning.
+
+modules_on_disk: 1
+go_list_m: 1
+go_list_dotdotdot: 2
+-- go.mod --
+module fixture.test/untested
+
+go 1.27
+-- tested/t.go --
+package tested
+
+func A() int { return 1 }
+-- tested/t_test.go --
+package tested
+
+import "testing"
+
+func TestA(t *testing.T) { _ = A() }
+-- untested/u.go --
+package untested
+
+func C() int { return 3 }
+
+func D() int { return 4 }

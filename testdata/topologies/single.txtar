@@ -1,0 +1,23 @@
+One module, two packages, one of them tested. The baseline every tool handles.
+
+modules_on_disk: 1
+go_list_m: 1
+go_list_dotdotdot: 2
+-- go.mod --
+module fixture.test/single
+
+go 1.27
+-- app/app.go --
+package app
+
+func A() int { return 1 }
+-- app/app_test.go --
+package app
+
+import "testing"
+
+func TestA(t *testing.T) { _ = A() }
+-- lib/lib.go --
+package lib
+
+func B() int { return 2 }

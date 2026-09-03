@@ -1,0 +1,29 @@
+A go.work spanning two modules. ./... is module-scoped, so it sees only the root's
+packages; go list -m sees both modules. This is the delegator shape.
+
+modules_on_disk: 2
+go_list_m: 2
+go_list_dotdotdot: 1
+-- go.work --
+go 1.27
+
+use (
+	.
+	./svc
+)
+-- go.mod --
+module fixture.test/ws
+
+go 1.27
+-- root.go --
+package ws
+
+func R() int { return 1 }
+-- svc/go.mod --
+module fixture.test/ws/svc
+
+go 1.27
+-- svc/svc.go --
+package svc
+
+func S() int { return 2 }

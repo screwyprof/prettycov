@@ -1,0 +1,33 @@
+Nested modules with no go.work — the polyglot-monorepo shape, /services/golang with
+pkgs/*/go.mod. go list -m sees only the root, and ./... cannot reach the nested
+modules at all: `go test ./pkgs/codec/...` fails with "directory prefix pkgs/codec
+does not contain main module or its selected dependencies". Per-module runs are
+mandatory here, not a legacy habit.
+
+modules_on_disk: 3
+go_list_m: 1
+go_list_dotdotdot: 1
+-- go.mod --
+module fixture.test/svc
+
+go 1.27
+-- app/app.go --
+package app
+
+func A() int { return 1 }
+-- pkgs/codec/go.mod --
+module fixture.test/pkgs/codec
+
+go 1.27
+-- pkgs/codec/codec.go --
+package codec
+
+func Encode() int { return 1 }
+-- pkgs/slogx/go.mod --
+module fixture.test/pkgs/slogx
+
+go 1.27
+-- pkgs/slogx/slogx.go --
+package slogx
+
+func Log() int { return 2 }

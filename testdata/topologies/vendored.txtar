@@ -1,0 +1,29 @@
+A vendored repository. `go mod vendor` copies no go.mod files, so a walk finds one
+module here and the count is honest either way — what this pins is that ./... omits
+the vendored package, so the package set is smaller than the directory tree suggests.
+Legacy vendor trees from dep or glide did carry go.mod files, which is why discovery
+skips vendor regardless.
+
+modules_on_disk: 1
+go_list_m: 1
+go_list_dotdotdot: 1
+-- go.mod --
+module fixture.test/vendored
+
+go 1.27
+
+require fixture.test/dep v1.0.0
+-- app/app.go --
+package app
+
+import "fixture.test/dep"
+
+func A() int { return dep.D() }
+-- vendor/modules.txt --
+# fixture.test/dep v1.0.0
+## explicit; go 1.27
+fixture.test/dep
+-- vendor/fixture.test/dep/dep.go --
+package dep
+
+func D() int { return 9 }

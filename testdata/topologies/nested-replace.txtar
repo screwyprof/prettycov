@@ -1,0 +1,38 @@
+The same nesting, but wired the normal way: the root requires and replaces the
+sibling. This is what makes cross-module attribution possible — naming the sibling's
+import path in -coverpkg measures its code from the root's tests. The replace target
+is readable straight from go.mod, so the coverpkg set is derivable, not guessed.
+
+modules_on_disk: 2
+go_list_m: 1
+go_list_dotdotdot: 1
+-- go.mod --
+module fixture.test/svc
+
+go 1.27
+
+require fixture.test/pkgs/codec v0.0.0
+
+replace fixture.test/pkgs/codec => ./pkgs/codec
+-- app/app.go --
+package app
+
+import "fixture.test/pkgs/codec"
+
+func Run() int { return codec.Encode() }
+-- app/app_test.go --
+package app
+
+import "testing"
+
+func TestRun(t *testing.T) { _ = Run() }
+-- pkgs/codec/go.mod --
+module fixture.test/pkgs/codec
+
+go 1.27
+-- pkgs/codec/codec.go --
+package codec
+
+func Encode() int { return 1 }
+
+func Unused() int { return 2 }

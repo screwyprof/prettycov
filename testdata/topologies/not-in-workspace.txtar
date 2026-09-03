@@ -1,0 +1,40 @@
+A module on disk that the go.work deliberately omits. Discovery by filesystem walk
+finds three modules; the module graph reports two. Which is right is policy, not
+arithmetic: go.work says "these are the modules I am working on", so excluding it
+may be intentional — or it may be the module someone forgot to add. The tool has to
+pick a default and say which it picked.
+
+modules_on_disk: 3
+go_list_m: 2
+go_list_dotdotdot: 1
+-- go.work --
+go 1.27
+
+use (
+	.
+	./included
+)
+-- go.mod --
+module fixture.test/root
+
+go 1.27
+-- root.go --
+package root
+
+func R() int { return 1 }
+-- included/go.mod --
+module fixture.test/included
+
+go 1.27
+-- included/inc.go --
+package included
+
+func I() int { return 2 }
+-- omitted/go.mod --
+module fixture.test/omitted
+
+go 1.27
+-- omitted/omit.go --
+package omitted
+
+func O() int { return 3 }

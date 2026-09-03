@@ -1,0 +1,23 @@
+The tools/go.mod pattern — a second module kept out of the main build so its
+dependencies stay out of go.sum. Extremely common, and the recipe that asks the
+module graph misses it exactly as it misses any nested module.
+
+modules_on_disk: 2
+go_list_m: 1
+go_list_dotdotdot: 1
+-- go.mod --
+module fixture.test/app
+
+go 1.27
+-- app.go --
+package app
+
+func A() int { return 1 }
+-- tools/go.mod --
+module fixture.test/app/tools
+
+go 1.27
+-- tools/tools.go --
+package tools
+
+func T() int { return 2 }

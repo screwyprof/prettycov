@@ -1,0 +1,27 @@
+A test that panics. The run fails and the profile is written but contains only the
+mode line — structurally valid, semantically empty. NATS guards against this by hand
+because an empty profile uploads as a coverage collapse with no explanation:
+
+    if [[ $(cat ./cov/$2) == "mode: atomic" ]]; then ... exit 1
+
+modules_on_disk: 1
+go_list_m: 1
+go_list_dotdotdot: 1
+-- go.mod --
+module fixture.test/panics
+
+go 1.27
+-- boom/boom.go --
+package boom
+
+func A() int { return 1 }
+
+func B() int { return 2 }
+-- boom/boom_test.go --
+package boom
+
+import "testing"
+
+func TestBoom(t *testing.T) {
+	panic("boom")
+}
