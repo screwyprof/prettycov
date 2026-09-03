@@ -126,6 +126,11 @@ func TestRunFailUnder(t *testing.T) {
 			args: []string{"-fail-under", "0"}, wantCode: codeOK,
 		},
 		{
+			name: "not a percentage", profile: profile,
+			args: []string{"-fail-under", "abc"}, wantCode: codeFailed,
+			wantErr: "want a percentage",
+		},
+		{
 			// Counts this large only come from a hand-written profile, and summing them wraps.
 			// Rejecting the profile beats reporting a percentage derived from the wreckage.
 			name: "counts that overflow past zero",

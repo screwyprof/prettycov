@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -18,6 +19,7 @@ var (
 	errBadColor        = errors.New(`invalid -color, want "auto", "never" or "always"`)
 	errTooManyProfiles = errors.New("want at most one profile path")
 	errTwoProfiles     = errors.New("profile given twice")
+	errBadFailUnder    = errors.New("want a percentage")
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -72,13 +74,9 @@ type config struct {
 	NewRoot     string
 	Depth       uint
 	Color       prettycov.ColorMode
-	FailUnder   float64
+	FailUnder   *float64
 	Help        bool
 	Version     bool
-
-	// Gate records that -fail-under was given at all. Zero is a legitimate threshold — it asks
-	// only that the profile hold some statements — so it cannot double as "no gate".
-	Gate bool
 }
 
 // newFlagSet wires the flags onto cfg. Shared by parsing and by printing usage, so the two cannot
@@ -92,7 +90,21 @@ func newFlagSet(cfg *config, color *string) *flag.FlagSet {
 	set.StringVar(&cfg.NewRoot, "new", "", "new project's root package")
 	set.UintVar(&cfg.Depth, "depth", 1, "levels to show below the top row, like tree -L")
 	set.StringVar(color, "color", "auto", `when to colour: "auto", "never" or "always"`)
-	set.Float64Var(&cfg.FailUnder, "fail-under", 0, "exit 1 when total coverage is below this percentage")
+	// A pointer, not a float with a default: zero is a legitimate threshold — it asks only that
+	// the profile hold some statements — so the value cannot say whether the flag was given.
+	set.Func("fail-under", "exit 1 when total coverage is below this `percentage`", func(s string) error {
+		pct, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			// The flag package prefixes this with the flag name and the offending value, so
+			// wrapping would print that value twice.
+			//nolint:wrapcheck // see above.
+			return errBadFailUnder
+		}
+
+		cfg.FailUnder = &pct
+
+		return nil
+	})
 	set.BoolVar(&cfg.Help, "help", false, "show help")
 	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")
 	set.BoolVar(&cfg.Version, "version", false, "show version")
@@ -168,14 +180,6 @@ func parseFlags(args []string) (config, error) {
 	if cfg.Color, err = parseColor(color); err != nil {
 		return cfg, err
 	}
-
-	// Zero is a legitimate threshold, so whether the gate was asked for cannot be read off the
-	// value — only off whether the flag appeared.
-	set.Visit(func(f *flag.Flag) {
-		if f.Name == "fail-under" {
-			cfg.Gate = true
-		}
-	})
 
 	return cfg, nil
 }

@@ -34,7 +34,7 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 }
 
 func checkThreshold(cfg config, tree *prettycov.PathTree, stderr io.Writer) int {
-	if !cfg.Gate {
+	if cfg.FailUnder == nil {
 		return exitOK
 	}
 
@@ -42,13 +42,13 @@ func checkThreshold(cfg config, tree *prettycov.PathTree, stderr io.Writer) int 
 	// the gate useless on an empty or mis-pointed profile.
 	total, ok := tree.Coverage.Ratio()
 	if !ok {
-		_, _ = fmt.Fprintf(stderr, "no statements to cover, wanted at least %.2f%%\n", cfg.FailUnder)
+		_, _ = fmt.Fprintf(stderr, "no statements to cover, wanted at least %.2f%%\n", *cfg.FailUnder)
 
 		return exitBelow
 	}
 
-	if total < cfg.FailUnder {
-		_, _ = fmt.Fprintf(stderr, "total coverage %.2f%% is below %.2f%%\n", total, cfg.FailUnder)
+	if total < *cfg.FailUnder {
+		_, _ = fmt.Fprintf(stderr, "total coverage %.2f%% is below %.2f%%\n", total, *cfg.FailUnder)
 
 		return exitBelow
 	}
