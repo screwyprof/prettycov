@@ -76,11 +76,13 @@ func rollUp(node *PathTree) *PathTree {
 	}
 }
 
-// shortenPaths rewrites the leading oldRoot of each path to newRoot. Only a leading one: replacing
-// the first match anywhere rewrote "github.com/rapid/api" to "github.com/rcored/api" for
-// -old=api, and an empty oldRoot matches at position 0, so -new alone prepended itself to
-// every path instead of replacing anything.
+// shortenPaths rewrites the leading oldRoot of each path to newRoot. It has to be leading, and it
+// has to end on a separator: replacing the first match anywhere rewrote "github.com/rapid/api" to
+// "github.com/rcored/api" for -old=api, and a bare prefix rewrote the unrelated
+// "github.com/foobar" to "xbar" for -old=github.com/foo. An empty oldRoot matches at position 0,
+// so -new alone prepended itself to every path instead of replacing anything.
 func shortenPaths(items []FileCoverage, oldRoot, newRoot string) []FileCoverage {
+	oldRoot = strings.TrimSuffix(oldRoot, "/")
 	if oldRoot == "" || newRoot == "" {
 		return items
 	}
@@ -88,7 +90,7 @@ func shortenPaths(items []FileCoverage, oldRoot, newRoot string) []FileCoverage 
 	shortened := make([]FileCoverage, len(items))
 
 	for i, item := range items {
-		if rest, found := strings.CutPrefix(item.File, oldRoot); found {
+		if rest, found := strings.CutPrefix(item.File, oldRoot); found && strings.HasPrefix(rest, "/") {
 			item.File = newRoot + rest
 		}
 

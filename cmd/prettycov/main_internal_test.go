@@ -283,6 +283,31 @@ func TestRunReadsADashedProfileAfterDoubleDash(t *testing.T) {
 	assert.Contains(t, stdout.String(), "60.00")
 }
 
+func TestPickVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		stamped  string
+		recorded string
+		want     string
+	}{
+		{name: "the linker stamp wins", stamped: "v1.2.3", recorded: "v0.0.1", want: "v1.2.3"},
+		{name: "falls back to what the build recorded", recorded: "v0.0.1", want: "v0.0.1"},
+		// A nix build records no VCS metadata, so both sources come back empty. Printing nothing
+		// would leave `prettycov version` emitting a bare newline, which a script reads as a version.
+		{name: "never nothing", want: "(devel)"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, pickVersion(tc.stamped, tc.recorded))
+		})
+	}
+}
+
 // One typo used to print the message, then the whole usage, then the message again: 33 lines.
 func TestRunKeepsABadFlagShort(t *testing.T) {
 	t.Parallel()

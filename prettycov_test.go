@@ -162,6 +162,12 @@ func TestProcessShortensTheRootPath(t *testing.T) {
 			old: "api", replace: "core", want: "github.com/rapid/api/svc",
 		},
 		{
+			// A prefix is not a root: "github.com/foo" starts "github.com/foobar" too, and cutting
+			// it there left the unrelated package as "xbar/svc".
+			name: "and only a whole path segment", file: "github.com/foobar/svc/a.go",
+			old: "github.com/foo", replace: "x", want: "github.com/foobar/svc",
+		},
+		{
 			// An empty old root matches at position 0, so this used to prepend rather than replace.
 			name: "no old root means no rewrite", file: "github.com/o/repo/pkg/a.go",
 			old: "", replace: "repo", want: "github.com/o/repo/pkg",
