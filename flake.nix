@@ -26,21 +26,27 @@
         { pkgs, ... }:
         {
           devShells.default = pkgs.mkShell {
+            # Each entry earns its place: everything below is either the toolchain or something a
+            # make target invokes by name. bashInteractive is deliberately absent — `nix develop`
+            # supplies its own, with readline, whether or not it is listed here.
             packages = [
               pkgs.go_1_27
               pkgs.gopls
               pkgs.gotools
+              # Both formats and reports: `make fmt` and `make lint`. Not a go.mod tool — see the
+              # note on require-golangci in the Makefile for why.
               pkgs.golangci-lint
-              pkgs.gofumpt
-              pkgs.gci
+              # `make test` pipes `go test -json` through it. Also a go.mod tool, so non-nix users
+              # get the same version from `make deps`.
               pkgs.tparse
+              # column(1), which `make test-cover-txt` aligns its report with.
               pkgs.util-linux
+              # xdg-open: the Linux half of $(OPEN), for `make test-cover-html`.
               pkgs.xdg-utils
               # .pre-commit-config.yaml drives the git hooks; non-nix users bring their own.
               pkgs.pre-commit
-              # `make` targets shell out to these: VERSION uses git describe, and SHELL := bash.
+              # Every workflow in this repo is a make target.
               pkgs.gnumake
-              pkgs.bashInteractive
             ];
 
             # Register the hook on shell entry so nix users never have to remember `make hooks`.
@@ -61,7 +67,7 @@
             version = pkgs.lib.fileContents ./VERSION;
             src = ./.;
             # Covers the `tool` block's deps too, not just x/tools — bump this whenever go.mod moves.
-            vendorHash = "sha256-PTHKONBrgiCNVI6jk1HJviPonoeFgbGG7HMpGPzGgu4=";
+            vendorHash = "sha256-hzXxg3GKucNEWB7Q/WumrBxtArs+2601jkZH7dnpp3Q=";
             # Without this the version lives only in the derivation name and the binary answers
             # "(devel)": the source has no .git, so the toolchain stamps nothing of its own.
             # No +commit suffix, unlike the Makefile's dev builds — a nix build is pinned to a rev

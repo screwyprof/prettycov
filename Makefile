@@ -3,8 +3,8 @@ BINARY ?= prettycov
 
 ## DO NOT EDIT BELLOW THIS LINE
 GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" | grep -v vendor | uniq)
-# Unquoted: gci is handed `prefix($(LOCAL_PACKAGES))` inside double quotes already, and the tree
-# report below passes it as a flag value where a stray pair of quotes would become part of the path.
+# Unquoted: the tree report passes this as a flag value, where a stray pair of quotes would
+# become part of the path.
 LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
 
@@ -54,10 +54,20 @@ build: ## build application
 	@echo -e "$(OK_COLOR)==> Building application$(NO_COLOR)"
 	go build -race -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
 
-fmt: ## format code
+# golangci-lint is deliberately NOT a go.mod tool: adding it takes go.mod from 44 to 235 lines and
+# go.sum from 99 to 1002 for a ~500-line CLI. It comes from the devShell or from the developer's
+# own install, so the targets needing it say which rather than failing with "command not found".
+GOLANGCI_MISSING := golangci-lint not found. Enter the nix devShell, or install v2.13.1 (the version CI pins) from https://golangci-lint.run/docs/welcome/install/
+
+require-golangci:
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "$(GOLANGCI_MISSING)"; exit 1; }
+
+# golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
+# which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
+# standalone pair never applied at all, so a 128-column line survived `make fmt` unchanged.
+fmt: require-golangci ## format code
 	@echo -e "$(OK_COLOR)==> Formatting$(NO_COLOR)"
-	@gofumpt -l -w .
-	@gci write $(GO_FILES) -s standard  -s default -s "prefix($(LOCAL_PACKAGES))"
+	@golangci-lint fmt ./...
 
 # One recipe produces the profile, and it is a real file rule so make can tell when it is stale.
 # The reports depend on the file rather than on `test`, so they rebuild it when a source has
@@ -96,11 +106,11 @@ test-cover-total: $(COVERAGE) ## show total coverage
 test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
 	@go run ./cmd/prettycov -profile=$(COVERAGE) -old=$(LOCAL_PACKAGES) -new=$(BINARY) -depth=2
 
-lint: ## run linters for current changes
+lint: require-golangci ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
 	golangci-lint  run ./...
 
-lint-all: ## run linters
+lint-all: require-golangci ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
 	golangci-lint run ./... --new-from-rev=""
 
@@ -159,6 +169,6 @@ help: ## show this help
 # To avoid unintended conflicts with file names, always add to .PHONY
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
-.PHONY: all build fmt
+.PHONY: all build fmt require-golangci
 .PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all install deps hooks nix-hash release clean help
