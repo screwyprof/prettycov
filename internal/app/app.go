@@ -14,8 +14,7 @@ const (
 )
 
 // Run is the whole command apart from exiting: args excludes the program name, and the int is the
-// status to exit with — 0, 1 when coverage is below -fail-under, 2 when the tool could not run.
-// Nothing it calls exits, so a caller keeps control.
+// status to exit with. Nothing it calls exits, so a caller keeps control.
 func Run(args []string, stdout, stderr io.Writer) int {
 	cfg, err := parseFlags(args)
 	if err != nil {
@@ -24,16 +23,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailed
 	}
 
+	// Every handler returns its own status, so this only picks one.
 	switch {
 	case cfg.Help:
-		printUsage(stdout)
-
-		return exitOK
+		return printUsage(stdout)
 	case cfg.Version:
-		printVersion(stdout)
-
-		return exitOK
+		return printVersion(stdout)
+	default:
+		return showReport(cfg, stdout, stderr)
 	}
-
-	return showReport(cfg, stdout, stderr)
 }

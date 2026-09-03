@@ -120,7 +120,7 @@ func newFlagSet(cfg *config, color *string) *flag.FlagSet {
 }
 
 // printUsage writes the help text and the flag defaults.
-func printUsage(w io.Writer) {
+func printUsage(w io.Writer) int {
 	var (
 		cfg   config
 		color string
@@ -135,6 +135,8 @@ func printUsage(w io.Writer) {
 	// so it has to be pointed back at w or the flag list comes out empty.
 	set.SetOutput(w)
 	set.PrintDefaults()
+
+	return exitOK
 }
 
 // subcommand matches a bare `help` or `version`, which have to be recognised before the flag
