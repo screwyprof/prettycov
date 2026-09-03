@@ -52,9 +52,8 @@ build: ## build application
 	@echo -e "$(OK_COLOR)==> Building application$(NO_COLOR)"
 	go build -race -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
 
-# golangci-lint is deliberately NOT a go.mod tool: `go get -tool` it and go.mod goes from 10 lines
-# to 222, go.sum from 6 to 927, for a ~500-line CLI. It comes from the devShell or the developer's
-# own install, so the targets needing it say which rather than failing with "command not found".
+# golangci-lint comes from the devShell or the developer's own install, not go.mod, so the targets
+# needing it say where to get it rather than dying with "command not found".
 GOLANGCI_MISSING := golangci-lint not found. Enter the nix devShell, or install v2.13.1 (the version CI pins) from https://golangci-lint.run/docs/welcome/install/
 
 require-golangci:

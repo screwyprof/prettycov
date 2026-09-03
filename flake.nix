@@ -26,27 +26,19 @@
         { pkgs, ... }:
         {
           devShells.default = pkgs.mkShell {
-            # Each entry earns its place: everything below is either the toolchain or something a
-            # make target invokes by name. bashInteractive is deliberately absent — `nix develop`
-            # supplies its own, with readline, whether or not it is listed here.
             packages = [
               pkgs.go_1_27
               pkgs.gopls
               pkgs.gotools
-              # Both formats and reports: `make fmt` and `make lint`. Not a go.mod tool — see the
-              # note on require-golangci in the Makefile for why.
               pkgs.golangci-lint
-              # No make target uses it: `make test` prints go test's own output. Kept because
-              # `go test -json ./... | tparse` is a useful thing to reach for by hand.
-              pkgs.tparse
-              # column(1), which `make test-cover-txt` aligns its report with.
-              pkgs.util-linux
-              # xdg-open: the Linux half of $(OPEN), for `make test-cover-html`.
-              pkgs.xdg-utils
-              # .pre-commit-config.yaml drives the git hooks; non-nix users bring their own.
               pkgs.pre-commit
-              # Every workflow in this repo is a make target.
               pkgs.gnumake
+              # No target uses it; `go test -json ./... | tparse` by hand does.
+              pkgs.tparse
+              # column(1), for test-cover-txt.
+              pkgs.util-linux
+              # xdg-open, the Linux half of $(OPEN).
+              pkgs.xdg-utils
             ];
 
             # Register the hook on shell entry so nix users never have to remember `make hooks`.
