@@ -43,6 +43,11 @@ type Repo struct {
 	Workspace string
 
 	Modules []Module
+
+	// Unreadable are directories the walk could not descend into, usually for want of permission.
+	// Any of them may hold modules, so they are the difference between a smaller answer and a
+	// wrong one, and the report has to say so.
+	Unreadable []string
 }
 
 // Module is one go.mod and the packages beneath it, up to the next module.
@@ -96,7 +101,7 @@ func Scan(ctx context.Context, dir string, tags ...string) (Repo, error) {
 		return Repo{}, fmt.Errorf("resolving %q: %w", dir, err)
 	}
 
-	dirs, err := moduleDirs(root)
+	dirs, unreadable, err := moduleDirs(root)
 	if err != nil {
 		return Repo{}, err
 	}
@@ -107,9 +112,10 @@ func Scan(ctx context.Context, dir string, tags ...string) (Repo, error) {
 	}
 
 	return Repo{
-		Dir:       root,
-		Workspace: workspace,
-		Modules:   scanModules(ctx, dirs, inWorkspace, tags),
+		Dir:        root,
+		Workspace:  workspace,
+		Modules:    scanModules(ctx, dirs, inWorkspace, tags),
+		Unreadable: unreadable,
 	}, nil
 }
 
@@ -155,12 +161,21 @@ func scanModule(ctx context.Context, dir string, inWorkspace bool, tags []string
 
 // moduleDirs walks for go.mod. A directory holding one is a module root; the walk keeps going
 // beneath it, because a module may contain further modules.
-func moduleDirs(root string) ([]string, error) {
-	var dirs []string
-
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+//
+// A directory it cannot read is noted and stepped over rather than ending the walk. One such
+// directory — a root-owned build artefact, a cache — would otherwise hide every module in the
+// tree, which is the same trade already made for an unreadable go.mod.
+func moduleDirs(root string) (dirs, unreadable []string, err error) {
+	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
-			return err
+			unreadable = append(unreadable, path)
+
+			// Skipping on a file would drop its unread siblings too, and they are readable.
+			if entry != nil && !entry.IsDir() {
+				return nil
+			}
+
+			return filepath.SkipDir
 		}
 
 		if entry.IsDir() {
@@ -178,10 +193,10 @@ func moduleDirs(root string) ([]string, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("walking %q: %w", root, err)
+		return nil, nil, fmt.Errorf("walking %q: %w", root, err)
 	}
 
-	return dirs, nil
+	return dirs, unreadable, nil
 }
 
 // workspaceMembers reads go.work, if there is one, and returns the directories it lists. The file

@@ -132,6 +132,35 @@ func TestScanFindsParentWorkspace(t *testing.T) {
 	assert.True(t, repo.Modules[0].InWorkspace, "the workspace above lists this module")
 }
 
+// TestScanRecordsUnreadableDir keeps a directory it cannot open from hiding the rest of the tree.
+// A root-owned build artefact or a cache is enough to cause this, and reporting nothing at all
+// would be a worse answer than reporting what is readable and saying where it stopped.
+//
+// No txtar fixture can express a mode, so the tree is built here.
+func TestScanRecordsUnreadableDir(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	locked := filepath.Join(root, "locked")
+
+	require.NoError(t, os.WriteFile(filepath.Join(root, "go.mod"), []byte("module locked.test\n\ngo 1.27\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "f.go"), []byte("package locked\n"), 0o600))
+	require.NoError(t, os.Mkdir(locked, 0o000))
+
+	if _, err := os.ReadDir(locked); err == nil {
+		t.Skip("running as a user that can read mode 000")
+	}
+
+	repo, err := discover.Scan(t.Context(), root)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{locked}, repo.Unreadable)
+
+	require.Len(t, repo.Modules, 1)
+	require.NoError(t, repo.Modules[0].Err)
+	assert.Equal(t, "locked.test", repo.Modules[0].Path)
+}
+
 // extract writes the archive to a temporary directory and returns it.
 func extract(t *testing.T, ar *txtar.Archive) string {
 	t.Helper()
