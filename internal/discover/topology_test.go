@@ -39,50 +39,10 @@ func TestTopologies(t *testing.T) {
 			dir := extract(t, ar)
 			want := expectations(t, ar.Comment)
 
-			assert.Equal(t, want["modules_on_disk"], countGoMod(t, dir),
-				"go.mod files on disk — what a filesystem walk finds")
-			assert.Equal(t, want["go_list_m"], countLines(goList(t, dir, "-m")),
-				"go list -m — what the module graph reports")
-			assert.Equal(t, want["go_list_dotdotdot"], countLines(goList(t, dir, "./...")),
-				"go list ./... — what the default package pattern reaches")
-
-			// And what discovery makes of the same tree. Where these disagree with the two
-			// numbers above is precisely where a recipe built on go list under-measures.
 			repo, err := discover.Scan(t.Context(), dir)
 			require.NoError(t, err)
 
-			packages, tested, inWorkspace, broken := 0, 0, 0, 0
-
-			for _, m := range repo.Modules {
-				if m.InWorkspace {
-					inWorkspace++
-				}
-
-				if m.Err != nil {
-					broken++
-				}
-
-				packages += len(m.Packages)
-
-				for _, pkg := range m.Packages {
-					if pkg.HasTests {
-						tested++
-					}
-				}
-			}
-
-			assert.Len(t, repo.Modules, want["discovered_modules"], "modules discovered")
-			assert.Equal(t, want["discovered_packages"], packages, "packages discovered")
-			assert.Equal(t, want["packages_with_tests"], tested, "packages carrying tests")
-
-			// A module can be absent from a workspace, or there can be no workspace to be absent
-			// from. Only the first is a question about the module.
-			assert.Equal(t, want["has_workspace"] == 1, repo.Workspace != "", "go.work found")
-			assert.Equal(t, want["modules_in_workspace"], inWorkspace, "modules the workspace lists")
-
-			// Absent from a fixture's comment this is zero, which is the assertion that matters
-			// everywhere else: a healthy tree must not quietly record a module it failed to read.
-			assert.Equal(t, want["modules_with_errors"], broken, "modules that could not be read")
+			assert.Equal(t, want, observe(t, dir, repo))
 		})
 	}
 }
@@ -100,6 +60,58 @@ func extract(t *testing.T, ar *txtar.Archive) string {
 	}
 
 	return dir
+}
+
+// measured are the keys every fixture is judged on. A fixture states the ones that are not zero;
+// the rest still hold, and most of them are only interesting when they are zero — a healthy tree
+// must record no unreadable module, and a tree with no go.work must claim no members.
+var measured = []string{ //nolint:gochecknoglobals // the corpus schema, shared by two functions.
+	"modules_on_disk",      // what a filesystem walk finds
+	"go_list_m",            // what the module graph reports
+	"go_list_dotdotdot",    // what the default package pattern reaches
+	"discovered_modules",   // and what discovery makes of the same tree; where these disagree
+	"discovered_packages",  // with the two above is where a recipe built on go list under-measures
+	"packages_with_tests",  //
+	"has_workspace",        // 1 or 0: a go.work governs this tree, or none does
+	"modules_in_workspace", // meaningless unless has_workspace is 1
+	"modules_with_errors",  // modules found on disk that could not be read
+}
+
+// observe measures a tree every way the corpus records.
+func observe(t *testing.T, dir string, repo discover.Repo) map[string]int {
+	t.Helper()
+
+	got := map[string]int{
+		"modules_on_disk":     countGoMod(t, dir),
+		"go_list_m":           countLines(goList(t, dir, "-m")),
+		"go_list_dotdotdot":   countLines(goList(t, dir, "./...")),
+		"discovered_modules":  len(repo.Modules),
+		"discovered_packages": 0,
+	}
+
+	if repo.Workspace != "" {
+		got["has_workspace"] = 1
+	}
+
+	for _, module := range repo.Modules {
+		if module.InWorkspace {
+			got["modules_in_workspace"]++
+		}
+
+		if module.Err != nil {
+			got["modules_with_errors"]++
+		}
+
+		got["discovered_packages"] += len(module.Packages)
+
+		for _, pkg := range module.Packages {
+			if pkg.HasTests {
+				got["packages_with_tests"]++
+			}
+		}
+	}
+
+	return fill(got)
 }
 
 // expectations reads the "key: number" lines from an archive's comment. The prose around them is
@@ -120,12 +132,26 @@ func expectations(t *testing.T, comment []byte) map[string]int {
 			continue
 		}
 
+		require.Contains(t, measured, strings.TrimSpace(key), "fixture states an unmeasured key")
+
 		want[strings.TrimSpace(key)] = n
 	}
 
 	require.NotEmpty(t, want, "fixture states no expectations")
 
-	return want
+	return fill(want)
+}
+
+// fill defaults every measured key that is absent to zero, so the two maps compare as wholes and
+// a missing line reads as a claim rather than as silence.
+func fill(counts map[string]int) map[string]int {
+	for _, key := range measured {
+		if _, ok := counts[key]; !ok {
+			counts[key] = 0
+		}
+	}
+
+	return counts
 }
 
 // skipTestDir mirrors the package's own skipDir, which these tests cannot reach from outside. Its

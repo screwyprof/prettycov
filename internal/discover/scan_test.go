@@ -25,19 +25,16 @@ func TestScanUsesBuildTags(t *testing.T) {
 	require.NoError(t, err)
 
 	repo, err := discover.Scan(t.Context(), extract(t, ar), "acceptance")
-	require.NoError(t, err)
 
+	require.NoError(t, err)
 	require.Len(t, repo.Modules, 1)
 
-	paths := make([]string, 0, len(repo.Modules[0].Packages))
-
+	paths := map[string]bool{}
 	for _, pkg := range repo.Modules[0].Packages {
-		require.True(t, pkg.HasTests, "%s", pkg.ImportPath)
-
-		paths = append(paths, pkg.ImportPath)
+		paths[pkg.ImportPath] = pkg.HasTests
 	}
 
-	assert.ElementsMatch(t, []string{"tags.test", "tags.test/api"}, paths)
+	assert.Equal(t, map[string]bool{"tags.test": true, "tags.test/api": true}, paths)
 }
 
 // TestScanFindsParentWorkspace scans below the directory holding go.work. The go tool searches
@@ -71,8 +68,8 @@ func TestScanRecordsUnreadableDir(t *testing.T) {
 	root := t.TempDir()
 	locked := filepath.Join(root, "locked")
 
-	require.NoError(t, os.WriteFile(filepath.Join(root, "go.mod"), []byte("module locked.test\n\ngo 1.27\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "f.go"), []byte("package locked\n"), 0o600))
+	write(t, root, "go.mod", "module locked.test\n\ngo 1.27\n")
+	write(t, root, "f.go", "package locked\n")
 	require.NoError(t, os.Mkdir(locked, 0o000))
 
 	if _, err := os.ReadDir(locked); err == nil {
@@ -80,13 +77,25 @@ func TestScanRecordsUnreadableDir(t *testing.T) {
 	}
 
 	repo, err := discover.Scan(t.Context(), root)
+
 	require.NoError(t, err)
-
-	assert.Equal(t, []string{locked}, repo.Unreadable)
-
 	require.Len(t, repo.Modules, 1)
 	require.NoError(t, repo.Modules[0].Err)
+	assert.Equal(t, []string{locked}, repo.Unreadable)
 	assert.Equal(t, "locked.test", repo.Modules[0].Path)
+}
+
+// TestScanRejectsUnreadableRoot is the other side of that: a gap in the tree is worth reporting
+// around, but a root that cannot be read is not a tree with a gap, it is no tree at all.
+func TestScanRejectsUnreadableRoot(t *testing.T) {
+	t.Parallel()
+
+	missing := filepath.Join(t.TempDir(), "absent")
+
+	_, err := discover.Scan(t.Context(), missing)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), missing)
 }
 
 // TestScanRejectsMalformedWorkspace fails the scan outright, unlike an unreadable module. go does

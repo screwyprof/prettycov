@@ -168,12 +168,14 @@ func scanModule(ctx context.Context, dir string, inWorkspace bool, tags []string
 func moduleDirs(root string) (dirs, unreadable []string, err error) {
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
-			unreadable = append(unreadable, path)
-
-			// Skipping on a file would drop its unread siblings too, and they are readable.
-			if entry != nil && !entry.IsDir() {
-				return nil
+			// WalkDir reports an error in two places only: on the root, whose entry is then nil,
+			// and on a directory whose contents it could not read. A root that cannot be read is
+			// not a tree with a gap in it, it is no tree at all.
+			if entry == nil {
+				return err
 			}
+
+			unreadable = append(unreadable, path)
 
 			return filepath.SkipDir
 		}
