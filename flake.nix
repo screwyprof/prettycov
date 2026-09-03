@@ -66,7 +66,8 @@
             # impossible here. ./VERSION is the one thing both nix and the Makefile can read.
             version = pkgs.lib.fileContents ./VERSION;
             src = ./.;
-            # Covers the `tool` block's deps too, not just x/tools — bump this whenever go.mod moves.
+            # Pins the whole module set — bump it whenever go.mod or go.sum moves. `make nix-hash`
+            # does that, and the pre-commit hook runs it for anyone with nix.
             vendorHash = "sha256-GmlblQLcnXecv3gv8129QkjoB1pHbouyIrdlujMuWk8=";
             # Without this the version lives only in the derivation name and the binary answers
             # "(devel)": the source has no .git, so the toolchain stamps nothing of its own.

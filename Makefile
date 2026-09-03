@@ -3,8 +3,6 @@ BINARY ?= prettycov
 
 ## DO NOT EDIT BELLOW THIS LINE
 GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" | grep -v vendor | uniq)
-# Unquoted: the tree report passes this as a flag value, where a stray pair of quotes would
-# become part of the path.
 LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
 
@@ -54,8 +52,8 @@ build: ## build application
 	@echo -e "$(OK_COLOR)==> Building application$(NO_COLOR)"
 	go build -race -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
 
-# golangci-lint is deliberately NOT a go.mod tool: adding it takes go.mod from 44 to 235 lines and
-# go.sum from 99 to 1002 for a ~500-line CLI. It comes from the devShell or from the developer's
+# golangci-lint is deliberately NOT a go.mod tool: `go get -tool` it and go.mod goes from 10 lines
+# to 222, go.sum from 6 to 927, for a ~500-line CLI. It comes from the devShell or the developer's
 # own install, so the targets needing it say which rather than failing with "command not found".
 GOLANGCI_MISSING := golangci-lint not found. Enter the nix devShell, or install v2.13.1 (the version CI pins) from https://golangci-lint.run/docs/welcome/install/
 

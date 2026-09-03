@@ -248,13 +248,22 @@ func TestRunReportsAMalformedProfileWithoutTheHint(t *testing.T) {
 func TestRunPrintsRequestedHelpOnStdout(t *testing.T) {
 	t.Parallel()
 
-	for _, args := range [][]string{{"help"}, {"-help"}, {"-h"}} {
-		t.Run(args[0], func(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "subcommand", args: []string{"help"}},
+		{name: "flag", args: []string{"-help"}},
+		{name: "shorthand", args: []string{"-h"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
-			assert.Equal(t, exitOK, run(args, stdout, stderr))
+			assert.Equal(t, exitOK, run(tc.args, stdout, stderr))
 			assert.Contains(t, stdout.String(), "Prettycov:")
 			assert.Empty(t, stderr.String())
 

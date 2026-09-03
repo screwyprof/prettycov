@@ -18,8 +18,9 @@ func (c CoverageStats) Ratio() (pct float64, ok bool) {
 
 	// Both counts are statement totals, so they are non-negative and covered is at most total.
 	// Breaking either means the sum overflowed, which a profile can arrange by declaring blocks
-	// of billions of statements. Report nothing rather than a number: the alternative was
-	// "-461168601842738790400.00", and 100.00 for a file with no covered statements at all.
+	// of billions of statements. Report nothing rather than a number: one such profile printed
+	// "-461168601842738790400.00", and another 100.00, its uncovered statements having wrapped
+	// past zero and taken the shortfall with them.
 	if total <= 0 || c.Covered < 0 || c.Covered > total {
 		return 0, false
 	}
