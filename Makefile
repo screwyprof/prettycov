@@ -3,7 +3,7 @@ BINARY ?= prettycov
 
 ## DO NOT EDIT BELLOW THIS LINE
 GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" | grep -v vendor | uniq)
-LOCAL_PACKAGES="github.com/screwyprof/prettycov"
+LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
@@ -52,17 +52,26 @@ build: ## build application
 	@echo -e "$(OK_COLOR)==> Building application$(NO_COLOR)"
 	go build -race -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
 
-fmt: ## format code
+# golangci-lint comes from the devShell or the developer's own install, not go.mod, so the targets
+# needing it say where to get it rather than dying with "command not found".
+GOLANGCI_MISSING := golangci-lint not found. Enter the nix devShell, or install v2.13.1 (the version CI pins) from https://golangci-lint.run/docs/welcome/install/
+
+require-golangci:
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "$(GOLANGCI_MISSING)"; exit 1; }
+
+# golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
+# which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
+# standalone pair never applied at all, so a 128-column line survived `make fmt` unchanged.
+fmt: require-golangci ## format code
 	@echo -e "$(OK_COLOR)==> Formatting$(NO_COLOR)"
-	@gofumpt -l -w .
-	@gci write $(GO_FILES) -s standard  -s default -s "prefix($(LOCAL_PACKAGES))"
+	@golangci-lint fmt ./...
 
 # One recipe produces the profile, and it is a real file rule so make can tell when it is stale.
 # The reports depend on the file rather than on `test`, so they rebuild it when a source has
 # changed and reuse it otherwise, instead of re-running the suite to re-read the same numbers.
 $(COVERAGE): $(GO_FILES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
-	@go test -json -v -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./... | tparse -follow
+	@go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
 
 # `make test` must always run the suite, so it drops the profile first rather than letting make
 # decide it is up to date.
@@ -75,7 +84,7 @@ test-cover-txt: $(COVERAGE) ## show plain coverage report in console
 	@go tool cover -func $(COVERAGE) | tr -s '\t' ' ' | column -t -c2
 
 # Written to a file rather than handed straight to a browser, so the report survives on a machine
-# with no display instead of the target silently doing nothing. Same best-effort open as the SVG.
+# with no display instead of the target silently doing nothing. Opening it is best-effort.
 coverage.html: $(COVERAGE)
 	@echo -e "$(OK_COLOR)==> Generating coverage report$(NO_COLOR)"
 	@go tool cover -html=$< -o $@
@@ -89,30 +98,22 @@ test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
 	@go tool cover -func $(COVERAGE) | tail -n 1 | rev | cut -f1 | rev
 
-coverage.svg: $(COVERAGE)
-	@go-cover-treemap -coverprofile $< > $@
+# Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
+# binary, so a change to the printer shows up here before it is ever released.
+test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
+	@go run ./cmd/prettycov -profile=$(COVERAGE) -old=$(LOCAL_PACKAGES) -new=prettycov -depth=2
 
-# Opening is best-effort: the SVG is the deliverable, and CI/containers have no display.
-test-cover-svg: coverage.svg ## generate pretty coverage picture
-	@$(OPEN) $< 2>/dev/null || echo "==> $< written ($(OPEN) unavailable)"
-
-lint: ## run linters for current changes
+lint: require-golangci ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
 	golangci-lint  run ./...
 
-lint-all: ## run linters
+lint-all: require-golangci ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
 	golangci-lint run ./... --new-from-rev=""
 
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
 	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov/...
-
-# Versions live in go.mod's `tool` block, not here, so there is ONE place to bump them. The nix
-# devShell already supplies these at the same versions; this target is for everyone who isn't in it.
-deps: ## install deps
-	@echo -e "$(OK_COLOR)==> Installing dependencies$(NO_COLOR)"
-	go install tool
 
 # buildGoModule needs a fixed-output hash for the module set, and nix only reveals the correct one
 # by failing a build with a wrong one. So: write a known-bad hash, read the `got:` line, write that.
@@ -159,6 +160,6 @@ help: ## show this help
 # To avoid unintended conflicts with file names, always add to .PHONY
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
-.PHONY: all build fmt
-.PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-svg
-.PHONY: lint lint-all install deps hooks nix-hash release clean help
+.PHONY: all build fmt require-golangci
+.PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-tree
+.PHONY: lint lint-all install hooks nix-hash release clean help

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -23,6 +24,16 @@ var (
 // at the first non-flag argument, so `prettycov cov.out -depth=2` would otherwise parse no flags
 // at all and silently ignore the depth.
 func parseInterspersed(set *flag.FlagSet, args []string) ([]string, error) {
+	// Everything after a bare -- is a path, verbatim, so a profile whose name starts with a dash
+	// can still be named. Split it off first: the flag package honours -- only within a single
+	// Parse, and the loop below calls Parse once per positional.
+	var verbatim []string
+
+	if end := slices.Index(args, "--"); end >= 0 {
+		verbatim = args[end+1:]
+		args = args[:end]
+	}
+
 	var positional []string
 
 	for {
@@ -31,7 +42,7 @@ func parseInterspersed(set *flag.FlagSet, args []string) ([]string, error) {
 		}
 
 		if set.NArg() == 0 {
-			return positional, nil
+			return append(positional, verbatim...), nil
 		}
 
 		positional = append(positional, set.Arg(0))
@@ -71,10 +82,10 @@ type config struct {
 }
 
 // newFlagSet wires the flags onto cfg. Shared by parsing and by printing usage, so the two cannot
-// describe different flags.
-func newFlagSet(out io.Writer, cfg *config, color *string) *flag.FlagSet {
+// describe different flags. It takes no writer: the set is silenced below, and printUsage points
+// it at its own destination afterwards.
+func newFlagSet(cfg *config, color *string) *flag.FlagSet {
 	set := flag.NewFlagSet("prettycov", flag.ContinueOnError)
-	set.SetOutput(out)
 
 	set.StringVar(&cfg.Profile, "profile", "", "coverage profile path")
 	set.StringVar(&cfg.CurrentRoot, "old", "", "old project's root package")
@@ -106,7 +117,12 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprint(w, usageMessage)
 	_, _ = fmt.Fprintln(w, "\nFlags:")
 
-	newFlagSet(w, &cfg, &color).PrintDefaults()
+	set := newFlagSet(&cfg, &color)
+
+	// newFlagSet silences the flag package for parsing; PrintDefaults writes to the same place,
+	// so it has to be pointed back at w or the flag list comes out empty.
+	set.SetOutput(w)
+	set.PrintDefaults()
 }
 
 // parseFlags reads args, which excludes the program name. The profile may be given as -profile or
@@ -117,7 +133,7 @@ func parseFlags(args []string, stderr io.Writer) (config, error) {
 		color string
 	)
 
-	set := newFlagSet(stderr, &cfg, &color)
+	set := newFlagSet(&cfg, &color)
 
 	positional, err := parseInterspersed(set, args)
 	if err != nil {

@@ -1,9 +1,11 @@
 package prettycov_test
 
 import (
+	"bufio"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,6 +27,11 @@ func TestParseProfileRejectsMalformedInput(t *testing.T) {
 		{name: "not a profile at all", profile: "this is not a coverage profile\n"},
 		{name: "block line missing its count", profile: "mode: atomic\nnot-a-block\n"},
 		{name: "negative statement count", profile: "mode: atomic\na/b.go:1.1,2.2 -3 1\n"},
+		// cover accepts any count Atoi can hold, and `go tool cover -func` on this prints
+		// "92233720368547758080.0%" and exits 0. There is no gate behind that number; there is
+		// one behind ours, so the profile is refused rather than summed.
+		{name: "counts that overflow when summed", profile: "mode: atomic\n" +
+			"a/b.go:1.1,2.2 9223372036854775807 1\na/c.go:3.1,4.2 9223372036854775807 0\n"},
 		{name: "inconsistent statement count for one block", profile: "mode: atomic\n" +
 			"a/b.go:1.1,2.2 3 1\na/b.go:1.1,2.2 4 1\n"},
 	}
@@ -38,6 +45,33 @@ func TestParseProfileRejectsMalformedInput(t *testing.T) {
 			require.ErrorIs(t, err, prettycov.ErrInvalidProfile)
 		})
 	}
+}
+
+// cover quotes the offending line back with %v, so the profile's own text lands in an error the
+// caller prints — the report's rows are not the only way to the terminal. The message is scrubbed
+// but still unwraps, so matching on it keeps working.
+func TestParseProfileScrubsControlCharactersFromTheError(t *testing.T) {
+	t.Parallel()
+
+	_, err := prettycov.ParseProfile(writeProfile(t, "no-mode \x1b[1A\x1b[2Kgotcha\n"))
+
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "\x1b", "escape reached the caller")
+	assert.Contains(t, err.Error(), "gotcha", "the line itself is still reported")
+	require.ErrorIs(t, err, prettycov.ErrInvalidProfile)
+}
+
+// cover hands the scanner's own error back untouched, so a line past bufio's 64 KB limit arrives
+// as bufio.ErrTooLong. Scrubbing the message must not cost a caller the ability to match on it.
+func TestParseProfileKeepsTheCauseThroughScrubbing(t *testing.T) {
+	t.Parallel()
+
+	long := "mode: atomic\na/" + strings.Repeat("x", bufio.MaxScanTokenSize) + ".go:1.1,2.2 1 1\n"
+
+	_, err := prettycov.ParseProfile(writeProfile(t, long))
+
+	require.ErrorIs(t, err, bufio.ErrTooLong, "the cause survives")
+	require.ErrorIs(t, err, prettycov.ErrInvalidProfile, "and so does ours")
 }
 
 // A profile that cannot be opened keeps its cause, so callers can tell "no such file" from "not a

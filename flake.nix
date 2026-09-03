@@ -31,17 +31,14 @@
               pkgs.gopls
               pkgs.gotools
               pkgs.golangci-lint
-              pkgs.gofumpt
-              pkgs.gci
-              pkgs.tparse
-              pkgs.go-cover-treemap
-              pkgs.util-linux
-              pkgs.xdg-utils
-              # .pre-commit-config.yaml drives the git hooks; non-nix users bring their own.
               pkgs.pre-commit
-              # `make` targets shell out to these: VERSION uses git describe, and SHELL := bash.
               pkgs.gnumake
-              pkgs.bashInteractive
+              # No target uses it; `go test -json ./... | tparse` by hand does.
+              pkgs.tparse
+              # column(1), for test-cover-txt.
+              pkgs.util-linux
+              # xdg-open, the Linux half of $(OPEN).
+              pkgs.xdg-utils
             ];
 
             # Register the hook on shell entry so nix users never have to remember `make hooks`.
@@ -55,14 +52,24 @@
 
           # buildGo127Module, not plain buildGoModule: otherwise the shell compiles with 1.27 and the
           # package with the nixpkgs default, which is the toolchain split this pin exists to avoid.
-          packages.default = pkgs.buildGo127Module {
+          packages.default = pkgs.buildGo127Module rec {
             pname = "prettycov";
             # A flake's `self` exposes rev/shortRev/revCount but NOT tags, so `git describe` is
             # impossible here. ./VERSION is the one thing both nix and the Makefile can read.
             version = pkgs.lib.fileContents ./VERSION;
             src = ./.;
-            # Covers the `tool` block's deps too, not just x/tools — bump this whenever go.mod moves.
-            vendorHash = "sha256-/yo/wihKSIC3Ekl9UZqSkYowk/giVF/FHyI1ryCuJzI=";
+            # Pins the whole module set — bump it whenever go.mod or go.sum moves. `make nix-hash`
+            # does that, and the pre-commit hook runs it for anyone with nix.
+            vendorHash = "sha256-GmlblQLcnXecv3gv8129QkjoB1pHbouyIrdlujMuWk8=";
+            # Without this the version lives only in the derivation name and the binary answers
+            # "(devel)": the source has no .git, so the toolchain stamps nothing of its own.
+            # No +commit suffix, unlike the Makefile's dev builds — a nix build is pinned to a rev
+            # by definition, so the file is the whole story.
+            ldflags = [
+              "-s"
+              "-w"
+              "-X main.version=v${version}"
+            ];
           };
         };
     };

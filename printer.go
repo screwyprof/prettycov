@@ -6,6 +6,8 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"strings"
+	"unicode"
 )
 
 // Colour thresholds, in percent. Cosmetic: they grade a row at a glance and are deliberately not
@@ -48,10 +50,39 @@ type Options struct {
 	Color ColorMode
 }
 
+// Row is one line of the report: the indent and glyph that place it in the tree, the label of the
+// node, and that node's coverage. The percentage is not here — it is a rendering choice, and the
+// counts it comes from are.
+type Row struct {
+	Prefix   string
+	Label    string
+	Coverage CoverageStats
+}
+
+// Rows flattens tree into the lines a report prints, in order, to the given depth. Pure: no
+// writer, no colour, no terminal. DisplayTree is the one that decides how a Row looks.
+func Rows(tree *PathTree, depth uint) []Row {
+	b := rowBuilder{depth: depth}
+	b.walk(tree, 0, " ")
+
+	return b.rows
+}
+
 // DisplayTree writes tree as an indented report. A collapsed run of directories is the one row it
 // renders as.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
-	displayTree(w, tree, opts.Depth, colorize(w, opts.Color), 0, " ", true)
+	color := colorize(w, opts.Color)
+
+	for _, row := range Rows(tree, opts.Depth) {
+		_, _ = fmt.Fprintf(w, "%s%s - %s\n", row.Prefix, row.Label, formatRatio(row.Coverage, color))
+	}
+}
+
+// rowBuilder holds what stays the same for the whole traversal, so the recursion carries only
+// what actually varies: the node, how deep it is, and the indent it sits behind.
+type rowBuilder struct {
+	depth uint
+	rows  []Row
 }
 
 // colorize resolves ColorAuto against the destination and the environment. NO_COLOR counts
@@ -83,8 +114,10 @@ func colorize(w io.Writer, mode ColorMode) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-func displayTree(w io.Writer, tree *PathTree, depth uint, color bool, level uint, padding string, root bool) {
-	if tree == nil || level > depth {
+// walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
+// level 0 means — it is not tracked separately, since a second flag can only drift from it.
+func (b *rowBuilder) walk(tree *PathTree, level uint, padding string) {
+	if tree == nil || level > b.depth {
 		return
 	}
 
@@ -93,11 +126,16 @@ func displayTree(w io.Writer, tree *PathTree, depth uint, color bool, level uint
 
 	for i, name := range names {
 		label, node := collapse(name, tree.Children[name])
+		root := level == 0
 
-		_, _ = fmt.Fprintf(w, "%s%s - %s\n",
-			padding+symbol(root, getBoxType(i, len(names))), label, formatRatio(node.Coverage, color))
-		displayTree(w, node, depth, color, level+1,
-			padding+symbol(root, childSymbol(i, len(names))), false)
+		b.rows = append(b.rows, Row{
+			Prefix: padding + symbol(root, getBoxType(i, len(names))),
+			// Sanitised here rather than at the writer, so no consumer of a Row has to remember to.
+			Label:    sanitize(label),
+			Coverage: node.Coverage,
+		})
+
+		b.walk(node, level+1, padding+symbol(root, childSymbol(i, len(names))))
 	}
 }
 
@@ -113,6 +151,20 @@ func collapse(label string, node *PathTree) (string, *PathTree) {
 	}
 
 	return label, node
+}
+
+// sanitize replaces control characters in a label. Chiefly hygiene — a stray control byte in a
+// path garbles the report, which is why ls and git quote them too. It also stops a spoof: a
+// package named "\x1b[1A\x1b[2Kforged" erases the row above and writes over it, and above the
+// first child is the total. Only control characters go; a path may be non-ASCII.
+func sanitize(label string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return '�'
+		}
+
+		return r
+	}, label)
 }
 
 // formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to
@@ -143,52 +195,52 @@ func grade(pct float64) string {
 	}
 }
 
-type BoxType int
+type boxType int
 
 const (
-	Regular BoxType = iota
-	Last
-	AfterLast
-	Between
+	regular boxType = iota
+	last
+	afterLast
+	between
 )
 
 // String renders the glyph for a box type. An unrecognised one is a blank rather than a panic:
 // this draws a report, and nothing here is worth taking the process down for.
-func (boxType BoxType) String() string {
-	switch boxType {
-	case Regular:
+func (b boxType) String() string {
+	switch b {
+	case regular:
 		return "\u251c" // ├
-	case Last:
+	case last:
 		return "\u2514" // └
-	case AfterLast:
+	case afterLast:
 		return " "
-	case Between:
+	case between:
 		return "\u2502" // │
 	}
 
 	return " "
 }
 
-func getBoxType(index int, length int) BoxType {
+func getBoxType(index int, length int) boxType {
 	if index+1 == length {
-		return Last
+		return last
 	}
 
-	return Regular
+	return regular
 }
 
-func childSymbol(index int, length int) BoxType {
+func childSymbol(index int, length int) boxType {
 	if index+1 == length {
-		return AfterLast
+		return afterLast
 	}
 
-	return Between
+	return between
 }
 
-func symbol(root bool, boxType BoxType) string {
+func symbol(root bool, b boxType) string {
 	if root {
 		return ""
 	}
 
-	return boxType.String() + " "
+	return b.String() + " "
 }

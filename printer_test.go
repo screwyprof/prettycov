@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,6 +29,46 @@ func TestDisplayTreeRendersBothRatioBranches(t *testing.T) {
 	assert.NotContains(t, out, "NaN")
 }
 
+// Paths reach the terminal, so a control character in one must not. Cursor movement is the case
+// that goes past garbled output: "\x1b[1A\x1b[2K" erases the row above and writes over it, and
+// above the first child is the total.
+func TestDisplayTreeNeutralisesEscapesFromTheProfile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		pkg  string
+	}{
+		{name: "cursor up and erase", pkg: "m/\x1b[1A\x1b[2Kforged"},
+		{name: "colour", pkg: "m/\x1b[31mred"},
+		{name: "carriage return", pkg: "m/\roverwritten"},
+		{name: "bell", pkg: "m/\anoisy"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process([]prettycov.FileCoverage{file(tc.pkg+"/a.go", 1, 1)}, "", "")
+
+			out := render(t, tree, 3)
+
+			assert.NotContains(t, out, "\x1b", "escape reached the terminal")
+			assert.NotContains(t, out, "\r")
+			assert.NotContains(t, out, "\a")
+		})
+	}
+}
+
+// Only control characters are touched. A path is allowed to be non-ASCII.
+func TestDisplayTreeKeepsPrintableUnicode(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/héllo-世界/a.go", 1, 1)}, "", "")
+
+	assert.Contains(t, render(t, tree, 2), "héllo-世界")
+}
+
 // Coverage output gets diffed between CI runs, so the same tree must render byte-identically
 // every time. Ranging over a map does not give that.
 func TestDisplayTreeIsDeterministic(t *testing.T) {
@@ -48,7 +87,7 @@ func TestDisplayTreeSortsChildren(t *testing.T) {
 
 	tree := prettycov.Process(printerFiles(), "", "")
 
-	assert.Equal(t, []string{"m", "alpha/deep", "beta", "gamma"}, nodeNames(render(t, tree, 1)))
+	assert.Equal(t, []string{"m", "alpha/deep", "beta", "gamma"}, nodeNames(t, tree, 1))
 }
 
 // A run of directories that each hold nothing but the next one is one row, not one row each.
@@ -62,7 +101,7 @@ func TestDisplayTreeCollapsesPassThroughDirs(t *testing.T) {
 		file("github.com/o/repo/web/b.go", 1, 1),
 	}, "", "")
 
-	assert.Equal(t, []string{"github.com/o/repo", "pkg", "web"}, nodeNames(render(t, tree, 1)))
+	assert.Equal(t, []string{"github.com/o/repo", "pkg", "web"}, nodeNames(t, tree, 1))
 }
 
 // A directory that is a package in its own right keeps its own row even with a single child,
@@ -98,7 +137,7 @@ func TestDisplayTreeKeepsDirsThatAreAlsoPackages(t *testing.T) {
 
 			tree := prettycov.Process(tc.files, "", "")
 
-			assert.Equal(t, []string{"m/x", "sub"}, nodeNames(render(t, tree, 1)))
+			assert.Equal(t, []string{"m/x", "sub"}, nodeNames(t, tree, 1))
 		})
 	}
 }
@@ -124,7 +163,7 @@ func TestDisplayTreeDepthCountsLevels(t *testing.T) {
 
 			tree := prettycov.Process(printerFiles(), "", "")
 
-			assert.Equal(t, tc.want, nodeNames(render(t, tree, tc.depth)))
+			assert.Equal(t, tc.want, nodeNames(t, tree, tc.depth))
 		})
 	}
 }
@@ -243,31 +282,6 @@ func TestDisplayTreeAutoColorToRegularFile(t *testing.T) {
 	assert.NotContains(t, string(written), "\x1b[")
 }
 
-// Drawing a report is not worth a panic, so an unrecognised box type is a blank.
-func TestBoxTypeStringNeverPanics(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		box  prettycov.BoxType
-		want string
-	}{
-		{name: "regular", box: prettycov.Regular, want: "├"},
-		{name: "last", box: prettycov.Last, want: "└"},
-		{name: "between", box: prettycov.Between, want: "│"},
-		{name: "after last", box: prettycov.AfterLast, want: " "},
-		{name: "out of range", box: prettycov.BoxType(99), want: " "},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			assert.NotPanics(t, func() { assert.Equal(t, tc.want, tc.box.String()) })
-		})
-	}
-}
-
 // m/
 //
 //	├ alpha/deep/   (alpha holds only deep, so the two collapse into one row)
@@ -286,37 +300,36 @@ func printerFiles() []prettycov.FileCoverage {
 func render(t *testing.T, tree *prettycov.PathTree, depth uint) string {
 	t.Helper()
 
-	var buf bytes.Buffer
-
-	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: prettycov.ColorNever})
-
-	return buf.String()
-}
-
-// nodeNames pulls the label out of each rendered line, in the order printed.
-func nodeNames(out string) []string {
-	var names []string
-
-	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
-		idx := strings.LastIndex(line, " - ")
-		if idx < 0 {
-			continue
-		}
-
-		if name := strings.TrimLeft(line[:idx], " ├└│"); name != "" {
-			names = append(names, name)
-		}
-	}
-
-	return names
+	return renderWith(t, tree, depth, prettycov.ColorNever)
 }
 
 func renderColor(t *testing.T, tree *prettycov.PathTree, depth uint) string {
 	t.Helper()
 
+	return renderWith(t, tree, depth, prettycov.ColorAlways)
+}
+
+func renderWith(t *testing.T, tree *prettycov.PathTree, depth uint, color prettycov.ColorMode) string {
+	t.Helper()
+
 	var buf bytes.Buffer
 
-	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: prettycov.ColorAlways})
+	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: color})
 
 	return buf.String()
+}
+
+// nodeNames is the labels a tree renders to, in order. Read off Rows rather than scraped back
+// out of the rendered text, so a change to the glyphs cannot break a test about ordering.
+func nodeNames(t *testing.T, tree *prettycov.PathTree, depth uint) []string {
+	t.Helper()
+
+	rows := prettycov.Rows(tree, depth)
+
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, row.Label)
+	}
+
+	return names
 }

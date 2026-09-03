@@ -15,7 +15,13 @@ type CoverageStats struct {
 // can disagree with the counts beside it, which is exactly how the roll-up used to go wrong.
 func (c CoverageStats) Ratio() (pct float64, ok bool) {
 	total := c.Covered + c.Uncovered
-	if total == 0 {
+
+	// Both counts are statement totals, so they are non-negative and covered is at most total.
+	// Breaking either means the sum overflowed, which a profile can arrange by declaring blocks
+	// of billions of statements. Report nothing rather than a number: one such profile printed
+	// "-461168601842738790400.00", and another 100.00, its uncovered statements having wrapped
+	// past zero and taken the shortfall with them.
+	if total <= 0 || c.Covered < 0 || c.Covered > total {
 		return 0, false
 	}
 
@@ -27,19 +33,12 @@ type FileCoverage struct {
 	Coverage CoverageStats
 }
 
-type PkgCoverage struct {
-	Pkg      string
-	Coverage CoverageStats
-}
-
 // Process turns per-file coverage into a tree in which every node reports its own statements plus
 // those of everything beneath it. The files argument is not modified.
 func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
-	packages := mergePackages(mergeFiles(shortenPaths(files, curRoot, newRoot)))
-
 	tree := &PathTree{}
-	for _, pkg := range packages {
-		tree.Put(pkg.Pkg, pkg.Coverage)
+	for pkg, stats := range mergePackages(shortenPaths(files, curRoot, newRoot)) {
+		tree.put(pkg, stats)
 	}
 
 	return rollUp(tree)
@@ -76,65 +75,45 @@ func rollUp(node *PathTree) *PathTree {
 	}
 }
 
+// shortenPaths rewrites the leading oldRoot of each path to newRoot. It has to be leading, and it
+// has to end on a separator: replacing the first match anywhere rewrote "github.com/rapid/api" to
+// "github.com/rcored/api" for -old=api, and a bare prefix rewrote the unrelated
+// "github.com/foobar" to "xbar" for -old=github.com/foo. An empty oldRoot matches at position 0,
+// so -new alone prepended itself to every path instead of replacing anything. The separator is
+// implied, so a trailing slash on oldRoot is trimmed rather than left to fail every match.
 func shortenPaths(items []FileCoverage, oldRoot, newRoot string) []FileCoverage {
-	if newRoot == "" {
+	oldRoot = strings.TrimSuffix(oldRoot, "/")
+	if oldRoot == "" || newRoot == "" {
 		return items
 	}
 
 	shortened := make([]FileCoverage, len(items))
 
 	for i, item := range items {
-		item.File = strings.Replace(item.File, oldRoot, newRoot, 1)
+		if rest, found := strings.CutPrefix(item.File, oldRoot); found && strings.HasPrefix(rest, "/") {
+			item.File = newRoot + rest
+		}
+
 		shortened[i] = item
 	}
 
 	return shortened
 }
 
-func mergeFiles(files []FileCoverage) []FileCoverage {
-	covered := map[string]int{}
-	uncovered := map[string]int{}
-	uniqueFiles := make(map[string]FileCoverage, len(files))
-
-	for _, f := range files {
-		covered[f.File] += f.Coverage.Covered
-		uncovered[f.File] += f.Coverage.Uncovered
-		uniqueFiles[f.File] = FileCoverage{File: f.File}
-	}
-
-	merged := make([]FileCoverage, 0, len(uniqueFiles))
-
-	for _, f := range uniqueFiles {
-		f.Coverage.Covered = covered[f.File]
-		f.Coverage.Uncovered = uncovered[f.File]
-
-		merged = append(merged, f)
-	}
-
-	return merged
-}
-
-func mergePackages(files []FileCoverage) []PkgCoverage {
-	covered := map[string]int{}
-	uncovered := map[string]int{}
-	uniquePackages := make(map[string]PkgCoverage, len(files))
+// mergePackages totals each file's statements against the directory that holds it. Totalling by
+// filename first would change nothing: addition is associative, so grouping by name and then by
+// directory gives the same per-directory totals as grouping by directory alone.
+func mergePackages(files []FileCoverage) map[string]CoverageStats {
+	packages := make(map[string]CoverageStats, len(files))
 
 	for _, f := range files {
 		pkg := path.Dir(f.File)
 
-		covered[pkg] += f.Coverage.Covered
-		uncovered[pkg] += f.Coverage.Uncovered
-		uniquePackages[pkg] = PkgCoverage{Pkg: pkg}
+		stats := packages[pkg]
+		stats.Covered += f.Coverage.Covered
+		stats.Uncovered += f.Coverage.Uncovered
+		packages[pkg] = stats
 	}
 
-	merged := make([]PkgCoverage, 0, len(uniquePackages))
-
-	for _, p := range uniquePackages {
-		p.Coverage.Covered = covered[p.Pkg]
-		p.Coverage.Uncovered = uncovered[p.Pkg]
-
-		merged = append(merged, p)
-	}
-
-	return merged
+	return packages
 }

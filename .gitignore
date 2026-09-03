@@ -15,7 +15,6 @@ coverage.txt
 coverage.html
 coverage.out
 coverage.tmp
-coverage.svg
 
 # IDEs
 .idea/

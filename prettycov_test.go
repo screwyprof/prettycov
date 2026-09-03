@@ -118,6 +118,11 @@ func TestCoverageStatsRatio(t *testing.T) {
 		{name: "partly covered", stats: prettycov.CoverageStats{Covered: 1, Uncovered: 3}, wantPct: 25, wantOK: true},
 		// Not 0%: there is nothing to cover, so there is no percentage to report.
 		{name: "no statements", stats: prettycov.CoverageStats{}, wantPct: 0, wantOK: false},
+		// Statement counts are non-negative and covered is at most the total. Each of these says
+		// the sum overflowed, which a profile declaring blocks of billions of statements can do.
+		{name: "total wrapped negative", stats: prettycov.CoverageStats{Covered: 1, Uncovered: -3}, wantOK: false},
+		{name: "more covered than total", stats: prettycov.CoverageStats{Covered: 100, Uncovered: -2}, wantOK: false},
+		{name: "covered wrapped negative", stats: prettycov.CoverageStats{Covered: -1, Uncovered: 8}, wantOK: false},
 	}
 
 	for _, tc := range tests {
@@ -139,6 +144,59 @@ func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 
 	assert.Nil(t, tree.Get("m/absent"))
 	assert.NotNil(t, tree.Get("m/pkg"), "and finds one that is")
+}
+
+func TestProcessShortensTheRootPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		old     string
+		replace string
+		want    string
+	}{
+		{
+			name: "replaces a leading root", file: "github.com/o/repo/pkg/a.go",
+			old: "github.com/o/repo", replace: "repo", want: "repo/pkg",
+		},
+		{
+			// "api" appears inside "rapid" first. Replacing the first match anywhere turned
+			// github.com/rapid/api into github.com/rcored/api.
+			name: "only a leading one", file: "github.com/rapid/api/svc/a.go",
+			old: "api", replace: "core", want: "github.com/rapid/api/svc",
+		},
+		{
+			// The separator is implied, so writing it out changes nothing.
+			name: "a trailing slash on the old root is the same root", file: "github.com/o/repo/pkg/a.go",
+			old: "github.com/o/repo/", replace: "repo", want: "repo/pkg",
+		},
+		{
+			// A prefix is not a root: "github.com/foo" starts "github.com/foobar" too, and cutting
+			// it there left the unrelated package as "xbar/svc".
+			name: "and only a whole path segment", file: "github.com/foobar/svc/a.go",
+			old: "github.com/foo", replace: "x", want: "github.com/foobar/svc",
+		},
+		{
+			// An empty old root matches at position 0, so this used to prepend rather than replace.
+			name: "no old root means no rewrite", file: "github.com/o/repo/pkg/a.go",
+			old: "", replace: "repo", want: "github.com/o/repo/pkg",
+		},
+		{
+			name: "no new root means no rewrite", file: "github.com/o/repo/pkg/a.go",
+			old: "github.com/o/repo", replace: "", want: "github.com/o/repo/pkg",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process([]prettycov.FileCoverage{file(tc.file, 1, 1)}, tc.old, tc.replace)
+
+			assert.NotNil(t, tree.Get(tc.want), "want a node at %q", tc.want)
+		})
+	}
 }
 
 // Process must not write through the slice it is handed.

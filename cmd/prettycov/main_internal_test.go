@@ -114,6 +114,26 @@ func TestRunFailUnder(t *testing.T) {
 			name: "zero passes when there is anything at all", profile: profile,
 			args: []string{"-fail-under", "0"}, wantCode: exitOK,
 		},
+		{
+			// Counts this large only come from a hand-written profile, and summing them wraps.
+			// Rejecting the profile beats reporting a percentage derived from the wreckage.
+			name: "counts that overflow past zero",
+			profile: "mode: set\nm/a.go:1.1,2.2 4611686018427387904 1\n" +
+				"m/b.go:3.1,4.2 9223372036854775807 0\nm/c.go:5.1,6.2 9223372036854775807 0\n",
+			args: []string{"-fail-under", "80"}, wantCode: exitFailed,
+			wantErr: "statement counts overflow",
+		},
+		{
+			// The one that mattered: wrapping all the way round to a small positive total left a
+			// plausible-looking 33.33% that cleared the gate and exited 0. Guarding only against
+			// a negative total missed it, because this total is not negative.
+			name: "counts that wrap back to a plausible total",
+			profile: "mode: set\nm/a.go:1.1,2.2 5 1\n" +
+				"m/b.go:3.1,4.2 9223372036854775807 0\nm/c.go:5.1,6.2 9223372036854775807 0\n" +
+				"m/d.go:7.1,8.2 12 0\n",
+			args: []string{"-fail-under", "30"}, wantCode: exitFailed,
+			wantErr: "statement counts overflow",
+		},
 	}
 
 	for _, tc := range tests {
@@ -233,6 +253,90 @@ func TestRunReportsAMalformedProfileWithoutTheHint(t *testing.T) {
 	assert.NotContains(t, stderr.String(), "go test -coverprofile=")
 }
 
+// Help that was asked for is output, not a diagnostic, so it belongs on stdout — otherwise
+// `prettycov help | less` shows nothing. Usage printed because of a mistake stays on stderr.
+func TestRunPrintsRequestedHelpOnStdout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "subcommand", args: []string{"help"}},
+		{name: "flag", args: []string{"-help"}},
+		{name: "shorthand", args: []string{"-h"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+			assert.Equal(t, exitOK, run(tc.args, stdout, stderr))
+			assert.Contains(t, stdout.String(), "Prettycov:")
+			assert.Empty(t, stderr.String())
+
+			// Every flag has to be listed, or the help is worse than none.
+			for _, flag := range []string{"-depth", "-old", "-new", "-color", "-fail-under", "-profile"} {
+				assert.Contains(t, stdout.String(), flag)
+			}
+		})
+	}
+}
+
+// Everything after a bare -- is a path, verbatim. Parsing once per positional consumed the --
+// with the first Parse, so anything after the first argument went back to being read as a flag:
+// `prettycov -- a.out -depth=2` quietly set the depth instead of complaining about two paths.
+func TestRunTreatsArgsAfterDoubleDashAsPaths(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := run([]string{"--", writeProfile(t, profile), "-depth=2"}, stdout, stderr)
+
+	assert.Equal(t, exitFailed, code)
+	assert.Contains(t, stderr.String(), "at most one profile path")
+}
+
+// A profile whose name starts with a dash is nameable after --, and stays a path.
+func TestRunReadsADashedProfileAfterDoubleDash(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "-dashed.out")
+	require.NoError(t, os.WriteFile(path, []byte(profile), 0o600))
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := run([]string{"-color", "never", "--", path}, stdout, stderr)
+
+	assert.Equal(t, exitOK, code, stderr.String())
+	assert.Contains(t, stdout.String(), "60.00")
+}
+
+func TestPickVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		stamped  string
+		recorded string
+		want     string
+	}{
+		{name: "the linker stamp wins", stamped: "v1.2.3", recorded: "v0.0.1", want: "v1.2.3"},
+		{name: "falls back to what the build recorded", recorded: "v0.0.1", want: "v0.0.1"},
+		// A nix build records no VCS metadata, so both sources come back empty. Printing nothing
+		// would leave `prettycov version` emitting a bare newline, which a script reads as a version.
+		{name: "never nothing", want: "(devel)"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, pickVersion(tc.stamped, tc.recorded))
+		})
+	}
+}
+
 // One typo used to print the message, then the whole usage, then the message again: 33 lines.
 func TestRunKeepsABadFlagShort(t *testing.T) {
 	t.Parallel()
@@ -257,13 +361,10 @@ func TestRunHelpAndVersion(t *testing.T) {
 		wantErr  string
 		wantCode int
 	}{
-		{name: "help subcommand", args: []string{"help"}, wantErr: "Prettycov:", wantCode: exitOK},
-		{name: "help flag", args: []string{"-help"}, wantErr: "Prettycov:", wantCode: exitOK},
-		// -h is not registered as a flag; the flag package handles it and reports ErrHelp. It is
-		// a request for help, not a mistake, so it must exit like the others.
-		{name: "short help flag", args: []string{"-h"}, wantErr: "Prettycov:", wantCode: exitOK},
-		{name: "version subcommand", args: []string{"version"}, wantOut: "\n", wantCode: exitOK},
-		{name: "version flag", args: []string{"-version"}, wantOut: "\n", wantCode: exitOK},
+		// Help itself is covered by TestRunPrintsRequestedHelpOnStdout; -h is registered alongside
+		// -help so the flag package does not special-case it, keeping every help path identical.
+		{name: "version subcommand", args: []string{"version"}, wantOut: "(devel)", wantCode: exitOK},
+		{name: "version flag", args: []string{"-version"}, wantOut: "(devel)", wantCode: exitOK},
 		{name: "unknown flag", args: []string{"-nope"}, wantErr: "flag provided but not defined", wantCode: exitFailed},
 	}
 
