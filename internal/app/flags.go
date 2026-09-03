@@ -16,7 +16,7 @@ import (
 const defaultProfile = "coverage.out"
 
 var (
-	errBadColor        = errors.New(`invalid -color, want "auto", "never" or "always"`)
+	errBadColor        = errors.New(`want "auto", "never" or "always"`)
 	errTooManyProfiles = errors.New("want at most one profile path")
 	errTwoProfiles     = errors.New("profile given twice")
 	errBadFailUnder    = errors.New("want a percentage")
@@ -52,22 +52,6 @@ func parseInterspersed(set *flag.FlagSet, args []string) ([]string, error) {
 	}
 }
 
-const usageMessage = "" +
-	`Prettycov:
-Given a coverage profile produced by 'go test'.
-	go test -coverprofile=coverage.out ./...
-Show the top level packages, reading ./coverage.out:
-	prettycov
-Read a profile elsewhere:
-	prettycov path/to/coverage.out
-Show another level down:
-	prettycov -depth=2
-Replace a long root package path:
-	prettycov -old=gitlab.com/Company/Department/product/unicorn -new=unicorn
-Fail when total coverage is below a threshold, for CI:
-	prettycov -fail-under=80
-`
-
 type config struct {
 	Profile     string
 	CurrentRoot string
@@ -79,17 +63,25 @@ type config struct {
 	Version     bool
 }
 
-// newFlagSet wires the flags onto cfg. Shared by parsing and by printing usage, so the two cannot
-// describe different flags. It takes no writer: the set is silenced below, and printUsage points
-// it at its own destination afterwards.
-func newFlagSet(cfg *config, color *string) *flag.FlagSet {
+// newFlagSet wires every flag onto cfg, so a parsed set is a finished config with nothing left to
+// convert. Shared by parsing and by printing usage, so the two cannot describe different flags. It
+// takes no writer: the set is silenced below, and printUsage points it at its own destination.
+func newFlagSet(cfg *config) *flag.FlagSet {
 	set := flag.NewFlagSet("prettycov", flag.ContinueOnError)
 
 	set.StringVar(&cfg.Profile, "profile", "", "coverage profile path")
 	set.StringVar(&cfg.CurrentRoot, "old", "", "old project's root package")
 	set.StringVar(&cfg.NewRoot, "new", "", "new project's root package")
 	set.UintVar(&cfg.Depth, "depth", 1, "levels to show below the top row, like tree -L")
-	set.StringVar(color, "color", "auto", `when to colour: "auto", "never" or "always"`)
+	// Parsed here rather than handed back as a string for the caller to convert: ColorAuto is the
+	// zero value, so leaving the flag out lands on the default without stating it twice.
+	set.Func("color", "when to colour: \"auto\" (default), \"never\" or \"always\"", func(s string) error {
+		mode, err := parseColor(s)
+		cfg.Color = mode
+
+		//nolint:wrapcheck // parseColor's error is already phrased for the flag package.
+		return err
+	})
 	// A pointer, not a float with a default: zero is a legitimate threshold — it asks only that
 	// the profile hold some statements — so the value cannot say whether the flag was given.
 	set.Func("fail-under", "exit 1 when total coverage is below this `percentage`", func(s string) error {
@@ -119,26 +111,6 @@ func newFlagSet(cfg *config, color *string) *flag.FlagSet {
 	return set
 }
 
-// printUsage writes the help text and the flag defaults.
-func printUsage(w io.Writer) int {
-	var (
-		cfg   config
-		color string
-	)
-
-	_, _ = fmt.Fprint(w, usageMessage)
-	_, _ = fmt.Fprintln(w, "\nFlags:")
-
-	set := newFlagSet(&cfg, &color)
-
-	// newFlagSet silences the flag package for parsing; PrintDefaults writes to the same place,
-	// so it has to be pointed back at w or the flag list comes out empty.
-	set.SetOutput(w)
-	set.PrintDefaults()
-
-	return exitOK
-}
-
 // subcommand matches a bare `help` or `version`, which have to be recognised before the flag
 // package sees them: it would take either for a profile path.
 func subcommand(args []string) (config, bool) {
@@ -163,12 +135,9 @@ func parseFlags(args []string) (config, error) {
 		return cfg, nil
 	}
 
-	var (
-		cfg   config
-		color string
-	)
+	var cfg config
 
-	set := newFlagSet(&cfg, &color)
+	set := newFlagSet(&cfg)
 
 	positional, err := parseInterspersed(set, args)
 	if err != nil {
@@ -176,10 +145,6 @@ func parseFlags(args []string) (config, error) {
 	}
 
 	if cfg.Profile, err = profilePath(cfg.Profile, positional); err != nil {
-		return cfg, err
-	}
-
-	if cfg.Color, err = parseColor(color); err != nil {
 		return cfg, err
 	}
 
@@ -216,6 +181,8 @@ func parseColor(name string) (prettycov.ColorMode, error) {
 	case "always":
 		return prettycov.ColorAlways, nil
 	default:
-		return prettycov.ColorAuto, fmt.Errorf("%w, got %q", errBadColor, name)
+		// Terse: the flag package prefixes the flag name and the offending value.
+		//nolint:wrapcheck // see above.
+		return prettycov.ColorAuto, errBadColor
 	}
 }

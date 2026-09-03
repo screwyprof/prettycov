@@ -194,7 +194,7 @@ func TestRunColorFlag(t *testing.T) {
 			require.Equal(t, tc.wantCode, code)
 
 			if tc.wantCode != codeOK {
-				assert.Contains(t, stderr.String(), "invalid -color")
+				assert.Contains(t, stderr.String(), `invalid value "sometimes" for flag -color`)
 
 				return
 			}
