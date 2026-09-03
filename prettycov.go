@@ -72,6 +72,7 @@ func rollUp(node *PathTree) *PathTree {
 			Uncovered: uncovered,
 		},
 		Children: children,
+		isPkg:    node.isPkg,
 	}
 }
 
