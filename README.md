@@ -107,12 +107,6 @@ It parses the coverage profile to populate a prefix tree of paths and coverages.
 Then it traverses the tree from the furthermost leaves to top merging the coverage info. 
 Then it draws the top row plus `-depth` levels beneath it. A run of directories that each hold nothing but the next one renders as a single row.
 
-### What's next?
-
-#### Add tests and run `prettycov` in the CI to get the report for this project
-This project was born spontaneously when I was on vacation. I didn't have much time, so just coded the idea with no tests.
-Now that it proved to be useful it would be great to add tests. For now, I've got a red coverage badge to remind me about it.
-
 ## Contributors ✨
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
 
