@@ -21,7 +21,7 @@ func showReport(params flags) {
 	failOnError(err)
 
 	tree := prettycov.Process(items, params.CurrentRoot, params.NewRoot)
-	prettycov.DisplayTree(os.Stdout, tree, params.Depth)
+	prettycov.DisplayTree(os.Stdout, tree, prettycov.Options{Depth: params.Depth})
 
 	failOnError(os.Chdir(curDir))
 }
