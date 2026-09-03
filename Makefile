@@ -3,6 +3,9 @@ BINARY ?= prettycov
 
 ## DO NOT EDIT BELLOW THIS LINE
 GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" | grep -v vendor | uniq)
+# Fixtures are inputs too. Without them a changed profile or golden file leaves the report targets
+# reading a coverage.out that predates it, and make calls the file up to date.
+FIXTURES := $(shell find . -path "*/testdata/*" -type f -not -path "./.direnv/*")
 LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
 # Counter files from the binary tests, folded into $(COVERAGE) below.
@@ -75,7 +78,7 @@ fmt: require-golangci ## format code
 # The last step folds in the binary tests: they run a compiled prettycov, so its execution is
 # absent from the suite's own profile. Appending merges, because readers of this format sum blocks
 # they see twice. Guarded — `go test -run` filtered to other tests writes no counters at all.
-$(COVERAGE): $(GO_FILES)
+$(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
 	@PRETTYCOV_COVERDIR=$(PWD)/$(COVERDATA) \
@@ -93,7 +96,7 @@ test: ## run tests and write the coverage profile
 
 test-cover-txt: $(COVERAGE) ## show plain coverage report in console
 	@echo -e "$(OK_COLOR)==> Generating coverage report$(NO_COLOR)"
-	@go tool cover -func $(COVERAGE) | tr -s '\t' ' ' | column -t -c2
+	@go tool cover -func $(COVERAGE) | tr -s '\t' ' ' | column -t
 
 # Written to a file rather than handed straight to a browser, so the report survives on a machine
 # with no display instead of the target silently doing nothing. Opening it is best-effort.
@@ -108,7 +111,7 @@ test-cover-html: coverage.html ## show html coverage report
 # such as codecov.
 test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
-	@go tool cover -func $(COVERAGE) | tail -n 1 | rev | cut -f1 | rev
+	@go tool cover -func $(COVERAGE) | awk 'END{print $$NF}'
 
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
