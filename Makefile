@@ -5,6 +5,8 @@ BINARY ?= prettycov
 GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" | grep -v vendor | uniq)
 LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
+# Counter files from the binary tests, folded into $(COVERAGE) below.
+COVERDATA := .covdata
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
 # from it. Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
@@ -71,7 +73,19 @@ fmt: require-golangci ## format code
 # changed and reuse it otherwise, instead of re-running the suite to re-read the same numbers.
 $(COVERAGE): $(GO_FILES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
-	@go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
+	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
+	@PRETTYCOV_COVERDIR=$(PWD)/$(COVERDATA) \
+		go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
+	@$(MAKE) --no-print-directory merge-binary-coverage
+
+# The binary tests run a compiled prettycov, so its execution is absent from the suite's profile.
+# Appending merges: readers of this format sum blocks they see twice. Guarded — `go test -run`
+# filtered to other tests writes nothing.
+merge-binary-coverage:
+	@if [ -n "$$(ls -A $(COVERDATA) 2>/dev/null)" ]; then \
+		go tool covdata textfmt -i=$(COVERDATA) -o=$(COVERDATA)/binary.txt && \
+		tail -n +2 $(COVERDATA)/binary.txt >> $(COVERAGE); \
+	fi
 
 # `make test` must always run the suite, so it drops the profile first rather than letting make
 # decide it is up to date.
@@ -152,6 +166,7 @@ hooks: ## install git pre-commit hooks
 clean: ## cleans-up artifacts
 	@echo -e "$(OK_COLOR)==> Cleaning up$(NO_COLOR)"
 	@rm -rf ./coverage.*
+	@rm -rf ./$(COVERDATA)
 	@rm -rf ./prettycov
 
 help: ## show this help
@@ -161,5 +176,5 @@ help: ## show this help
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
-.PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-tree
+.PHONY: test merge-binary-coverage test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all install hooks nix-hash release clean help

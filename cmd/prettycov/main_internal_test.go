@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	_ "embed"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,9 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const profile = "mode: atomic\n" +
-	"m/a/a.go:1.1,2.2 6 1\n" + // 6 covered
-	"m/b/b.go:1.1,2.2 4 0\n" // 4 not covered -> 60% overall
+// 6 of 10 statements covered, so the report reads 60.00 and a -fail-under above that fails.
+//
+//go:embed testdata/sixty-percent.out
+var profile string
 
 func TestRunRendersTheReport(t *testing.T) {
 	t.Parallel()
