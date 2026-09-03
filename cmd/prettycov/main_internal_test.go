@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -206,7 +207,9 @@ func TestRunRejectsTwoProfiles(t *testing.T) {
 	}
 }
 
-func TestRunReportsAMissingProfile(t *testing.T) {
+// Someone running this for the first time in a repo with no profile is one command away, so say
+// which rather than leaving them a bare file-not-found.
+func TestRunReportsAMissingProfileWithTheCommandThatMakesOne(t *testing.T) {
 	t.Parallel()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -214,7 +217,34 @@ func TestRunReportsAMissingProfile(t *testing.T) {
 
 	assert.Equal(t, exitFailed, code)
 	assert.Contains(t, stderr.String(), "cannot read coverage profile")
+	assert.Contains(t, stderr.String(), "go test -coverprofile=")
 	assert.Empty(t, stdout.String())
+}
+
+// A malformed profile is not a missing one, so it must not suggest re-running the tests.
+func TestRunReportsAMalformedProfileWithoutTheHint(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := run([]string{writeProfile(t, "not a profile\n")}, stdout, stderr)
+
+	assert.Equal(t, exitFailed, code)
+	assert.Contains(t, stderr.String(), "invalid coverage profile")
+	assert.NotContains(t, stderr.String(), "go test -coverprofile=")
+}
+
+// One typo used to print the message, then the whole usage, then the message again: 33 lines.
+func TestRunKeepsABadFlagShort(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := run([]string{"-nope"}, stdout, stderr)
+
+	assert.Equal(t, exitFailed, code)
+	assert.Contains(t, stderr.String(), "not defined: -nope")
+	assert.Contains(t, stderr.String(), `run "prettycov -help" for usage`)
+	assert.NotContains(t, stderr.String(), "Prettycov:", "the usage text belongs behind -help")
+	assert.LessOrEqual(t, strings.Count(stderr.String(), "\n"), 3)
 }
 
 func TestRunHelpAndVersion(t *testing.T) {

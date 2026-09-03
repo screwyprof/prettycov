@@ -1,8 +1,6 @@
 package main
 
 import (
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -37,14 +35,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	cfg, err := parseFlags(args, stderr)
 	if err != nil {
-		// -h is asking for help, not making a mistake: the flag package handles it itself and
-		// reports ErrHelp, which must exit like -help rather than like a bad flag.
-		if errors.Is(err, flag.ErrHelp) {
-			return exitOK
-		}
-
-		// ContinueOnError has already reported a bad flag.
-		_, _ = fmt.Fprintf(stderr, "An error occurred: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "%v\nrun \"prettycov -help\" for usage\n", err)
 
 		return exitFailed
 	}

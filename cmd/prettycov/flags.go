@@ -83,9 +83,15 @@ func newFlagSet(out io.Writer, cfg *config, color *string) *flag.FlagSet {
 	set.StringVar(color, "color", "auto", `when to colour: "auto", "never" or "always"`)
 	set.Float64Var(&cfg.FailUnder, "fail-under", 0, "exit 1 when total coverage is below this percentage")
 	set.BoolVar(&cfg.Help, "help", false, "show help")
+	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")
 	set.BoolVar(&cfg.Version, "version", false, "show version")
 
-	set.Usage = func() { printUsage(out) }
+	// Registering -h ourselves stops the flag package special-casing it, so every help path is
+	// the same path. With that, nothing here needs the package's own reporting: a mistyped flag
+	// used to print the message, then the whole usage, then the message again, 33 lines for one
+	// typo. run says what was wrong and where to look.
+	set.SetOutput(io.Discard)
+	set.Usage = func() {}
 
 	return set
 }

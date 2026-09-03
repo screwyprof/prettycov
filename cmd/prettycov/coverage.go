@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -13,7 +15,13 @@ import (
 func showReport(cfg config, stdout, stderr io.Writer) int {
 	items, err := prettycov.ParseProfile(cfg.Profile)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "An error occurred: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+
+		// Someone running prettycov for the first time, in a repo with no profile yet, is one
+		// command away. Say which, rather than leaving them a bare file-not-found.
+		if errors.Is(err, fs.ErrNotExist) {
+			_, _ = fmt.Fprintf(stderr, "run: go test -coverprofile=%s ./...\n", cfg.Profile)
+		}
 
 		return exitFailed
 	}
