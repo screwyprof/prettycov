@@ -17,8 +17,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/mod/modfile"
 )
@@ -104,13 +106,36 @@ func Scan(ctx context.Context, dir string, tags ...string) (Repo, error) {
 		return Repo{}, err
 	}
 
-	modules := make([]Module, 0, len(dirs))
+	return Repo{
+		Dir:       root,
+		Workspace: workspace,
+		Modules:   scanModules(ctx, dirs, inWorkspace, tags),
+	}, nil
+}
 
-	for _, moduleDir := range dirs {
-		modules = append(modules, scanModule(ctx, moduleDir, inWorkspace[moduleDir], tags))
+// scanModules reads every module. The work is one `go list` subprocess per module and they do not
+// depend on each other, so they run together: on grafana's 39 modules the walk itself costs 13ms
+// and the sequential subprocesses cost 5.3s.
+//
+// Each goroutine writes its own index, which keeps the result in the walk's order.
+func scanModules(ctx context.Context, dirs []string, inWorkspace map[string]bool, tags []string) []Module {
+	modules := make([]Module, len(dirs))
+	limit := make(chan struct{}, runtime.NumCPU())
+
+	var wg sync.WaitGroup
+
+	for i, dir := range dirs {
+		wg.Go(func() {
+			limit <- struct{}{}
+			defer func() { <-limit }()
+
+			modules[i] = scanModule(ctx, dir, inWorkspace[dir], tags)
+		})
 	}
 
-	return Repo{Dir: root, Workspace: workspace, Modules: modules}, nil
+	wg.Wait()
+
+	return modules
 }
 
 // scanModule reads one module, recording rather than returning its failure. Scan's own error is
