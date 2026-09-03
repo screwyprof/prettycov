@@ -43,10 +43,6 @@ github.com/mfridman/tparse v0.18.0 h1:wh6dzOKaIwkUGyKgOntDW4liXSo37qg5AXbIhkMV3v
 github.com/mfridman/tparse v0.18.0/go.mod h1:gEvqZTuCgEhPbYk/2lS3Kcxg1GmTxxU7kTC8DvP0i/A=
 github.com/muesli/termenv v0.16.0 h1:S5AlUN9dENB57rsbnkPyfdGuWIlkmzJjbFf0Tf5FWUc=
 github.com/muesli/termenv v0.16.0/go.mod h1:ZRfOIKPFDYQoDFF4Olj7/QJbW60Ol/kL1pU3VfY/Cnk=
-github.com/nikolaydubina/go-cover-treemap v1.5.1 h1:BGlCMkj78RlodldP4QFDyY6jhBQSJzbxGmOzrfMaEQg=
-github.com/nikolaydubina/go-cover-treemap v1.5.1/go.mod h1:EoFAQvIpPVfiqL8cNjcVTiREtlBkJmATrZM2p/erRAw=
-github.com/nikolaydubina/treemap v1.2.5 h1:oSC5z/qnsGLbkU2IihSrh2pS7uDjUq7ipGj8aw8bfII=
-github.com/nikolaydubina/treemap v1.2.5/go.mod h1:8+wLGh917AyeJqBN1D5KM26tv6W/XfvsY+nfJd04/u8=
 github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

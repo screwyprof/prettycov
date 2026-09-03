@@ -22,8 +22,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mfridman/tparse v0.18.0 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
-	github.com/nikolaydubina/go-cover-treemap v1.5.1 // indirect
-	github.com/nikolaydubina/treemap v1.2.5 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/cobra v1.6.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
@@ -42,6 +40,5 @@ require (
 tool (
 	github.com/daixiang0/gci
 	github.com/mfridman/tparse
-	github.com/nikolaydubina/go-cover-treemap
 	mvdan.cc/gofumpt
 )

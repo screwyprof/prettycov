@@ -34,7 +34,6 @@
               pkgs.gofumpt
               pkgs.gci
               pkgs.tparse
-              pkgs.go-cover-treemap
               pkgs.util-linux
               pkgs.xdg-utils
               # .pre-commit-config.yaml drives the git hooks; non-nix users bring their own.
@@ -62,7 +61,7 @@
             version = pkgs.lib.fileContents ./VERSION;
             src = ./.;
             # Covers the `tool` block's deps too, not just x/tools — bump this whenever go.mod moves.
-            vendorHash = "sha256-/yo/wihKSIC3Ekl9UZqSkYowk/giVF/FHyI1ryCuJzI=";
+            vendorHash = "sha256-PTHKONBrgiCNVI6jk1HJviPonoeFgbGG7HMpGPzGgu4=";
             # Without this the version lives only in the derivation name and the binary answers
             # "(devel)": the source has no .git, so the toolchain stamps nothing of its own.
             # No +commit suffix, unlike the Makefile's dev builds — a nix build is pinned to a rev

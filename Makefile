@@ -77,7 +77,7 @@ test-cover-txt: $(COVERAGE) ## show plain coverage report in console
 	@go tool cover -func $(COVERAGE) | tr -s '\t' ' ' | column -t -c2
 
 # Written to a file rather than handed straight to a browser, so the report survives on a machine
-# with no display instead of the target silently doing nothing. Same best-effort open as the SVG.
+# with no display instead of the target silently doing nothing. Opening it is best-effort.
 coverage.html: $(COVERAGE)
 	@echo -e "$(OK_COLOR)==> Generating coverage report$(NO_COLOR)"
 	@go tool cover -html=$< -o $@
@@ -95,13 +95,6 @@ test-cover-total: $(COVERAGE) ## show total coverage
 # binary, so a change to the printer shows up here before it is ever released.
 test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
 	@go run ./cmd/prettycov -profile=$(COVERAGE) -old=$(LOCAL_PACKAGES) -new=$(BINARY) -depth=2
-
-coverage.svg: $(COVERAGE)
-	@go-cover-treemap -coverprofile $< > $@
-
-# Opening is best-effort: the SVG is the deliverable, and CI/containers have no display.
-test-cover-svg: coverage.svg ## generate pretty coverage picture
-	@$(OPEN) $< 2>/dev/null || echo "==> $< written ($(OPEN) unavailable)"
 
 lint: ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
@@ -167,5 +160,5 @@ help: ## show this help
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt
-.PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-svg test-cover-tree
+.PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all install deps hooks nix-hash release clean help
