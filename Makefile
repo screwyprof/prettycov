@@ -71,20 +71,18 @@ fmt: require-golangci ## format code
 # One recipe produces the profile, and it is a real file rule so make can tell when it is stale.
 # The reports depend on the file rather than on `test`, so they rebuild it when a source has
 # changed and reuse it otherwise, instead of re-running the suite to re-read the same numbers.
+#
+# The last step folds in the binary tests: they run a compiled prettycov, so its execution is
+# absent from the suite's own profile. Appending merges, because readers of this format sum blocks
+# they see twice. Guarded — `go test -run` filtered to other tests writes no counters at all.
 $(COVERAGE): $(GO_FILES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
 	@PRETTYCOV_COVERDIR=$(PWD)/$(COVERDATA) \
 		go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
-	@$(MAKE) --no-print-directory merge-binary-coverage
-
-# The binary tests run a compiled prettycov, so its execution is absent from the suite's profile.
-# Appending merges: readers of this format sum blocks they see twice. Guarded — `go test -run`
-# filtered to other tests writes nothing.
-merge-binary-coverage:
 	@if [ -n "$$(ls -A $(COVERDATA) 2>/dev/null)" ]; then \
 		go tool covdata textfmt -i=$(COVERDATA) -o=$(COVERDATA)/binary.txt && \
-		tail -n +2 $(COVERDATA)/binary.txt >> $(COVERAGE); \
+		tail -n +2 $(COVERDATA)/binary.txt >> $@; \
 	fi
 
 # `make test` must always run the suite, so it drops the profile first rather than letting make
@@ -176,5 +174,5 @@ help: ## show this help
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
-.PHONY: test merge-binary-coverage test-cover-txt test-cover-html test-cover-total test-cover-tree
+.PHONY: test test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all install hooks nix-hash release clean help

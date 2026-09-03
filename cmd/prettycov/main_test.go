@@ -44,10 +44,9 @@ func TestMain(m *testing.M) {
 
 	binary = filepath.Join(dir, "prettycov")
 
-	// -cover so the child's run counts toward coverage. cancel() by hand: os.Exit skips defers.
+	// cancel() by hand: os.Exit below means a defer never runs.
 	ctx, cancel := context.WithTimeout(context.Background(), buildTimeout)
-	out, buildErr := exec.CommandContext(ctx, "go", "build", "-cover", "-covermode", "atomic", "-o", binary, ".").
-		CombinedOutput()
+	out, buildErr := buildBinary(ctx, binary)
 
 	cancel()
 
@@ -65,7 +64,9 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// Nothing else checks the process exit code; in-process tests only see run()'s return value.
+// main is os.Exit(app.Run(...)), so a status it propagates once it propagates always — the value
+// is opaque to it. One case per distinct code proves that; the branch matrix behind each code is
+// app_test's, and re-walking it here would cost a process fork per case to learn nothing.
 func TestBinaryExitCodes(t *testing.T) {
 	t.Parallel()
 
@@ -74,17 +75,9 @@ func TestBinaryExitCodes(t *testing.T) {
 		args []string
 		want int
 	}{
-		// Bare `prettycov` reads ./coverage.out, as the README says.
-		{name: "no arguments at all", args: nil, want: codeOK},
-		{name: "clean run", args: []string{"-color", "never"}, want: codeOK},
-		{name: "above the threshold", args: []string{"-fail-under", "50"}, want: codeOK},
+		{name: "success", args: nil, want: codeOK},
 		{name: "below the threshold", args: []string{"-fail-under", "90"}, want: codeBelow},
-		{name: "unreadable profile", args: []string{"-profile", "no-such-file.out"}, want: codeFailed},
-		{name: "unknown flag", args: []string{"-nope"}, want: codeFailed},
-		// Distinct from below-threshold on purpose: a CI step has to tell "coverage dropped"
-		// from "prettycov could not run".
-		{name: "help", args: []string{"-help"}, want: codeOK},
-		{name: "version", args: []string{"version"}, want: codeOK},
+		{name: "could not run", args: []string{"-nope"}, want: codeFailed},
 	}
 
 	for _, tc := range tests {
@@ -98,7 +91,8 @@ func TestBinaryExitCodes(t *testing.T) {
 	}
 }
 
-// Swapping the streams leaves `prettycov > report.txt` holding the diagnostics.
+// Swapping the streams leaves `prettycov > report.txt` holding the diagnostics. One case each way
+// settles which writer main hands to which stream; which message goes where is app_test's.
 func TestBinaryWritesToTheRightStream(t *testing.T) {
 	t.Parallel()
 
@@ -116,15 +110,6 @@ func TestBinaryWritesToTheRightStream(t *testing.T) {
 		{
 			name: "the gate's complaint is stderr", args: []string{"-color", "never", "-fail-under", "90"},
 			wantStdout: "m - 60.00", wantStderr: "is below 90.00%",
-		},
-		{
-			name: "a bad flag is stderr", args: []string{"-nope"},
-			wantStderr: "not defined: -nope",
-		},
-		{
-			// Help that was asked for is output, not a diagnostic.
-			name: "requested help is stdout", args: []string{"-help"},
-			wantStdout: "Prettycov:",
 		},
 	}
 
@@ -159,11 +144,8 @@ func TestBinaryReportsTheStampedVersion(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), buildTimeout)
 	defer cancel()
 
-	build := exec.CommandContext(ctx, "go", "build", "-cover", "-covermode", "atomic",
-		"-ldflags", "-X github.com/screwyprof/prettycov/internal/app.version=v9.9.9-test",
-		"-o", stamped, ".")
-
-	out, err := build.CombinedOutput()
+	out, err := buildBinary(ctx, stamped,
+		"-ldflags", "-X github.com/screwyprof/prettycov/internal/app.version=v9.9.9-test")
 	require.NoError(t, err, string(out))
 
 	got, errOut, code := runAt(t, stamped, "version")
@@ -192,6 +174,16 @@ func TestBinaryPassesItsArguments(t *testing.T) {
 	require.Equal(t, codeOK, code, stderr)
 	assert.Contains(t, stdout, "60.00")
 	assert.NotContains(t, stdout, "a - ", "-depth=0 is the top row alone")
+}
+
+// buildBinary compiles the command into out. Always instrumented, so a child's run counts toward
+// coverage; extra carries whatever a caller needs on top, such as a linker stamp.
+func buildBinary(ctx context.Context, out string, extra ...string) ([]byte, error) {
+	args := append([]string{"build", "-cover", "-covermode", "atomic"}, extra...)
+	args = append(args, "-o", out, ".")
+
+	//nolint:wrapcheck // the callers report it; there is nothing to add here.
+	return exec.CommandContext(ctx, "go", args...).CombinedOutput()
 }
 
 // coverDir is where a child writes its counters. The Makefile sets PRETTYCOV_COVERDIR and collects

@@ -61,9 +61,12 @@ func TestRunDefaultsToCoverageOutInTheWorkingDirectory(t *testing.T) {
 	t.Chdir(dir)
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := app.Run([]string{"-color", "never"}, stdout, stderr)
 
-	assert.Equal(t, codeOK, code)
+	// No arguments at all, which is the truest form of this: a bare `prettycov`. Colour is off
+	// anyway, since a buffer is not a terminal.
+	code := app.Run(nil, stdout, stderr)
+
+	assert.Equal(t, codeOK, code, stderr.String())
 	assert.Contains(t, stdout.String(), "60.00")
 }
 
