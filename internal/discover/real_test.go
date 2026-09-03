@@ -51,9 +51,10 @@ func TestScanRealRepos(t *testing.T) {
 				}
 
 				if m.Err != nil {
+					// Nothing beneath an unreadable module can be accounted for, so it is not
+					// missing either. bubbletea ships a tutorials/go.mod that needs go mod tidy.
 					t.Logf("  unreadable: %s: %v", m.Dir, m.Err)
-
-					found[m.Dir] = true
+					markTree(t, found, m.Dir)
 				}
 
 				packages += len(m.Packages)
@@ -125,6 +126,19 @@ func classify(t *testing.T, root string, ctx *build.Context, found map[string]bo
 	}))
 
 	return constrained, lost
+}
+
+// markTree records every directory under root as accounted for.
+func markTree(t *testing.T, found map[string]bool, root string) {
+	t.Helper()
+
+	require.NoError(t, filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err == nil && entry.IsDir() {
+			found[path] = true
+		}
+
+		return err
+	}))
 }
 
 // constrainedOut reports whether every Go file in dir is excluded by build constraints.

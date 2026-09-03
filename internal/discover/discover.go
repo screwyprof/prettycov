@@ -101,7 +101,7 @@ func Scan(ctx context.Context, dir string, tags ...string) (Repo, error) {
 		return Repo{}, err
 	}
 
-	workspace, inWorkspace, err := workspaceMembers(root)
+	workspace, inWorkspace, err := workspaceMembers(ctx, root)
 	if err != nil {
 		return Repo{}, err
 	}
@@ -143,7 +143,7 @@ func scanModules(ctx context.Context, dirs []string, inWorkspace map[string]bool
 func scanModule(ctx context.Context, dir string, inWorkspace bool, tags []string) Module {
 	module := Module{Dir: dir, InWorkspace: inWorkspace}
 
-	module.Path, module.Err = modulePath(ctx, dir)
+	module.Path, module.Err = modulePath(dir)
 	if module.Err != nil {
 		return module
 	}
@@ -192,14 +192,13 @@ func moduleDirs(root string) ([]string, error) {
 // modules as absent, because it kept the trailing comments those lines carry:
 //
 //	. // skip:golangci-lint
-func workspaceMembers(root string) (string, map[string]bool, error) {
-	file := filepath.Join(root, "go.work")
-
-	data, err := os.ReadFile(file)
-	if os.IsNotExist(err) {
-		return "", map[string]bool{}, nil
+func workspaceMembers(ctx context.Context, root string) (string, map[string]bool, error) {
+	file, err := workspaceFile(ctx, root)
+	if err != nil || file == "" {
+		return "", map[string]bool{}, err
 	}
 
+	data, err := os.ReadFile(file)
 	if err != nil {
 		return "", nil, fmt.Errorf("reading go.work: %w", err)
 	}
@@ -209,28 +208,57 @@ func workspaceMembers(root string) (string, map[string]bool, error) {
 		return "", nil, fmt.Errorf("parsing go.work: %w", err)
 	}
 
+	// use paths are relative to the go.work, which is not always the scanned root.
+	base := filepath.Dir(file)
+
 	members := make(map[string]bool, len(work.Use))
 	for _, use := range work.Use {
-		members[filepath.Join(root, filepath.FromSlash(use.Path))] = true
+		members[filepath.Join(base, filepath.FromSlash(use.Path))] = true
 	}
 
 	return file, members, nil
 }
 
-// modulePath asks the go tool for the module's own path rather than parsing go.mod, so the answer
-// stays right as the file format grows.
-func modulePath(ctx context.Context, dir string) (string, error) {
-	out, err := goList(ctx, dir, "-m", "-f", "{{.Path}}")
-	if err != nil {
+// workspaceFile asks the go tool which go.work governs root, returning "" when none does.
+//
+// The file is not always at root: go searches parent directories for it, so scanning a services/
+// subdirectory of a workspace still has a workspace. Looking only at root/go.work would report
+// every module there as outside a workspace that in fact lists them.
+func workspaceFile(ctx context.Context, root string) (string, error) {
+	// GOWORK is also how a user turns workspace mode off, and reads back as "off" when they have.
+	out, err := goEnv(ctx, root, "GOWORK")
+	if err != nil || out == "off" {
 		return "", err
 	}
 
-	path := strings.TrimSpace(out)
-	if path == "" {
+	return out, nil
+}
+
+// modulePath reads the module's own path out of go.mod with cmd/go's parser.
+//
+// `go list -m` would answer too, at the cost of a subprocess that resolves far more than the
+// question needs: a module declaring a Go version this toolchain lacks sends it off to download
+// one, so a path sitting in a file on disk becomes a network call that can fail. Parsing also
+// says what is wrong — hugo's internal/warpc/genwebp holds an empty go.mod, a fence around a C
+// build directory, which is errNoModulePath rather than "exit status 1".
+func modulePath(dir string) (string, error) {
+	file := filepath.Join(dir, "go.mod")
+
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return "", fmt.Errorf("reading go.mod: %w", err)
+	}
+
+	mod, err := modfile.Parse(file, data, nil)
+	if err != nil {
+		return "", fmt.Errorf("parsing go.mod: %w", err)
+	}
+
+	if mod.Module == nil || mod.Module.Mod.Path == "" {
 		return "", fmt.Errorf("%w: %s", errNoModulePath, dir)
 	}
 
-	return path, nil
+	return mod.Module.Mod.Path, nil
 }
 
 // packagesIn lists the module's own packages. Run from the module directory, ./... covers exactly
@@ -271,6 +299,20 @@ func packagesIn(ctx context.Context, dir string, tags []string) ([]Package, erro
 	}
 
 	return packages, nil
+}
+
+// goEnv reads one go environment variable as the go tool resolves it in dir.
+func goEnv(ctx context.Context, dir, name string) (string, error) {
+	//nolint:gosec // name is this package's own literal; dir is caller-supplied, never profile data.
+	cmd := exec.CommandContext(ctx, "go", "env", name)
+	cmd.Dir = dir
+
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("go env %s in %q: %w", name, dir, err)
+	}
+
+	return strings.TrimSpace(string(out)), nil
 }
 
 // goList runs `go list` in dir with the workspace disabled. Inside a module that go.work omits,

@@ -112,6 +112,26 @@ func TestScanUsesBuildTags(t *testing.T) {
 	assert.ElementsMatch(t, []string{"tags.test", "tags.test/api"}, paths)
 }
 
+// TestScanFindsParentWorkspace scans below the directory holding go.work. The go tool searches
+// parents for it, so a services/ subdirectory of a workspace is still in one, and discovery has to
+// agree or every module there looks deliberately excluded.
+func TestScanFindsParentWorkspace(t *testing.T) {
+	t.Parallel()
+
+	ar, err := txtar.ParseFile(filepath.Join("testdata", "topologies", "parent-workspace.txtar"))
+	require.NoError(t, err)
+
+	root := extract(t, ar)
+
+	repo, err := discover.Scan(t.Context(), filepath.Join(root, "services"))
+	require.NoError(t, err)
+
+	assert.Equal(t, filepath.Join(root, "go.work"), repo.Workspace)
+
+	require.Len(t, repo.Modules, 1)
+	assert.True(t, repo.Modules[0].InWorkspace, "the workspace above lists this module")
+}
+
 // extract writes the archive to a temporary directory and returns it.
 func extract(t *testing.T, ar *txtar.Archive) string {
 	t.Helper()

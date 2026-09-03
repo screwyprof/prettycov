@@ -1,19 +1,22 @@
-An unreadable go.mod beside a healthy module. Aborting here would be the wrong answer twice
-over: the rest of the tree is still worth reporting, and a module that cannot be read is a fact
-the report has to carry — the same distinction as a package whose tests panicked versus one that
-has none.
+Two unreadable go.mod files beside a healthy module. Aborting here would be the wrong answer
+twice over: the rest of the tree is still worth reporting, and a module that cannot be read is a
+fact the report has to carry — the same distinction as a package whose tests panicked versus one
+that has none.
+
+fence/go.mod is empty, which is hugo's internal/warpc/genwebp: a zero-byte go.mod placed to stop
+the go tool descending into a directory of C. It parses, declares nothing, and is not a module.
 
 go list -m at the root is unaffected: a nested module is not in the root's graph.
 
-modules_on_disk: 2
+modules_on_disk: 3
 go_list_m: 1
 go_list_dotdotdot: 1
-discovered_modules: 2
+discovered_modules: 3
 discovered_packages: 1
 packages_with_tests: 0
 has_workspace: 0
 modules_in_workspace: 0
-modules_with_errors: 1
+modules_with_errors: 2
 -- go.mod --
 module broken.test
 
@@ -28,3 +31,6 @@ this is not a go.mod
 package bad
 
 func B() int { return 2 }
+-- fence/go.mod --
+-- fence/fence.c --
+int fence(void) { return 3; }

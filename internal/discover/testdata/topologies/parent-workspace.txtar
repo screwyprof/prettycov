@@ -1,0 +1,29 @@
+A go.work at the root, scanned from the root. TestScanFindsParentWorkspace scans the same archive
+from services/ instead, where the workspace is a directory above and go searches for it.
+
+Reading only <root>/go.work would report svc as outside a workspace that names it — the same
+conflation the Repo type exists to prevent, arrived at from the other direction.
+
+The root is not itself a module, so ./... reaches nothing at all there: "directory prefix . does
+not contain modules listed in go.work or their selected dependencies".
+
+modules_on_disk: 1
+go_list_m: 1
+go_list_dotdotdot: 0
+discovered_modules: 1
+discovered_packages: 1
+packages_with_tests: 0
+has_workspace: 1
+modules_in_workspace: 1
+-- go.work --
+go 1.27
+
+use ./services/svc
+-- services/svc/go.mod --
+module parent.test/svc
+
+go 1.27
+-- services/svc/svc.go --
+package svc
+
+func S() int { return 1 }
