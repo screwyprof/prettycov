@@ -153,6 +153,13 @@ func TestRunFailUnder(t *testing.T) {
 			wantErr: "want a percentage",
 		},
 		{
+			// The boundary itself is allowed: "everything must be covered" is a real thing to ask.
+			// Nothing pinned this, so tightening the check to >= would have gone unnoticed.
+			name: "exactly 100 is a threshold, not an error", profile: profile,
+			args: []string{"-fail-under", "100"}, wantCode: codeBelow,
+			wantErr: "is below 100.00%",
+		},
+		{
 			// Counts this large only come from a hand-written profile, and summing them wraps.
 			// Rejecting the profile beats reporting a percentage derived from the wreckage.
 			name: "counts that overflow past zero",
