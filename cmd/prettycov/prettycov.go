@@ -1,48 +1,60 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 )
 
+// Exit codes. Below is distinct from failed so a CI step can tell "coverage dropped" from
+// "prettycov could not run".
+const (
+	exitOK     = 0
+	exitBelow  = 1
+	exitFailed = 2
+)
+
 func main() {
-	handleCommands(parseFlags())
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func handleCommands(params flags) {
-	// show usage info when no arguments or flags given.
-	if flag.NFlag() == 0 && flag.NArg() == 0 {
-		flag.Usage()
-	}
-
-	// show usage info when calling `prettycov -help or prettycov --help`
-	if params.Help {
-		flag.Usage()
-	}
-
-	// show version when calling `prettycov -version or prettycov --version`
-	if params.Info {
-		showVersion()
-	}
-
-	// handle commands
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
+// run is everything main does apart from exiting, so it can be tested. Nothing it calls exits.
+func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 {
+		switch args[0] {
 		case "help":
-			showUsage()
+			printUsage(stderr)
+
+			return exitOK
 		case "version":
-			showVersion()
-		default:
-			showReport(params)
+			printVersion(stdout)
+
+			return exitOK
 		}
 	}
-}
 
-func failOnError(err error) {
+	cfg, err := parseFlags(args, stderr)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "An error occurred: %v\n", err)
+		// ContinueOnError already reported a bad flag, and -h prints usage itself.
+		if !errors.Is(err, flag.ErrHelp) {
+			_, _ = fmt.Fprintf(stderr, "An error occurred: %v\n", err)
+		}
 
-		os.Exit(2)
+		return exitFailed
 	}
+
+	switch {
+	case cfg.Help:
+		printUsage(stderr)
+
+		return exitOK
+	case cfg.Version:
+		printVersion(stdout)
+
+		return exitOK
+	}
+
+	return showReport(cfg, stdout, stderr)
 }

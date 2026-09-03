@@ -132,6 +132,15 @@ func TestCoverageStatsRatio(t *testing.T) {
 	}
 }
 
+func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/pkg/a.go", 1, 1)}, "", "")
+
+	assert.Nil(t, tree.Get("m/absent"))
+	assert.NotNil(t, tree.Get("m/pkg"), "and finds one that is")
+}
+
 // Process must not write through the slice it is handed.
 func TestProcessDoesNotModifyItsInput(t *testing.T) {
 	t.Parallel()
