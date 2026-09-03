@@ -243,31 +243,6 @@ func TestDisplayTreeAutoColorToRegularFile(t *testing.T) {
 	assert.NotContains(t, string(written), "\x1b[")
 }
 
-// Drawing a report is not worth a panic, so an unrecognised box type is a blank.
-func TestBoxTypeStringNeverPanics(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		box  prettycov.BoxType
-		want string
-	}{
-		{name: "regular", box: prettycov.Regular, want: "├"},
-		{name: "last", box: prettycov.Last, want: "└"},
-		{name: "between", box: prettycov.Between, want: "│"},
-		{name: "after last", box: prettycov.AfterLast, want: " "},
-		{name: "out of range", box: prettycov.BoxType(99), want: " "},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			assert.NotPanics(t, func() { assert.Equal(t, tc.want, tc.box.String()) })
-		})
-	}
-}
-
 // m/
 //
 //	├ alpha/deep/   (alpha holds only deep, so the two collapse into one row)
@@ -286,9 +261,21 @@ func printerFiles() []prettycov.FileCoverage {
 func render(t *testing.T, tree *prettycov.PathTree, depth uint) string {
 	t.Helper()
 
+	return renderWith(t, tree, depth, prettycov.ColorNever)
+}
+
+func renderColor(t *testing.T, tree *prettycov.PathTree, depth uint) string {
+	t.Helper()
+
+	return renderWith(t, tree, depth, prettycov.ColorAlways)
+}
+
+func renderWith(t *testing.T, tree *prettycov.PathTree, depth uint, color prettycov.ColorMode) string {
+	t.Helper()
+
 	var buf bytes.Buffer
 
-	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: prettycov.ColorNever})
+	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: color})
 
 	return buf.String()
 }
@@ -309,14 +296,4 @@ func nodeNames(out string) []string {
 	}
 
 	return names
-}
-
-func renderColor(t *testing.T, tree *prettycov.PathTree, depth uint) string {
-	t.Helper()
-
-	var buf bytes.Buffer
-
-	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: prettycov.ColorAlways})
-
-	return buf.String()
 }

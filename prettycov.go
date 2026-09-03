@@ -27,19 +27,12 @@ type FileCoverage struct {
 	Coverage CoverageStats
 }
 
-type PkgCoverage struct {
-	Pkg      string
-	Coverage CoverageStats
-}
-
 // Process turns per-file coverage into a tree in which every node reports its own statements plus
 // those of everything beneath it. The files argument is not modified.
 func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
-	packages := mergePackages(mergeFiles(shortenPaths(files, curRoot, newRoot)))
-
 	tree := &PathTree{}
-	for _, pkg := range packages {
-		tree.Put(pkg.Pkg, pkg.Coverage)
+	for pkg, stats := range mergePackages(shortenPaths(files, curRoot, newRoot)) {
+		tree.Put(pkg, stats)
 	}
 
 	return rollUp(tree)
@@ -101,50 +94,20 @@ func shortenPaths(items []FileCoverage, oldRoot, newRoot string) []FileCoverage 
 	return shortened
 }
 
-func mergeFiles(files []FileCoverage) []FileCoverage {
-	covered := map[string]int{}
-	uncovered := map[string]int{}
-	uniqueFiles := make(map[string]FileCoverage, len(files))
-
-	for _, f := range files {
-		covered[f.File] += f.Coverage.Covered
-		uncovered[f.File] += f.Coverage.Uncovered
-		uniqueFiles[f.File] = FileCoverage{File: f.File}
-	}
-
-	merged := make([]FileCoverage, 0, len(uniqueFiles))
-
-	for _, f := range uniqueFiles {
-		f.Coverage.Covered = covered[f.File]
-		f.Coverage.Uncovered = uncovered[f.File]
-
-		merged = append(merged, f)
-	}
-
-	return merged
-}
-
-func mergePackages(files []FileCoverage) []PkgCoverage {
-	covered := map[string]int{}
-	uncovered := map[string]int{}
-	uniquePackages := make(map[string]PkgCoverage, len(files))
+// mergePackages totals each file's statements against the directory that holds it. Totalling by
+// filename first would change nothing: addition is associative, so grouping by name and then by
+// directory gives the same per-directory totals as grouping by directory alone.
+func mergePackages(files []FileCoverage) map[string]CoverageStats {
+	packages := make(map[string]CoverageStats, len(files))
 
 	for _, f := range files {
 		pkg := path.Dir(f.File)
 
-		covered[pkg] += f.Coverage.Covered
-		uncovered[pkg] += f.Coverage.Uncovered
-		uniquePackages[pkg] = PkgCoverage{Pkg: pkg}
+		stats := packages[pkg]
+		stats.Covered += f.Coverage.Covered
+		stats.Uncovered += f.Coverage.Uncovered
+		packages[pkg] = stats
 	}
 
-	merged := make([]PkgCoverage, 0, len(uniquePackages))
-
-	for _, p := range uniquePackages {
-		p.Coverage.Covered = covered[p.Pkg]
-		p.Coverage.Uncovered = uncovered[p.Pkg]
-
-		merged = append(merged, p)
-	}
-
-	return merged
+	return packages
 }

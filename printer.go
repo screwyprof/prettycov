@@ -51,7 +51,16 @@ type Options struct {
 // DisplayTree writes tree as an indented report. A collapsed run of directories is the one row it
 // renders as.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
-	displayTree(w, tree, opts.Depth, colorize(w, opts.Color), 0, " ", true)
+	r := renderer{w: w, depth: opts.Depth, color: colorize(w, opts.Color)}
+	r.display(tree, 0, " ")
+}
+
+// renderer holds what stays the same for the whole traversal, so the recursion carries only what
+// actually varies: the node, how deep it is, and the indent it sits behind.
+type renderer struct {
+	w     io.Writer
+	depth uint
+	color bool
 }
 
 // colorize resolves ColorAuto against the destination and the environment. NO_COLOR counts
@@ -83,8 +92,10 @@ func colorize(w io.Writer, mode ColorMode) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-func displayTree(w io.Writer, tree *PathTree, depth uint, color bool, level uint, padding string, root bool) {
-	if tree == nil || level > depth {
+// display writes one row per child of tree, then recurses. The top row carries no glyph, which is
+// what level 0 means — it is not tracked separately, since a second flag can only drift from it.
+func (r renderer) display(tree *PathTree, level uint, padding string) {
+	if tree == nil || level > r.depth {
 		return
 	}
 
@@ -93,11 +104,11 @@ func displayTree(w io.Writer, tree *PathTree, depth uint, color bool, level uint
 
 	for i, name := range names {
 		label, node := collapse(name, tree.Children[name])
+		root := level == 0
 
-		_, _ = fmt.Fprintf(w, "%s%s - %s\n",
-			padding+symbol(root, getBoxType(i, len(names))), label, formatRatio(node.Coverage, color))
-		displayTree(w, node, depth, color, level+1,
-			padding+symbol(root, childSymbol(i, len(names))), false)
+		_, _ = fmt.Fprintf(r.w, "%s%s - %s\n",
+			padding+symbol(root, getBoxType(i, len(names))), label, formatRatio(node.Coverage, r.color))
+		r.display(node, level+1, padding+symbol(root, childSymbol(i, len(names))))
 	}
 }
 
@@ -143,52 +154,52 @@ func grade(pct float64) string {
 	}
 }
 
-type BoxType int
+type boxType int
 
 const (
-	Regular BoxType = iota
-	Last
-	AfterLast
-	Between
+	regular boxType = iota
+	last
+	afterLast
+	between
 )
 
 // String renders the glyph for a box type. An unrecognised one is a blank rather than a panic:
 // this draws a report, and nothing here is worth taking the process down for.
-func (boxType BoxType) String() string {
-	switch boxType {
-	case Regular:
+func (b boxType) String() string {
+	switch b {
+	case regular:
 		return "\u251c" // ├
-	case Last:
+	case last:
 		return "\u2514" // └
-	case AfterLast:
+	case afterLast:
 		return " "
-	case Between:
+	case between:
 		return "\u2502" // │
 	}
 
 	return " "
 }
 
-func getBoxType(index int, length int) BoxType {
+func getBoxType(index int, length int) boxType {
 	if index+1 == length {
-		return Last
+		return last
 	}
 
-	return Regular
+	return regular
 }
 
-func childSymbol(index int, length int) BoxType {
+func childSymbol(index int, length int) boxType {
 	if index+1 == length {
-		return AfterLast
+		return afterLast
 	}
 
-	return Between
+	return between
 }
 
-func symbol(root bool, boxType BoxType) string {
+func symbol(root bool, b boxType) string {
 	if root {
 		return ""
 	}
 
-	return boxType.String() + " "
+	return b.String() + " "
 }
