@@ -38,7 +38,7 @@ type FileCoverage struct {
 func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
 	tree := &PathTree{}
 	for pkg, stats := range mergePackages(shortenPaths(files, curRoot, newRoot)) {
-		tree.Put(pkg, stats)
+		tree.put(pkg, stats)
 	}
 
 	return rollUp(tree)

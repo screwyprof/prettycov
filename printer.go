@@ -50,19 +50,39 @@ type Options struct {
 	Color ColorMode
 }
 
+// Row is one line of the report: the indent and glyph that place it in the tree, the label of the
+// node, and that node's coverage. The percentage is not here — it is a rendering choice, and the
+// counts it comes from are.
+type Row struct {
+	Prefix   string
+	Label    string
+	Coverage CoverageStats
+}
+
+// Rows flattens tree into the lines a report prints, in order, to the given depth. Pure: no
+// writer, no colour, no terminal. DisplayTree is the one that decides how a Row looks.
+func Rows(tree *PathTree, depth uint) []Row {
+	b := rowBuilder{depth: depth}
+	b.walk(tree, 0, " ")
+
+	return b.rows
+}
+
 // DisplayTree writes tree as an indented report. A collapsed run of directories is the one row it
 // renders as.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
-	r := renderer{w: w, depth: opts.Depth, color: colorize(w, opts.Color)}
-	r.display(tree, 0, " ")
+	color := colorize(w, opts.Color)
+
+	for _, row := range Rows(tree, opts.Depth) {
+		_, _ = fmt.Fprintf(w, "%s%s - %s\n", row.Prefix, row.Label, formatRatio(row.Coverage, color))
+	}
 }
 
-// renderer holds what stays the same for the whole traversal, so the recursion carries only what
-// actually varies: the node, how deep it is, and the indent it sits behind.
-type renderer struct {
-	w     io.Writer
+// rowBuilder holds what stays the same for the whole traversal, so the recursion carries only
+// what actually varies: the node, how deep it is, and the indent it sits behind.
+type rowBuilder struct {
 	depth uint
-	color bool
+	rows  []Row
 }
 
 // colorize resolves ColorAuto against the destination and the environment. NO_COLOR counts
@@ -94,10 +114,10 @@ func colorize(w io.Writer, mode ColorMode) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-// display writes one row per child of tree, then recurses. The top row carries no glyph, which is
-// what level 0 means — it is not tracked separately, since a second flag can only drift from it.
-func (r renderer) display(tree *PathTree, level uint, padding string) {
-	if tree == nil || level > r.depth {
+// walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
+// level 0 means — it is not tracked separately, since a second flag can only drift from it.
+func (b *rowBuilder) walk(tree *PathTree, level uint, padding string) {
+	if tree == nil || level > b.depth {
 		return
 	}
 
@@ -108,9 +128,14 @@ func (r renderer) display(tree *PathTree, level uint, padding string) {
 		label, node := collapse(name, tree.Children[name])
 		root := level == 0
 
-		_, _ = fmt.Fprintf(r.w, "%s%s - %s\n",
-			padding+symbol(root, getBoxType(i, len(names))), sanitize(label), formatRatio(node.Coverage, r.color))
-		r.display(node, level+1, padding+symbol(root, childSymbol(i, len(names))))
+		b.rows = append(b.rows, Row{
+			Prefix: padding + symbol(root, getBoxType(i, len(names))),
+			// Sanitised here rather than at the writer, so no consumer of a Row has to remember to.
+			Label:    sanitize(label),
+			Coverage: node.Coverage,
+		})
+
+		b.walk(node, level+1, padding+symbol(root, childSymbol(i, len(names))))
 	}
 }
 

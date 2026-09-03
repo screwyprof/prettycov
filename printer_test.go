@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -88,7 +87,7 @@ func TestDisplayTreeSortsChildren(t *testing.T) {
 
 	tree := prettycov.Process(printerFiles(), "", "")
 
-	assert.Equal(t, []string{"m", "alpha/deep", "beta", "gamma"}, nodeNames(render(t, tree, 1)))
+	assert.Equal(t, []string{"m", "alpha/deep", "beta", "gamma"}, nodeNames(t, tree, 1))
 }
 
 // A run of directories that each hold nothing but the next one is one row, not one row each.
@@ -102,7 +101,7 @@ func TestDisplayTreeCollapsesPassThroughDirs(t *testing.T) {
 		file("github.com/o/repo/web/b.go", 1, 1),
 	}, "", "")
 
-	assert.Equal(t, []string{"github.com/o/repo", "pkg", "web"}, nodeNames(render(t, tree, 1)))
+	assert.Equal(t, []string{"github.com/o/repo", "pkg", "web"}, nodeNames(t, tree, 1))
 }
 
 // A directory that is a package in its own right keeps its own row even with a single child,
@@ -138,7 +137,7 @@ func TestDisplayTreeKeepsDirsThatAreAlsoPackages(t *testing.T) {
 
 			tree := prettycov.Process(tc.files, "", "")
 
-			assert.Equal(t, []string{"m/x", "sub"}, nodeNames(render(t, tree, 1)))
+			assert.Equal(t, []string{"m/x", "sub"}, nodeNames(t, tree, 1))
 		})
 	}
 }
@@ -164,7 +163,7 @@ func TestDisplayTreeDepthCountsLevels(t *testing.T) {
 
 			tree := prettycov.Process(printerFiles(), "", "")
 
-			assert.Equal(t, tc.want, nodeNames(render(t, tree, tc.depth)))
+			assert.Equal(t, tc.want, nodeNames(t, tree, tc.depth))
 		})
 	}
 }
@@ -320,19 +319,16 @@ func renderWith(t *testing.T, tree *prettycov.PathTree, depth uint, color pretty
 	return buf.String()
 }
 
-// nodeNames pulls the label out of each rendered line, in the order printed.
-func nodeNames(out string) []string {
-	var names []string
+// nodeNames is the labels a tree renders to, in order. Read off Rows rather than scraped back
+// out of the rendered text, so a change to the glyphs cannot break a test about ordering.
+func nodeNames(t *testing.T, tree *prettycov.PathTree, depth uint) []string {
+	t.Helper()
 
-	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
-		idx := strings.LastIndex(line, " - ")
-		if idx < 0 {
-			continue
-		}
+	rows := prettycov.Rows(tree, depth)
 
-		if name := strings.TrimLeft(line[:idx], " ├└│"); name != "" {
-			names = append(names, name)
-		}
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, row.Label)
 	}
 
 	return names

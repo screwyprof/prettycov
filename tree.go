@@ -12,7 +12,10 @@ type PathTree struct {
 	isPkg bool
 }
 
-func (n *PathTree) Put(key string, value CoverageStats) {
+// put grafts value onto the node at key, creating the nodes along the way. Unexported: a tree is
+// built by Process from a profile, and there is no reason to assemble one by hand. Get is the
+// half a caller needs.
+func (n *PathTree) put(key string, value CoverageStats) {
 	node := n
 	parts := strings.SplitSeq(key, "/")
 
@@ -34,6 +37,7 @@ func (n *PathTree) Put(key string, value CoverageStats) {
 	node.isPkg = true
 }
 
+// Get returns the node at key, or nil if the tree has no such path.
 func (n *PathTree) Get(key string) *PathTree {
 	node := n
 	parts := strings.SplitSeq(key, "/")
