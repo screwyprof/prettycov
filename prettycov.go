@@ -76,15 +76,22 @@ func rollUp(node *PathTree) *PathTree {
 	}
 }
 
+// shortenPaths rewrites the leading oldRoot of each path to newRoot. Only a leading one: replacing
+// the first match anywhere rewrote "github.com/rapid/api" to "github.com/rcored/api" for
+// -old=api, and an empty oldRoot matches at position 0, so -new alone prepended itself to
+// every path instead of replacing anything.
 func shortenPaths(items []FileCoverage, oldRoot, newRoot string) []FileCoverage {
-	if newRoot == "" {
+	if oldRoot == "" || newRoot == "" {
 		return items
 	}
 
 	shortened := make([]FileCoverage, len(items))
 
 	for i, item := range items {
-		item.File = strings.Replace(item.File, oldRoot, newRoot, 1)
+		if rest, found := strings.CutPrefix(item.File, oldRoot); found {
+			item.File = newRoot + rest
+		}
+
 		shortened[i] = item
 	}
 

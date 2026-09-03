@@ -23,7 +23,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
 		switch args[0] {
 		case "help":
-			printUsage(stderr)
+			printUsage(stdout)
 
 			return exitOK
 		case "version":
@@ -42,7 +42,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	switch {
 	case cfg.Help:
-		printUsage(stderr)
+		printUsage(stdout)
 
 		return exitOK
 	case cfg.Version:

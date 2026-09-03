@@ -141,6 +141,48 @@ func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 	assert.NotNil(t, tree.Get("m/pkg"), "and finds one that is")
 }
 
+func TestProcessShortensTheRootPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		file    string
+		old     string
+		replace string
+		want    string
+	}{
+		{
+			name: "replaces a leading root", file: "github.com/o/repo/pkg/a.go",
+			old: "github.com/o/repo", replace: "repo", want: "repo/pkg",
+		},
+		{
+			// "api" appears inside "rapid" first. Replacing the first match anywhere turned
+			// github.com/rapid/api into github.com/rcored/api.
+			name: "only a leading one", file: "github.com/rapid/api/svc/a.go",
+			old: "api", replace: "core", want: "github.com/rapid/api/svc",
+		},
+		{
+			// An empty old root matches at position 0, so this used to prepend rather than replace.
+			name: "no old root means no rewrite", file: "github.com/o/repo/pkg/a.go",
+			old: "", replace: "repo", want: "github.com/o/repo/pkg",
+		},
+		{
+			name: "no new root means no rewrite", file: "github.com/o/repo/pkg/a.go",
+			old: "github.com/o/repo", replace: "", want: "github.com/o/repo/pkg",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process([]prettycov.FileCoverage{file(tc.file, 1, 1)}, tc.old, tc.replace)
+
+			assert.NotNil(t, tree.Get(tc.want), "want a node at %q", tc.want)
+		})
+	}
+}
+
 // Process must not write through the slice it is handed.
 func TestProcessDoesNotModifyItsInput(t *testing.T) {
 	t.Parallel()

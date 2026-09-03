@@ -55,7 +55,7 @@
 
           # buildGo127Module, not plain buildGoModule: otherwise the shell compiles with 1.27 and the
           # package with the nixpkgs default, which is the toolchain split this pin exists to avoid.
-          packages.default = pkgs.buildGo127Module {
+          packages.default = pkgs.buildGo127Module rec {
             pname = "prettycov";
             # A flake's `self` exposes rev/shortRev/revCount but NOT tags, so `git describe` is
             # impossible here. ./VERSION is the one thing both nix and the Makefile can read.
@@ -63,6 +63,13 @@
             src = ./.;
             # Covers the `tool` block's deps too, not just x/tools — bump this whenever go.mod moves.
             vendorHash = "sha256-/yo/wihKSIC3Ekl9UZqSkYowk/giVF/FHyI1ryCuJzI=";
+            # The same stamp the Makefile applies. Without it the version lives only in the
+            # derivation name, and the binary itself answers "(devel)" when asked.
+            ldflags = [
+              "-s"
+              "-w"
+              "-X main.version=v${version}"
+            ];
           };
         };
     };

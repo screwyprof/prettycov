@@ -22,9 +22,10 @@ func buildVersion() string {
 
 	// Installed with `go install prettycov@v1.2.3` the ldflags are not passed, so fall back to
 	// what the build recorded.
-	if info, ok := debug.ReadBuildInfo(); ok {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
 		return info.Main.Version
 	}
 
-	return ""
+	// Never a bare newline: a script reading the version would take that as a version.
+	return "(devel)"
 }

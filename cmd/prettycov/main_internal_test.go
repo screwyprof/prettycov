@@ -233,6 +233,56 @@ func TestRunReportsAMalformedProfileWithoutTheHint(t *testing.T) {
 	assert.NotContains(t, stderr.String(), "go test -coverprofile=")
 }
 
+// Help that was asked for is output, not a diagnostic, so it belongs on stdout — otherwise
+// `prettycov help | less` shows nothing. Usage printed because of a mistake stays on stderr.
+func TestRunPrintsRequestedHelpOnStdout(t *testing.T) {
+	t.Parallel()
+
+	for _, args := range [][]string{{"help"}, {"-help"}, {"-h"}} {
+		t.Run(args[0], func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+			assert.Equal(t, exitOK, run(args, stdout, stderr))
+			assert.Contains(t, stdout.String(), "Prettycov:")
+			assert.Empty(t, stderr.String())
+
+			// Every flag has to be listed, or the help is worse than none.
+			for _, flag := range []string{"-depth", "-old", "-new", "-color", "-fail-under", "-profile"} {
+				assert.Contains(t, stdout.String(), flag)
+			}
+		})
+	}
+}
+
+// Everything after a bare -- is a path, verbatim. Parsing once per positional consumed the --
+// with the first Parse, so anything after the first argument went back to being read as a flag:
+// `prettycov -- a.out -depth=2` quietly set the depth instead of complaining about two paths.
+func TestRunTreatsArgsAfterDoubleDashAsPaths(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := run([]string{"--", writeProfile(t, profile), "-depth=2"}, stdout, stderr)
+
+	assert.Equal(t, exitFailed, code)
+	assert.Contains(t, stderr.String(), "at most one profile path")
+}
+
+// A profile whose name starts with a dash is nameable after --, and stays a path.
+func TestRunReadsADashedProfileAfterDoubleDash(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "-dashed.out")
+	require.NoError(t, os.WriteFile(path, []byte(profile), 0o600))
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := run([]string{"-color", "never", "--", path}, stdout, stderr)
+
+	assert.Equal(t, exitOK, code, stderr.String())
+	assert.Contains(t, stdout.String(), "60.00")
+}
+
 // One typo used to print the message, then the whole usage, then the message again: 33 lines.
 func TestRunKeepsABadFlagShort(t *testing.T) {
 	t.Parallel()
@@ -257,13 +307,10 @@ func TestRunHelpAndVersion(t *testing.T) {
 		wantErr  string
 		wantCode int
 	}{
-		{name: "help subcommand", args: []string{"help"}, wantErr: "Prettycov:", wantCode: exitOK},
-		{name: "help flag", args: []string{"-help"}, wantErr: "Prettycov:", wantCode: exitOK},
-		// -h is not registered as a flag; the flag package handles it and reports ErrHelp. It is
-		// a request for help, not a mistake, so it must exit like the others.
-		{name: "short help flag", args: []string{"-h"}, wantErr: "Prettycov:", wantCode: exitOK},
-		{name: "version subcommand", args: []string{"version"}, wantOut: "\n", wantCode: exitOK},
-		{name: "version flag", args: []string{"-version"}, wantOut: "\n", wantCode: exitOK},
+		// Help itself is covered by TestRunPrintsRequestedHelpOnStdout; -h is registered alongside
+		// -help so the flag package does not special-case it, keeping every help path identical.
+		{name: "version subcommand", args: []string{"version"}, wantOut: "(devel)", wantCode: exitOK},
+		{name: "version flag", args: []string{"-version"}, wantOut: "(devel)", wantCode: exitOK},
 		{name: "unknown flag", args: []string{"-nope"}, wantErr: "flag provided but not defined", wantCode: exitFailed},
 	}
 

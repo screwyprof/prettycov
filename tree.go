@@ -12,9 +12,8 @@ type PathTree struct {
 	isPkg bool
 }
 
-func (n *PathTree) Put(key string, value CoverageStats) bool {
+func (n *PathTree) Put(key string, value CoverageStats) {
 	node := n
-	isNew := false
 	parts := strings.SplitSeq(key, "/")
 
 	for part := range parts {
@@ -24,7 +23,6 @@ func (n *PathTree) Put(key string, value CoverageStats) bool {
 				node.Children = map[string]*PathTree{}
 			}
 
-			isNew = true
 			child = &PathTree{}
 			node.Children[part] = child
 		}
@@ -34,8 +32,6 @@ func (n *PathTree) Put(key string, value CoverageStats) bool {
 
 	node.Coverage = value
 	node.isPkg = true
-
-	return isNew
 }
 
 func (n *PathTree) Get(key string) *PathTree {
