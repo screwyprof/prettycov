@@ -101,7 +101,7 @@ test-cover-total: $(COVERAGE) ## show total coverage
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
 test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
-	@go run ./cmd/prettycov -profile=$(COVERAGE) -old=$(LOCAL_PACKAGES) -new=$(BINARY) -depth=2
+	@go run ./cmd/prettycov -profile=$(COVERAGE) -old=$(LOCAL_PACKAGES) -new=prettycov -depth=2
 
 lint: require-golangci ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"

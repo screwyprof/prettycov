@@ -82,10 +82,10 @@ type config struct {
 }
 
 // newFlagSet wires the flags onto cfg. Shared by parsing and by printing usage, so the two cannot
-// describe different flags.
-func newFlagSet(out io.Writer, cfg *config, color *string) *flag.FlagSet {
+// describe different flags. It takes no writer: the set is silenced below, and printUsage points
+// it at its own destination afterwards.
+func newFlagSet(cfg *config, color *string) *flag.FlagSet {
 	set := flag.NewFlagSet("prettycov", flag.ContinueOnError)
-	set.SetOutput(out)
 
 	set.StringVar(&cfg.Profile, "profile", "", "coverage profile path")
 	set.StringVar(&cfg.CurrentRoot, "old", "", "old project's root package")
@@ -117,7 +117,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprint(w, usageMessage)
 	_, _ = fmt.Fprintln(w, "\nFlags:")
 
-	set := newFlagSet(w, &cfg, &color)
+	set := newFlagSet(&cfg, &color)
 
 	// newFlagSet silences the flag package for parsing; PrintDefaults writes to the same place,
 	// so it has to be pointed back at w or the flag list comes out empty.
@@ -133,7 +133,7 @@ func parseFlags(args []string, stderr io.Writer) (config, error) {
 		color string
 	)
 
-	set := newFlagSet(stderr, &cfg, &color)
+	set := newFlagSet(&cfg, &color)
 
 	positional, err := parseInterspersed(set, args)
 	if err != nil {

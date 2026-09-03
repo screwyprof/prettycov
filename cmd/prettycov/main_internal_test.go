@@ -115,14 +115,24 @@ func TestRunFailUnder(t *testing.T) {
 			args: []string{"-fail-under", "0"}, wantCode: exitOK,
 		},
 		{
-			// Statement counts this large only come from a hand-written profile, and summing them
-			// wraps. It used to clear the gate at 100.00% with two uncovered blocks and one
-			// covered; a number that cannot be a percentage must not be read as one.
-			name: "counts that overflow clear no gate",
+			// Counts this large only come from a hand-written profile, and summing them wraps.
+			// Rejecting the profile beats reporting a percentage derived from the wreckage.
+			name: "counts that overflow past zero",
 			profile: "mode: set\nm/a.go:1.1,2.2 4611686018427387904 1\n" +
 				"m/b.go:3.1,4.2 9223372036854775807 0\nm/c.go:5.1,6.2 9223372036854775807 0\n",
-			args: []string{"-fail-under", "80"}, wantCode: exitBelow,
-			wantErr: "no statements to cover",
+			args: []string{"-fail-under", "80"}, wantCode: exitFailed,
+			wantErr: "statement counts overflow",
+		},
+		{
+			// The one that mattered: wrapping all the way round to a small positive total left a
+			// plausible-looking 33.33% that cleared the gate and exited 0. Guarding only against
+			// a negative total missed it, because this total is not negative.
+			name: "counts that wrap back to a plausible total",
+			profile: "mode: set\nm/a.go:1.1,2.2 5 1\n" +
+				"m/b.go:3.1,4.2 9223372036854775807 0\nm/c.go:5.1,6.2 9223372036854775807 0\n" +
+				"m/d.go:7.1,8.2 12 0\n",
+			args: []string{"-fail-under", "30"}, wantCode: exitFailed,
+			wantErr: "statement counts overflow",
 		},
 	}
 
