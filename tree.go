@@ -2,8 +2,6 @@ package prettycov
 
 import "strings"
 
-type Walker func(key string, value CoverageStats)
-
 type PathTree struct {
 	Coverage CoverageStats
 	Children map[string]*PathTree
@@ -51,16 +49,4 @@ func (n *PathTree) Get(key string) *PathTree {
 	}
 
 	return node
-}
-
-func (n *PathTree) Walk(walker Walker) {
-	n.walk("", walker)
-}
-
-func (n *PathTree) walk(key string, walker Walker) {
-	walker(key, n.Coverage)
-
-	for part, child := range n.Children {
-		child.walk(key+"/"+part, walker)
-	}
 }

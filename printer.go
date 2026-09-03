@@ -65,6 +65,8 @@ const (
 	Between
 )
 
+// String renders the glyph for a box type. An unrecognised one is a blank rather than a panic:
+// this draws a report, and nothing here is worth taking the process down for.
 func (boxType BoxType) String() string {
 	switch boxType {
 	case Regular:
@@ -75,16 +77,14 @@ func (boxType BoxType) String() string {
 		return " "
 	case Between:
 		return "\u2502" // │
-	default:
-		panic("invalid box type")
 	}
+
+	return " "
 }
 
 func getBoxType(index int, length int) BoxType {
 	if index+1 == length {
 		return Last
-	} else if index+1 > length {
-		return AfterLast
 	}
 
 	return Regular

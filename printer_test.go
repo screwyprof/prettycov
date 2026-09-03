@@ -126,6 +126,31 @@ func TestDisplayTreeDepthCountsLevels(t *testing.T) {
 	}
 }
 
+// Drawing a report is not worth a panic, so an unrecognised box type is a blank.
+func TestBoxTypeStringNeverPanics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		box  prettycov.BoxType
+		want string
+	}{
+		{name: "regular", box: prettycov.Regular, want: "├"},
+		{name: "last", box: prettycov.Last, want: "└"},
+		{name: "between", box: prettycov.Between, want: "│"},
+		{name: "after last", box: prettycov.AfterLast, want: " "},
+		{name: "out of range", box: prettycov.BoxType(99), want: " "},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.NotPanics(t, func() { assert.Equal(t, tc.want, tc.box.String()) })
+		})
+	}
+}
+
 // m/
 //
 //	├ alpha/deep/   (alpha holds only deep, so the two collapse into one row)
