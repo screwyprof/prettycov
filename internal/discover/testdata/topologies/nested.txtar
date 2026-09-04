@@ -12,6 +12,7 @@ discovered_packages: 3
 packages_with_tests: 0
 has_workspace: 0
 modules_in_workspace: 0
+modules_with_errors: 0
 -- go.mod --
 module fixture.test/svc
 

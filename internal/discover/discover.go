@@ -29,6 +29,9 @@ import (
 // a directory of C.
 var ErrNoModulePath = errors.New("go.mod declares no module path")
 
+// maxParallelList caps how many `go list` subprocesses run at once. See scanModules.
+const maxParallelList = 8
+
 // Repo is what a directory tree contains. The workspace lives here rather than on each module,
 // because "not in the workspace" and "there is no workspace" are different facts and a bool on
 // Module cannot tell them apart: every module in a repository without a go.work would claim the
@@ -43,10 +46,13 @@ type Repo struct {
 
 	Modules []Module
 
-	// Unreadable are directories the walk could not descend into, usually for want of permission.
-	// Any of them may hold modules, so they are the difference between a smaller answer and a
-	// wrong one, and the report has to say so.
-	Unreadable []string
+	// Unreadable are the directories the walk could not descend into. Any of them may hold
+	// modules, so they are the difference between a smaller answer and a wrong one.
+	//
+	// They are errors rather than paths for the same reason Module.Err is: the cause is the
+	// actionable part. fs.PathError carries the path and tells a caller whether they need
+	// permission or whether the tree moved underneath them.
+	Unreadable []error
 }
 
 // Module is one go.mod and the packages beneath it, up to the next module.
@@ -69,15 +75,12 @@ type Module struct {
 	Err error
 }
 
-// Package is one importable directory.
+// Package is one importable directory. It is discover's own type rather than gocmd's so that the
+// two can diverge: gocmd reports what go list says, this reports what a repository contains.
 type Package struct {
 	ImportPath string
 	Dir        string
-
-	// HasTests is whether any _test.go file exists here. It separates two things a coverage report
-	// otherwise renders identically: a package nothing tests, and a package whose tests ran and
-	// covered none of it.
-	HasTests bool
+	HasTests   bool
 }
 
 // skipDir reports directories a walk must not descend into. vendor holds whole modules that are
@@ -89,17 +92,10 @@ func skipDir(name string) bool {
 }
 
 // Config tunes a scan. Its zero value scans as the go tool would with no flags.
-//
-// It is a struct rather than variadic arguments because what a package is depends on more than the
-// tree: GOOS and GOARCH decide it too, and so would a caller's own rule about what to skip. A
-// signature that can only ever carry tags would have to be replaced to admit any of them.
 type Config struct {
-	// Tags are the build tags the caller will run tests under.
-	//
-	// They are not decoration. A directory whose files are all excluded by constraints is not a
-	// package at all, so `go list ./...` does not match it and -e does not rescue it. Scanning
-	// without the tags the tests use silently misses whole suites — delegator keeps its acceptance
-	// tests behind //go:build acceptance, and vault, cosmos-sdk and grafana all do the same.
+	// Tags are the build tags the caller will run tests under. Scanning without the tags the tests
+	// use silently misses whole suites: delegator keeps its acceptance tests behind //go:build
+	// acceptance, and vault, cosmos-sdk and grafana all do the same. See gocmd.Packages.
 	Tags []string
 }
 
@@ -132,10 +128,15 @@ func Scan(ctx context.Context, dir string, cfg Config) (Repo, error) {
 // depend on each other, so they run together: on grafana's 39 modules the walk itself costs 13ms
 // and the sequential subprocesses cost 5.3s.
 //
+// The bound is not NumCPU, because the scarce resource is not the CPU. One `go list` over
+// grafana's root module peaks at 217MB, and go list is already parallel inside itself — it uses
+// 2.17s of CPU for 1.66s of wall clock — so the wall-clock gain flattens long before the memory
+// does. Unbounded by cores, a 32-core runner would hold about 7GB of go processes.
+//
 // Each goroutine writes its own index, which keeps the result in the walk's order.
 func scanModules(ctx context.Context, dirs []string, inWorkspace map[string]bool, tags []string) []Module {
 	modules := make([]Module, len(dirs))
-	limit := make(chan struct{}, runtime.NumCPU())
+	limit := make(chan struct{}, min(runtime.NumCPU(), maxParallelList))
 
 	var wg sync.WaitGroup
 
@@ -184,7 +185,7 @@ func scanModule(ctx context.Context, dir string, inWorkspace bool, tags []string
 // A directory it cannot read is noted and stepped over rather than ending the walk. One such
 // directory — a root-owned build artefact, a cache — would otherwise hide every module in the
 // tree, which is the same trade already made for an unreadable go.mod.
-func moduleDirs(root string) (dirs, unreadable []string, err error) {
+func moduleDirs(root string) (dirs []string, unreadable []error, err error) {
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			// WalkDir reports an error in two places only: on the root, whose entry is then nil,
@@ -194,7 +195,7 @@ func moduleDirs(root string) (dirs, unreadable []string, err error) {
 				return err
 			}
 
-			unreadable = append(unreadable, path)
+			unreadable = append(unreadable, err)
 
 			return filepath.SkipDir
 		}
@@ -229,9 +230,13 @@ func moduleDirs(root string) (dirs, unreadable []string, err error) {
 //
 //	. // skip:golangci-lint
 func workspaceMembers(ctx context.Context, root string) (string, map[string]bool, error) {
-	file, err := workspaceFile(ctx, root)
-	if err != nil || file == "" {
-		return "", map[string]bool{}, err
+	file, err := gocmd.Workspace(ctx, root)
+	if err != nil {
+		return "", nil, fmt.Errorf("finding the workspace for %q: %w", root, err)
+	}
+
+	if file == "" {
+		return "", nil, nil
 	}
 
 	data, err := os.ReadFile(file)
@@ -255,25 +260,6 @@ func workspaceMembers(ctx context.Context, root string) (string, map[string]bool
 	return file, members, nil
 }
 
-// workspaceFile asks the go tool which go.work governs root, returning "" when none does.
-//
-// The file is not always at root: go searches parent directories for it, so scanning a services/
-// subdirectory of a workspace still has a workspace. Looking only at root/go.work would report
-// every module there as outside a workspace that in fact lists them.
-func workspaceFile(ctx context.Context, root string) (string, error) {
-	out, err := gocmd.Env(ctx, root, "GOWORK")
-	if err != nil {
-		return "", fmt.Errorf("finding the workspace for %q: %w", root, err)
-	}
-
-	// GOWORK is also how a user turns workspace mode off, and reads back as "off" when they have.
-	if out == "off" {
-		return "", nil
-	}
-
-	return out, nil
-}
-
 // modulePath reads the module's own path out of go.mod with cmd/go's parser.
 //
 // `go list -m` would answer too, at the cost of a subprocess that resolves far more than the
@@ -289,7 +275,10 @@ func modulePath(dir string) (string, error) {
 		return "", fmt.Errorf("reading go.mod: %w", err)
 	}
 
-	mod, err := modfile.Parse(file, data, nil)
+	// ParseLax reads the module line and ignores the rest. Parse would reject a go.mod using any
+	// directive newer than the x/mod pinned here, turning a module the go tool reads perfectly
+	// into a broken one — the drift this function avoids shelling out to escape.
+	mod, err := modfile.ParseLax(file, data, nil)
 	if err != nil {
 		return "", fmt.Errorf("parsing go.mod: %w", err)
 	}
@@ -301,16 +290,19 @@ func modulePath(dir string) (string, error) {
 	return mod.Module.Mod.Path, nil
 }
 
-// Packages iterates every package in the repository, in the order the modules were found.
+// Packages iterates every package in the repository, in the order the modules were found, with the
+// module each belongs to.
 //
-// Almost nothing wants the nesting: a coverage profile names import paths, a report names files,
-// and a module is only interesting when something goes wrong with it. Modules remains for when it
-// is — Broken is the usual reason.
-func (r Repo) Packages() iter.Seq[Package] {
-	return func(yield func(Package) bool) {
+// The module comes along because `go test` is module-scoped, so anything that runs the tests has
+// to group by it, and the grouping is not recoverable afterwards: matching a package directory
+// against the module directories needs the longest prefix, and the obvious shortest-prefix version
+// is wrong on exactly the nested layouts this package exists for. Callers that do not care write
+// `for _, pkg := range`.
+func (r Repo) Packages() iter.Seq2[Module, Package] {
+	return func(yield func(Module, Package) bool) {
 		for _, module := range r.Modules {
 			for _, pkg := range module.Packages {
-				if !yield(pkg) {
+				if !yield(module, pkg) {
 					return
 				}
 			}
@@ -330,13 +322,4 @@ func (r Repo) Broken() []Module {
 	}
 
 	return broken
-}
-
-// Partial reports whether the scan missed part of the tree — a directory it could not walk, or a
-// module it could not read. That is exactly when a coverage total computed from it is over a
-// denominator nobody chose, and the number carries no sign of it.
-//
-// Unreadable and Broken say what was missed. This says only that something was.
-func (r Repo) Partial() bool {
-	return len(r.Unreadable) > 0 || len(r.Broken()) > 0
 }

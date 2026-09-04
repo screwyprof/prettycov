@@ -15,6 +15,7 @@ discovered_packages: 1
 packages_with_tests: 0
 has_workspace: 1
 modules_in_workspace: 1
+modules_with_errors: 0
 -- go.work --
 go 1.27
 

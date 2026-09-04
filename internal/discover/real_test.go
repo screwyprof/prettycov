@@ -117,7 +117,7 @@ func summarise(repo discover.Repo) totals {
 		sum.unreadable = append(sum.unreadable, module.Dir+": "+module.Err.Error())
 	}
 
-	for pkg := range repo.Packages() {
+	for _, pkg := range repo.Packages() {
 		sum.packages++
 
 		if pkg.HasTests {
@@ -141,7 +141,7 @@ func accountedDirs(t *testing.T, repo discover.Repo) map[string]bool {
 		markTree(t, accounted, module.Dir)
 	}
 
-	for pkg := range repo.Packages() {
+	for _, pkg := range repo.Packages() {
 		accounted[pkg.Dir] = true
 	}
 

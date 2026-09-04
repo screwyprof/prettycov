@@ -37,13 +37,14 @@ func TestTopologies(t *testing.T) {
 			require.NoError(t, err)
 
 			dir := extract(t, ar)
-			want := expectations(t, ar.Comment)
 
 			repo, err := discover.Scan(t.Context(), dir, discover.Config{})
 			require.NoError(t, err)
 
+			got := observe(t, dir, repo)
+
 			assertScanInvariants(t, repo)
-			assert.Equal(t, want, observe(t, dir, repo))
+			assert.Equal(t, expectations(t, ar.Comment, got), got)
 		})
 	}
 }
@@ -52,70 +53,62 @@ func TestTopologies(t *testing.T) {
 func extract(t *testing.T, ar *txtar.Archive) string {
 	t.Helper()
 
-	dir := t.TempDir()
+	fsys, err := txtar.FS(ar)
+	require.NoError(t, err)
 
-	for _, f := range ar.Files {
-		path := filepath.Join(dir, filepath.FromSlash(f.Name))
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
-		require.NoError(t, os.WriteFile(path, f.Data, 0o600))
-	}
+	dir := t.TempDir()
+	require.NoError(t, os.CopyFS(dir, fsys))
 
 	return dir
-}
-
-// measured are the keys every fixture is judged on. A fixture states the ones that are not zero;
-// the rest still hold, and most of them are only interesting when they are zero — a healthy tree
-// must record no unreadable module, and a tree with no go.work must claim no members.
-var measured = []string{ //nolint:gochecknoglobals // the corpus schema, shared by two functions.
-	"modules_on_disk",      // what a filesystem walk finds
-	"go_list_m",            // what the module graph reports
-	"go_list_dotdotdot",    // what the default package pattern reaches
-	"discovered_modules",   // and what discovery makes of the same tree; where these disagree
-	"discovered_packages",  // with the two above is where a recipe built on go list under-measures
-	"packages_with_tests",  //
-	"has_workspace",        // 1 or 0: a go.work governs this tree, or none does
-	"modules_in_workspace", // meaningless unless has_workspace is 1
-	"modules_with_errors",  // modules found on disk that could not be read
 }
 
 // observe measures a tree every way the corpus records.
 func observe(t *testing.T, dir string, repo discover.Repo) map[string]int {
 	t.Helper()
 
-	got := map[string]int{
-		"modules_on_disk":     countGoMod(t, dir),
-		"go_list_m":           countLines(goList(t, dir, "-m")),
-		"go_list_dotdotdot":   countLines(goList(t, dir, "./...")),
-		"discovered_modules":  len(repo.Modules),
-		"discovered_packages": 0,
-	}
+	packages, tested, inWorkspace := 0, 0, 0
 
-	if repo.Workspace != "" {
-		got["has_workspace"] = 1
-	}
+	for _, pkg := range repo.Packages() {
+		packages++
 
-	got["modules_with_errors"] = len(repo.Broken())
+		if pkg.HasTests {
+			tested++
+		}
+	}
 
 	for _, module := range repo.Modules {
 		if module.InWorkspace {
-			got["modules_in_workspace"]++
+			inWorkspace++
 		}
 	}
 
-	for pkg := range repo.Packages() {
-		got["discovered_packages"]++
+	return map[string]int{
+		"modules_on_disk":      countGoMod(t, dir),
+		"go_list_m":            countLines(goList(t, dir, "-m")),
+		"go_list_dotdotdot":    countLines(goList(t, dir, "./...")),
+		"discovered_modules":   len(repo.Modules),
+		"discovered_packages":  packages,
+		"packages_with_tests":  tested,
+		"has_workspace":        boolToInt(repo.Workspace != ""),
+		"modules_in_workspace": inWorkspace,
+		"modules_with_errors":  len(repo.Broken()),
+	}
+}
 
-		if pkg.HasTests {
-			got["packages_with_tests"]++
-		}
+func boolToInt(b bool) int {
+	if b {
+		return 1
 	}
 
-	return fill(got)
+	return 0
 }
 
 // expectations reads the "key: number" lines from an archive's comment. The prose around them is
 // for the reader; only these lines are asserted.
-func expectations(t *testing.T, comment []byte) map[string]int {
+//
+// Every key observe measures has to be stated, including the zeros — a fixture that says nothing
+// about unreadable modules is claiming there are none, and that is worth writing down.
+func expectations(t *testing.T, comment []byte, measured map[string]int) map[string]int {
 	t.Helper()
 
 	want := map[string]int{}
@@ -131,26 +124,15 @@ func expectations(t *testing.T, comment []byte) map[string]int {
 			continue
 		}
 
-		require.Contains(t, measured, strings.TrimSpace(key), "fixture states an unmeasured key")
+		key = strings.TrimSpace(key)
+		require.Contains(t, measured, key, "fixture states a key nothing measures")
 
-		want[strings.TrimSpace(key)] = n
+		want[key] = n
 	}
 
-	require.NotEmpty(t, want, "fixture states no expectations")
+	require.Len(t, want, len(measured), "fixture must state every measured key, zeros included")
 
-	return fill(want)
-}
-
-// fill defaults every measured key that is absent to zero, so the two maps compare as wholes and
-// a missing line reads as a claim rather than as silence.
-func fill(counts map[string]int) map[string]int {
-	for _, key := range measured {
-		if _, ok := counts[key]; !ok {
-			counts[key] = 0
-		}
-	}
-
-	return counts
+	return want
 }
 
 // assertScanInvariants checks what has to hold of any repository at all.
@@ -161,7 +143,7 @@ func assertScanInvariants(t *testing.T, repo discover.Repo) {
 
 	seen := map[string]bool{}
 
-	for pkg := range repo.Packages() {
+	for _, pkg := range repo.Packages() {
 		// A package with no directory is a go list row misread; the same import path twice means
 		// a module boundary was crossed. Both double-count in a merged profile.
 		assert.NotEmpty(t, pkg.Dir, "%s has no directory", pkg.ImportPath)

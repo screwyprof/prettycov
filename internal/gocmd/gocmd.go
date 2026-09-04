@@ -31,11 +31,16 @@ type Package struct {
 	HasTests bool
 }
 
-// Format is the -f template ParsePackages reads: one tab-separated row per package. It lives
+// format is the -f template ParsePackages reads: one tab-separated row per package. It lives
 // beside the parser because nothing else keeps the two in step.
-const Format = "{{.ImportPath}}\t{{.Dir}}\t{{len .TestGoFiles}}\t{{len .XTestGoFiles}}"
+//
+// A template rather than -json because of how each fails when a field goes away: `-json=Bogus`
+// prints the other fields and exits 0, while `-f {{.Bogus}}` names the field and exits 1. A
+// silently absent TestGoFiles would read as HasTests false, which is the one wrong answer here
+// that looks like an answer.
+const format = "{{.ImportPath}}\t{{.Dir}}\t{{len .TestGoFiles}}\t{{len .XTestGoFiles}}"
 
-// columns is how many fields Format produces.
+// columns is how many fields format produces.
 const columns = 4
 
 // Packages lists the packages of the module in dir, under the given build tags.
@@ -46,12 +51,12 @@ const columns = 4
 // tags are not decoration: a directory whose files are all excluded by constraints is not a
 // package, so ./... does not match it and -e does not rescue it.
 func Packages(ctx context.Context, dir string, tags []string) ([]Package, error) {
-	args := []string{"-e", "-f", Format}
+	args := []string{"list", "-e", "-f", format}
 	if len(tags) > 0 {
 		args = append(args, "-tags="+strings.Join(tags, ","))
 	}
 
-	out, err := run(ctx, dir, noWorkspace, append([]string{"list"}, append(args, "./...")...)...)
+	out, err := run(ctx, dir, noWorkspace, append(args, "./...")...)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +64,7 @@ func Packages(ctx context.Context, dir string, tags []string) ([]Package, error)
 	return ParsePackages(out)
 }
 
-// ParsePackages reads the rows Format produces.
+// ParsePackages reads the rows format produces.
 //
 // A short row or a count that is not a number is an error rather than a zero. HasTests would
 // silently become false, and a package that looks untested is exactly what this distinguishes
@@ -103,17 +108,23 @@ func parsePackage(line string) (Package, error) {
 	return Package{ImportPath: fields[0], Dir: fields[1], HasTests: tests > 0}, nil
 }
 
-// Env reads one go environment variable as the go tool resolves it in dir.
+// Workspace returns the path to the go.work governing dir, empty when none does.
 //
-// Unlike the listing calls it leaves the environment alone. GOWORK is how a caller asks what the
-// workspace is, and answering that through noWorkspace would only ever say there is none.
-func Env(ctx context.Context, dir, name string) (string, error) {
-	out, err := run(ctx, dir, nil, "env", name)
+// go searches parent directories for the file, so this answers for a subdirectory of a workspace
+// too. It is also the one call that must leave the environment alone: noWorkspace would make every
+// answer "none", and GOWORK reads back the literal "off" when a caller has disabled workspace mode
+// themselves — a go command convention, so it is decoded here rather than by whoever asks.
+func Workspace(ctx context.Context, dir string) (string, error) {
+	out, err := run(ctx, dir, nil, "env", "GOWORK")
 	if err != nil {
 		return "", err
 	}
 
-	return strings.TrimSpace(out), nil
+	if file := strings.TrimSpace(out); file != "off" {
+		return file, nil
+	}
+
+	return "", nil
 }
 
 // noWorkspace makes a command answer about the module in dir rather than about the workspace.
@@ -140,7 +151,8 @@ func run(ctx context.Context, dir string, env []string, args ...string) (string,
 
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("go %s in %q: %w", strings.Join(args, " "), dir, withStderr(err))
+		// The verb alone: the rest is a -f template that would bury go's own message.
+		return "", fmt.Errorf("go %s in %q: %w", args[0], dir, withStderr(err))
 	}
 
 	return string(out), nil

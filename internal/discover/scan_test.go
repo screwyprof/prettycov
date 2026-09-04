@@ -1,6 +1,7 @@
 package discover_test
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,7 +35,7 @@ func TestScanUsesBuildTags(t *testing.T) {
 // testedPackages maps every discovered import path to whether it carries tests.
 func testedPackages(repo discover.Repo) map[string]bool {
 	tested := map[string]bool{}
-	for pkg := range repo.Packages() {
+	for _, pkg := range repo.Packages() {
 		tested[pkg.ImportPath] = pkg.HasTests
 	}
 
@@ -82,8 +83,13 @@ func TestScanRecordsUnreadableDir(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, repo.Modules, 1)
 	require.NoError(t, repo.Modules[0].Err)
-	assert.Equal(t, []string{locked}, repo.Unreadable, "where the walk stopped")
 	assert.Equal(t, "locked.test", repo.Modules[0].Path, "the readable module is still reported")
+
+	// The error, not just the path: a caller has to be able to tell "you need permission" from
+	// "the tree moved underneath us", and only one of those is worth retrying.
+	require.Len(t, repo.Unreadable, 1)
+	require.ErrorIs(t, repo.Unreadable[0], fs.ErrPermission)
+	assert.Contains(t, repo.Unreadable[0].Error(), locked, "the error names where the walk stopped")
 }
 
 // TestScanRejectsUnreadableRoot is the other side of that: a gap in the tree is worth reporting

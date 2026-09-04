@@ -149,3 +149,50 @@ func write(t *testing.T, root, name, content string) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 }
+
+// TestWorkspace finds the go.work above dir, because go searches parents for it and a caller
+// standing in a subdirectory of a workspace is still in one.
+func TestWorkspace(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	write(t, root, "go.work", "go 1.27\n\nuse ./svc\n")
+	write(t, root, "svc/go.mod", "module ws.test/svc\n\ngo 1.27\n")
+	write(t, root, "svc/svc.go", "package svc\n")
+
+	got, err := gocmd.Workspace(t.Context(), filepath.Join(root, "svc"))
+
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(root, "go.work"), got)
+}
+
+// TestWorkspaceReadsOffAsNone decodes the go command's own convention: GOWORK reads back the
+// literal "off" when a caller has disabled workspace mode, and that means there is no workspace,
+// not one whose path happens to be "off".
+func TestWorkspaceReadsOffAsNone(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+
+	root := t.TempDir()
+
+	write(t, root, "go.work", "go 1.27\n\nuse ./svc\n")
+	write(t, root, "svc/go.mod", "module ws.test/svc\n\ngo 1.27\n")
+
+	got, err := gocmd.Workspace(t.Context(), root)
+
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+// TestWorkspaceReportsNoneOutsideOne is the ordinary case for a single-module repository.
+func TestWorkspaceReportsNoneOutsideOne(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	write(t, root, "go.mod", "module lone.test\n\ngo 1.27\n")
+
+	got, err := gocmd.Workspace(t.Context(), root)
+
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}

@@ -225,7 +225,7 @@ k8s.test/hack/tools`. prettycov renders it.
 
 ## Corpus
 
-`internal/discover/testdata/topologies/*.txtar` — 9 shapes, each stating what the go tool reports.
+`internal/discover/testdata/topologies/*.txtar` — 12 shapes, each stating what the go tool reports.
 txtar because `cmd/go` uses it, diffs readably, and comes from `x/tools` (already required).
 
 | topology | on disk | `go list -m` | `go list ./...` |
