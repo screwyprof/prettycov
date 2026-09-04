@@ -22,7 +22,7 @@ func TestScanUsesBuildTags(t *testing.T) {
 
 	root := extractArchive(t, filepath.Join("topologies", "build-tags.txtar"))
 
-	repo, err := discover.Scan(t.Context(), root, "acceptance")
+	repo, err := discover.Scan(t.Context(), root, discover.Config{Tags: []string{"acceptance"}})
 
 	require.NoError(t, err)
 	assert.Equal(t, map[string]bool{
@@ -49,7 +49,7 @@ func TestScanFindsParentWorkspace(t *testing.T) {
 
 	root := extractArchive(t, filepath.Join("topologies", "parent-workspace.txtar"))
 
-	repo, err := discover.Scan(t.Context(), filepath.Join(root, "services"))
+	repo, err := discover.Scan(t.Context(), filepath.Join(root, "services"), discover.Config{})
 	require.NoError(t, err)
 
 	assert.Equal(t, filepath.Join(root, "go.work"), repo.Workspace, "the go.work above the scanned root")
@@ -77,7 +77,7 @@ func TestScanRecordsUnreadableDir(t *testing.T) {
 		t.Skip("running as a user that can read mode 000")
 	}
 
-	repo, err := discover.Scan(t.Context(), root)
+	repo, err := discover.Scan(t.Context(), root, discover.Config{})
 
 	require.NoError(t, err)
 	require.Len(t, repo.Modules, 1)
@@ -93,7 +93,7 @@ func TestScanRejectsUnreadableRoot(t *testing.T) {
 
 	missing := filepath.Join(t.TempDir(), "absent")
 
-	_, err := discover.Scan(t.Context(), missing)
+	_, err := discover.Scan(t.Context(), missing, discover.Config{})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), missing, "the error names the path it could not read")
@@ -112,7 +112,7 @@ func TestScanRejectsMalformedWorkspace(t *testing.T) {
 	write(t, root, "m/go.mod", "module malformed.test/m\n\ngo 1.27\n")
 	write(t, root, "m/m.go", "package m\n")
 
-	_, err := discover.Scan(t.Context(), root)
+	_, err := discover.Scan(t.Context(), root, discover.Config{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parsing go.work", "the error names what could not be parsed")
 }
@@ -123,7 +123,9 @@ func TestScanRejectsMalformedWorkspace(t *testing.T) {
 func TestScanHonoursGOWORKOff(t *testing.T) {
 	t.Setenv("GOWORK", "off")
 
-	repo, err := discover.Scan(t.Context(), extractArchive(t, filepath.Join("topologies", "workspace.txtar")))
+	root := extractArchive(t, filepath.Join("topologies", "workspace.txtar"))
+
+	repo, err := discover.Scan(t.Context(), root, discover.Config{})
 	require.NoError(t, err)
 
 	assert.Empty(t, repo.Workspace, "GOWORK=off means there is no workspace, not an empty one")
@@ -148,7 +150,7 @@ func TestScanRecordsUnlistableModule(t *testing.T) {
 	write(t, root, "next/go.mod", "module future.test/next\n\ngo 1.99.0\n")
 	write(t, root, "next/next.go", "package next\n")
 
-	repo, err := discover.Scan(t.Context(), root)
+	repo, err := discover.Scan(t.Context(), root, discover.Config{})
 	require.NoError(t, err)
 	require.Len(t, repo.Modules, 2)
 
@@ -170,7 +172,7 @@ func TestScanReportsModuleWithoutPackages(t *testing.T) {
 	write(t, root, "go.mod", "module empty.test\n\ngo 1.27\n")
 	write(t, root, "docs/README.md", "no Go here\n")
 
-	repo, err := discover.Scan(t.Context(), root)
+	repo, err := discover.Scan(t.Context(), root, discover.Config{})
 	require.NoError(t, err)
 
 	require.Len(t, repo.Modules, 1)

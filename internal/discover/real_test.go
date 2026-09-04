@@ -34,7 +34,7 @@ func TestScanRealRepos(t *testing.T) {
 		t.Run(filepath.Base(root), func(t *testing.T) {
 			t.Parallel()
 
-			repo, err := discover.Scan(t.Context(), root, tags...)
+			repo, err := discover.Scan(t.Context(), root, discover.Config{Tags: tags})
 			require.NoError(t, err)
 
 			sum := summarise(repo)

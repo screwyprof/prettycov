@@ -39,7 +39,7 @@ func TestTopologies(t *testing.T) {
 			dir := extract(t, ar)
 			want := expectations(t, ar.Comment)
 
-			repo, err := discover.Scan(t.Context(), dir)
+			repo, err := discover.Scan(t.Context(), dir, discover.Config{})
 			require.NoError(t, err)
 
 			assertScanInvariants(t, repo)

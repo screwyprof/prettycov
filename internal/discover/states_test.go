@@ -38,7 +38,7 @@ func TestPackageStates(t *testing.T) {
 	root := extractArchive(t, "states.txtar")
 
 	profile := runCoverage(t, root)
-	repo, err := discover.Scan(t.Context(), root)
+	repo, err := discover.Scan(t.Context(), root, discover.Config{})
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]state{

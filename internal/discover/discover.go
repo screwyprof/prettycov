@@ -88,13 +88,23 @@ func skipDir(name string) bool {
 		strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
 }
 
-// Scan finds every module in the tree rooted at dir.
+// Config tunes a scan. Its zero value scans as the go tool would with no flags.
 //
-// tags are the build tags the caller will run tests under. They are not decoration: a directory
-// whose files are all excluded by constraints is not a package at all, so `go list ./...` does not
-// match it and -e does not rescue it. Discovery run without the tags the tests use silently misses
-// whole suites — delegator keeps its acceptance tests that way.
-func Scan(ctx context.Context, dir string, tags ...string) (Repo, error) {
+// It is a struct rather than variadic arguments because what a package is depends on more than the
+// tree: GOOS and GOARCH decide it too, and so would a caller's own rule about what to skip. A
+// signature that can only ever carry tags would have to be replaced to admit any of them.
+type Config struct {
+	// Tags are the build tags the caller will run tests under.
+	//
+	// They are not decoration. A directory whose files are all excluded by constraints is not a
+	// package at all, so `go list ./...` does not match it and -e does not rescue it. Scanning
+	// without the tags the tests use silently misses whole suites — delegator keeps its acceptance
+	// tests behind //go:build acceptance, and vault, cosmos-sdk and grafana all do the same.
+	Tags []string
+}
+
+// Scan finds every module and package in the tree rooted at dir.
+func Scan(ctx context.Context, dir string, cfg Config) (Repo, error) {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return Repo{}, fmt.Errorf("resolving %q: %w", dir, err)
@@ -113,7 +123,7 @@ func Scan(ctx context.Context, dir string, tags ...string) (Repo, error) {
 	return Repo{
 		Dir:        root,
 		Workspace:  workspace,
-		Modules:    scanModules(ctx, dirs, inWorkspace, tags),
+		Modules:    scanModules(ctx, dirs, inWorkspace, cfg.Tags),
 		Unreadable: unreadable,
 	}, nil
 }
@@ -322,9 +332,11 @@ func (r Repo) Broken() []Module {
 	return broken
 }
 
-// Complete reports whether the scan saw the whole tree. It is false when a directory could not be
-// walked or a module could not be read, which is exactly when a coverage total computed from it
-// would be over a denominator nobody chose.
-func (r Repo) Complete() bool {
-	return len(r.Unreadable) == 0 && len(r.Broken()) == 0
+// Partial reports whether the scan missed part of the tree — a directory it could not walk, or a
+// module it could not read. That is exactly when a coverage total computed from it is over a
+// denominator nobody chose, and the number carries no sign of it.
+//
+// Unreadable and Broken say what was missed. This says only that something was.
+func (r Repo) Partial() bool {
+	return len(r.Unreadable) > 0 || len(r.Broken()) > 0
 }
