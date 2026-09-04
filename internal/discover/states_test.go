@@ -89,11 +89,8 @@ func packageStates(t *testing.T, repo discover.Repo, profile []*cover.Profile) m
 	}
 
 	states := map[string]state{}
-
-	for _, module := range repo.Modules {
-		for _, pkg := range module.Packages {
-			states[pkg.ImportPath] = stateOf(pkg.HasTests, covered[pkg.ImportPath], present[pkg.ImportPath])
-		}
+	for pkg := range repo.Packages() {
+		states[pkg.ImportPath] = stateOf(pkg.HasTests, covered[pkg.ImportPath], present[pkg.ImportPath])
 	}
 
 	return states

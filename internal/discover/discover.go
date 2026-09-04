@@ -10,25 +10,24 @@
 package discover
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 
 	"golang.org/x/mod/modfile"
+
+	"github.com/screwyprof/prettycov/internal/gocmd"
 )
 
-var (
-	errNoModulePath  = errors.New("go.mod declares no module path")
-	errBadListOutput = errors.New("unexpected go list output")
-)
+// ErrNoModulePath reports a go.mod that declares no module. hugo keeps an empty one to fence off
+// a directory of C.
+var ErrNoModulePath = errors.New("go.mod declares no module path")
 
 // Repo is what a directory tree contains. The workspace lives here rather than on each module,
 // because "not in the workspace" and "there is no workspace" are different facts and a bool on
@@ -154,7 +153,17 @@ func scanModule(ctx context.Context, dir string, inWorkspace bool, tags []string
 		return module
 	}
 
-	module.Packages, module.Err = packagesIn(ctx, dir, tags)
+	rows, err := gocmd.Packages(ctx, dir, tags)
+	if err != nil {
+		module.Err = err
+
+		return module
+	}
+
+	module.Packages = make([]Package, 0, len(rows))
+	for _, row := range rows {
+		module.Packages = append(module.Packages, Package(row))
+	}
 
 	return module
 }
@@ -242,10 +251,14 @@ func workspaceMembers(ctx context.Context, root string) (string, map[string]bool
 // subdirectory of a workspace still has a workspace. Looking only at root/go.work would report
 // every module there as outside a workspace that in fact lists them.
 func workspaceFile(ctx context.Context, root string) (string, error) {
+	out, err := gocmd.Env(ctx, root, "GOWORK")
+	if err != nil {
+		return "", fmt.Errorf("finding the workspace for %q: %w", root, err)
+	}
+
 	// GOWORK is also how a user turns workspace mode off, and reads back as "off" when they have.
-	out, err := goEnv(ctx, root, "GOWORK")
-	if err != nil || out == "off" {
-		return "", err
+	if out == "off" {
+		return "", nil
 	}
 
 	return out, nil
@@ -257,7 +270,7 @@ func workspaceFile(ctx context.Context, root string) (string, error) {
 // question needs: a module declaring a Go version this toolchain lacks sends it off to download
 // one, so a path sitting in a file on disk becomes a network call that can fail. Parsing also
 // says what is wrong — hugo's internal/warpc/genwebp holds an empty go.mod, a fence around a C
-// build directory, which is errNoModulePath rather than "exit status 1".
+// build directory, which is ErrNoModulePath rather than "exit status 1".
 func modulePath(dir string) (string, error) {
 	file := filepath.Join(dir, "go.mod")
 
@@ -272,114 +285,46 @@ func modulePath(dir string) (string, error) {
 	}
 
 	if mod.Module == nil || mod.Module.Mod.Path == "" {
-		return "", fmt.Errorf("%w: %s", errNoModulePath, dir)
+		return "", fmt.Errorf("%w: %s", ErrNoModulePath, dir)
 	}
 
 	return mod.Module.Mod.Path, nil
 }
 
-// packagesIn lists the module's own packages. Run from the module directory, ./... covers exactly
-// it and nothing else — which is the one job this pattern does correctly.
-func packagesIn(ctx context.Context, dir string, tags []string) ([]Package, error) {
-	args := []string{"-e", "-f", listFormat}
-	if len(tags) > 0 {
-		args = append(args, "-tags="+strings.Join(tags, ","))
-	}
-
-	out, err := goList(ctx, dir, append(args, "./...")...)
-	if err != nil {
-		return nil, err
-	}
-
-	return parsePackages(out)
-}
-
-// listFormat is one tab-separated row per package, and listColumns is how many fields that is.
-// They sit next to the code that reads them because nothing else keeps the two in step.
-const (
-	listFormat  = "{{.ImportPath}}\t{{.Dir}}\t{{len .TestGoFiles}}\t{{len .XTestGoFiles}}"
-	listColumns = 4
-)
-
-// parsePackages turns go list's rows into packages.
+// Packages iterates every package in the repository, in the order the modules were found.
 //
-// It is separate from running go list because it is the only part with a decision in it, and the
-// only part reachable without a subprocess. A short row or an unparseable count is an error rather
-// than a zero: HasTests would silently become false, and a package that looks untested is exactly
-// the thing this package exists to tell apart from one that is.
-func parsePackages(out string) ([]Package, error) {
-	var packages []Package
-
-	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		if line == "" {
-			continue
-		}
-
-		fields := strings.Split(line, "\t")
-		if len(fields) != listColumns {
-			return nil, fmt.Errorf("%w: %q", errBadListOutput, line)
-		}
-
-		tests := 0
-
-		for _, count := range fields[2:] {
-			n, err := strconv.Atoi(count)
-			if err != nil {
-				return nil, fmt.Errorf("%w: %q", errBadListOutput, line)
-			}
-
-			tests += n
-		}
-
-		packages = append(packages, Package{
-			ImportPath: fields[0],
-			Dir:        fields[1],
-			HasTests:   tests > 0,
-		})
-	}
-
-	return packages, nil
-}
-
-// goEnv reads one go environment variable as the go tool resolves it in dir.
-func goEnv(ctx context.Context, dir, name string) (string, error) {
-	//nolint:gosec // name is this package's own literal; dir is caller-supplied, never profile data.
-	cmd := exec.CommandContext(ctx, "go", "env", name)
-	cmd.Dir = dir
-
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("go env %s in %q: %w", name, dir, err)
-	}
-
-	return strings.TrimSpace(string(out)), nil
-}
-
-// goList runs `go list` in dir with the workspace disabled. Inside a module that go.work omits,
-// workspace mode answers about the workspace instead of the module you are standing in — `go list
-// -m` there names the workspace's modules, not this one — and `go list ./...` fails outright.
-// GOWORK=off asks the module about itself, and still resolves imports between workspace siblings.
-func goList(ctx context.Context, dir string, args ...string) (string, error) {
-	// The arguments are this package's own literals and a caller-supplied directory; nothing here
-	// comes from a coverage profile or any other untrusted input.
-	//nolint:gosec // see above.
-	cmd := exec.CommandContext(ctx, "go", append([]string{"list"}, args...)...)
-	cmd.Dir = dir
-
-	cmd.Env = append(os.Environ(), "GOWORK=off")
-
-	out, err := cmd.Output()
-	if err != nil {
-		// "exit status 1" names nothing. go puts the useful part — "go.mod:1: unknown directive"
-		// — on stderr, which Output leaves on the ExitError for exactly this.
-		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
-			if stderr := bytes.TrimSpace(exit.Stderr); len(stderr) > 0 {
-				return "", fmt.Errorf("go list in %q: %w: %s", dir, err, stderr)
+// Almost nothing wants the nesting: a coverage profile names import paths, a report names files,
+// and a module is only interesting when something goes wrong with it. Modules remains for when it
+// is — Broken is the usual reason.
+func (r Repo) Packages() iter.Seq[Package] {
+	return func(yield func(Package) bool) {
+		for _, module := range r.Modules {
+			for _, pkg := range module.Packages {
+				if !yield(pkg) {
+					return
+				}
 			}
 		}
+	}
+}
 
-		return "", fmt.Errorf("go list in %q: %w", dir, err)
+// Broken returns the modules that could not be read. They are the difference between a repository
+// with less in it than you thought and a report that quietly left some out.
+func (r Repo) Broken() []Module {
+	var broken []Module
+
+	for _, module := range r.Modules {
+		if module.Err != nil {
+			broken = append(broken, module)
+		}
 	}
 
-	return string(out), nil
+	return broken
+}
+
+// Complete reports whether the scan saw the whole tree. It is false when a directory could not be
+// walked or a module could not be read, which is exactly when a coverage total computed from it
+// would be over a denominator nobody chose.
+func (r Repo) Complete() bool {
+	return len(r.Unreadable) == 0 && len(r.Broken()) == 0
 }

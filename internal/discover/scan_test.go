@@ -34,11 +34,8 @@ func TestScanUsesBuildTags(t *testing.T) {
 // testedPackages maps every discovered import path to whether it carries tests.
 func testedPackages(repo discover.Repo) map[string]bool {
 	tested := map[string]bool{}
-
-	for _, module := range repo.Modules {
-		for _, pkg := range module.Packages {
-			tested[pkg.ImportPath] = pkg.HasTests
-		}
+	for pkg := range repo.Packages() {
+		tested[pkg.ImportPath] = pkg.HasTests
 	}
 
 	return tested

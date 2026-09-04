@@ -94,21 +94,19 @@ func observe(t *testing.T, dir string, repo discover.Repo) map[string]int {
 		got["has_workspace"] = 1
 	}
 
+	got["modules_with_errors"] = len(repo.Broken())
+
 	for _, module := range repo.Modules {
 		if module.InWorkspace {
 			got["modules_in_workspace"]++
 		}
+	}
 
-		if module.Err != nil {
-			got["modules_with_errors"]++
-		}
+	for pkg := range repo.Packages() {
+		got["discovered_packages"]++
 
-		got["discovered_packages"] += len(module.Packages)
-
-		for _, pkg := range module.Packages {
-			if pkg.HasTests {
-				got["packages_with_tests"]++
-			}
+		if pkg.HasTests {
+			got["packages_with_tests"]++
 		}
 	}
 
@@ -161,17 +159,15 @@ func assertScanInvariants(t *testing.T, repo discover.Repo) {
 
 	assert.Empty(t, repo.Unreadable, "directories the walk could not descend into")
 
-	owner := map[string]string{}
+	seen := map[string]bool{}
 
-	for _, module := range repo.Modules {
-		for _, pkg := range module.Packages {
-			// A package with no directory is a go list row misread; the same import path under
-			// two modules means a boundary was crossed. Both double-count in a merged profile.
-			assert.NotEmpty(t, pkg.Dir, "%s has no directory", pkg.ImportPath)
-			assert.NotContains(t, owner, pkg.ImportPath, "also in %s", owner[pkg.ImportPath])
+	for pkg := range repo.Packages() {
+		// A package with no directory is a go list row misread; the same import path twice means
+		// a module boundary was crossed. Both double-count in a merged profile.
+		assert.NotEmpty(t, pkg.Dir, "%s has no directory", pkg.ImportPath)
+		assert.NotContains(t, seen, pkg.ImportPath, "%s is claimed by two modules", pkg.ImportPath)
 
-			owner[pkg.ImportPath] = module.Path
-		}
+		seen[pkg.ImportPath] = true
 	}
 }
 

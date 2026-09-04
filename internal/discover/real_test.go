@@ -111,19 +111,17 @@ func summarise(repo discover.Repo) totals {
 		if module.InWorkspace {
 			sum.inWorkspace++
 		}
+	}
 
-		if module.Err != nil {
-			sum.unreadable = append(sum.unreadable, module.Dir+": "+module.Err.Error())
+	for _, module := range repo.Broken() {
+		sum.unreadable = append(sum.unreadable, module.Dir+": "+module.Err.Error())
+	}
 
-			continue
-		}
+	for pkg := range repo.Packages() {
+		sum.packages++
 
-		sum.packages += len(module.Packages)
-
-		for _, pkg := range module.Packages {
-			if pkg.HasTests {
-				sum.tested++
-			}
+		if pkg.HasTests {
+			sum.tested++
 		}
 	}
 
@@ -139,16 +137,12 @@ func accountedDirs(t *testing.T, repo discover.Repo) map[string]bool {
 
 	accounted := map[string]bool{}
 
-	for _, module := range repo.Modules {
-		if module.Err != nil {
-			markTree(t, accounted, module.Dir)
+	for _, module := range repo.Broken() {
+		markTree(t, accounted, module.Dir)
+	}
 
-			continue
-		}
-
-		for _, pkg := range module.Packages {
-			accounted[pkg.Dir] = true
-		}
+	for pkg := range repo.Packages() {
+		accounted[pkg.Dir] = true
 	}
 
 	return accounted
