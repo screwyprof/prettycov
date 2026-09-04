@@ -27,6 +27,17 @@ Everything here was measured, not recalled. Go 1.27, linux/arm64.
 | golangci-lint walks the **filesystem**, not the package graph | tried to format `_reference/`; needs `^_` exclusion |
 | `internal/coverage/*` is not importable — no public covdata reader | `use of internal package not allowed` |
 | Only supported covdata reader: `go tool covdata textfmt` | — |
+| `-coverprofile` is written **incrementally**, per package as each test binary finishes | SIGKILL mid-run: finished package's data present |
+| `go test ./...` builds one test binary per package, so a panic or build failure loses only that package | `states.txtar`: 1 of 5 lost; `fail.test/broken [build failed]` with `good` at 100% |
+| `-timeout` applies per test binary, not per invocation | NATS: *"Default of 10 minute (per package)"* |
+| default `-covermode` is `set`; `-race` silently makes it `atomic` | `mode: set` / `mode: atomic` |
+| `-race -covermode=set` is a hard error | `-covermode must be "atomic", not "set", when -race is enabled` |
+| a second `go test` **truncates** the same `-coverprofile` | run 1 then run 2: only run 2's package remains |
+| overlapping package patterns are absorbed | `go test ./... ./a/...` runs each package once |
+| flags may follow the package pattern | `go test ./... -run TestA` works |
+| `-C dir` must be the first flag | `-C flag must be first flag on command line` |
+| `go list -json=Bogus` exits **0** with the field absent; `-f {{.Bogus}}` exits **1** and names it | `go help list`: `-json=` is *"required field names… to save work"*, not a schema |
+| one `go test` over directory paths spans a workspace, and **only** a workspace | delegator: 5 modules, 1 profile. grpc-go (no go.work): 262 of 352 packages |
 
 ## Limits
 
@@ -152,21 +163,35 @@ completeness reporting.
 **Not ours:** building/running tests · flag semantics · profile formats · suite definition ·
 what to exclude · `-coverpkg` (see below).
 
-**Flag contract** — own only what makes the merge valid; forward the rest unparsed after `--`:
+**Flag contract** — own the two things that make the fan-out work; forward the rest after `--`:
 
 | flag | who |
 | --- | --- |
-| `-coverprofile` | ours, always (temp per run); error if user passes it |
-| `-coverpkg` | **theirs** — forwarded, never derived |
-| `-covermode` | normalised across runs (mode mismatch = merge failure) |
+| `-coverprofile` | **ours** — a second `go test` truncates it, so N module runs need N temp paths merged into the one name the user gave. Error if it appears after `--` |
+| the package pattern | **ours** — `./...` per module *is* the tool. Harmless if the user also passes one; overlapping patterns are absorbed |
+| `-covermode` | **theirs** — identical flags give every module the same mode by construction, so nothing needs normalising. Pinning `set` would break `-race` |
+| `-coverpkg` | **theirs** — forwarded, never derived (see below) |
+| `-tags` | **theirs**, but *read* — discovery without them misses whole suites. The one flag we parse, and only in the CLI layer |
 | everything else | forwarded, never declared — this is what killed goverage |
 
 **Files:** create nothing the user did not name. Per-module intermediates → temp, cleaned.
 Per-suite profiles → user-named. Merged result → user-named.
 
-**Failure policy:** always run everything, always report completeness; only the exit code is
-configurable — `--fail-on=test` (default) / `incomplete` / `never`. NATS's policy = `incomplete`;
-delegator's `|| true` = `never`.
+**One invocation = one suite.** etcd needs five, differing in timeout, tags *and* package pattern;
+no single flag set expresses them. Multiple suites are multiple runs, merged afterwards — which is
+also how sharding and per-invocation `-coverpkg` are expressed.
+
+**Failure policy:** always run everything, always report completeness. Produce exits like `go
+test`; the configurable part — `--fail-on=test` / `incomplete` / `never` — belongs to the report,
+where the completeness information is. NATS's policy = `incomplete`, and their commit message is
+its justification; delegator's `|| true` = `never`.
+
+**Exclusion is deny-only, module-shaped, anchored, and never inferred.** An allow-list fails by
+omission and nothing mechanical catches it — delegator's `PACKAGES` forgot `./migrator/...`, NATS's
+list is 6 of 20 packages, kubernetes pays for theirs with a CI verify script. A deny-list fails by
+sloppy matching, which anchoring cures. Module granularity because that is the unit of invocation:
+excluding a package saves no time. And excluding a module removes it from the denominator too,
+which is a judgement only the repo owner can make.
 
 **`-coverpkg` is a divergence from `./...`, not a repair for it.** Measured on one module,
 `TestQuad` calling `helper.Double`:
@@ -291,6 +316,93 @@ Aborting on either would have reported nothing for hugo's 192 packages or bubble
 
 Scale: 23 trees in 14s total. On grafana the walk is 13ms of 27,313 entries; the cost is one
 `go list` per module, run concurrently. The floor is the root module's own `go list`, 1.6s.
+
+## Running it: what a per-module loop produces
+
+`go test -covermode=count -coverprofile=<abs> ./...` per module, on real checkouts.
+
+| repo | modules | packages in profile | entirely uncovered | what they were |
+| --- | --- | --- | --- | --- |
+| gin | 1 | 7 | 1 | genuine |
+| bubbletea | 3 | 64 | **63** | all in the `examples` module |
+| helm | 1 | 69 | 10 | *mixed*: test helpers, a vendored copy, real gaps |
+| mev-boost | 1 | 9 | 5 | `cmd/*`, `common`, `config`, root |
+| nats-server | 1 | — | — | **exit 1 with 45,109 profile lines** (63.86% usable) |
+| delegator | 5 | 26 | — | all 5 modules exit 0 without `-tags=acceptance` |
+
+Three run outcomes, all observed: clean; failed **with** data (nats); failed **without** data
+(bubbletea/tutorials, stale go.mod). So a run's status and its profile are independent facts.
+
+Granularity: bubbletea's 63 uncovered packages are one module — one exclusion rule, not 63. helm's
+10 have no rule that separates helpers from real gaps, and excluding a package saves no time
+because it is in the same invocation. **Exclusion is module-shaped; package filtering is
+presentation.** 11 of 22 repos carry a non-product module (`examples`, `tools`, `hack`, `docs`).
+
+Per-package invocation tax, measured warm on nats-server: 0.47s for one `./...` against 1.64s for
+21 separate invocations — **~55ms per extra invocation**, ~170s at kubernetes' 3158 packages.
+
+## Sharding: exactly one project does it
+
+grafana, `scripts/ci/backend-tests/shard.sh` — 8 ways for unit, 4 for integration:
+
+```bash
+find . -name go.mod -exec dirname {} ';' | awk '{print $1 "/..."}'   # walk for modules
+go list -f '{{.Dir}}' -e "${dirs[@]}"                                # list their packages
+find "$PKG" -maxdepth 1 -name '*_test.go' … || unset PACKAGES[i]     # keep those with tests
+(( (i % m) + 1 != n )) && unset 'PACKAGES[i]'                        # round-robin by index
+go test -vet=off -short -timeout=30m "${PACKAGES[@]}"                # ONE invocation per shard
+```
+
+An independent reimplementation of `internal/discover`: filesystem walk, `go list -e`, a HasTests
+filter. It carries the bug the per-module `GOWORK=off` loop exists to prevent — every module
+pattern goes to **one** `go list` from the root, which is workspace-scoped:
+
+| repo | theirs | ours | lost |
+| --- | --- | --- | --- |
+| grafana | 1030 | 1035 | the 5 modules outside `go.work`; `scripts/modowners` has a test file |
+| grpc-go (no go.work) | 262 | 352 | 9 modules of 10 |
+
+Silently — `-e` swallows it, no stderr. `backend-unit-tests.yml` calls `shard.sh` with no `-d`, so
+it takes that path; `pkgs-with-tests-named.sh` repeats the same `go list` line.
+
+## Enumerating packages goes stale
+
+NATS's `scripts/cov.sh` is the most careful script in the survey — per-package isolation, panic
+detection, flapper tolerance, nightly cron — and its package list is hand-maintained:
+
+| | |
+| --- | --- |
+| packages in the repo | 20 |
+| packages named in cov.sh | **6** |
+| missing, with tests | `server/stree` (1294 src / **2059 test** lines), `server/pse`, `server/gsl`, `server/thw`, `server/tpm`, `internal/ocsp`, … |
+
+Their git history shows the maintenance: *"Fix code coverage script (remove auth package that no
+longer exists)"* (2017). A package never named cannot produce an empty profile, so their own panic
+check cannot catch this.
+
+The panic check itself (2022, six years after the per-package split, which was for `-coverpkg`
+scoping) states the policy this tool needs:
+
+> We are ok with a flapper or two… However, if there is a test panic, then all other tests within
+> this package will NOT run, which then would have possibly a massive impact in the code coverage
+> percentage.
+
+Failing tests tolerable, lost data fatal — `--fail-on=incomplete`, justified in a commit message.
+
+## Test tag vocabulary
+
+Non-platform build tags on `_test.go` across 22 checkouts, most frequent first:
+
+```
+258 ignore_autogenerated   44 minimal    38 isolated    30 mobile    24 enterprise
+ 23 cluster_proxy          18 race       14 system_test 14 skip_js_tests  14 gofuzz
+ 11 e2e                    10 integration 10 testonly    5 fuzz      4 withdeploy
+```
+
+A `--integration` flag guessing `integration|e2e|system_test` catches 35 uses and misses vault's
+`isolated` (38 alone), `testonly`, hugo's `withdeploy`, go-ethereum's `integrationtests`. Those
+packages' test files then are not in the package at all, so `HasTests` is false and they report as
+honest zeros — silent under-measurement by another door. Projects must supply their own tags.
 
 ## Open
 
