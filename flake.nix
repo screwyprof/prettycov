@@ -27,7 +27,7 @@
         {
           devShells.default = pkgs.mkShell {
             packages = [
-              pkgs.go_1_27
+              pkgs.go_1_26
               pkgs.gopls
               pkgs.gotools
               pkgs.golangci-lint
@@ -50,9 +50,13 @@
             '';
           };
 
-          # buildGo127Module, not plain buildGoModule: otherwise the shell compiles with 1.27 and the
+          # buildGo126Module, not plain buildGoModule: otherwise the shell compiles with 1.26 and the
           # package with the nixpkgs default, which is the toolchain split this pin exists to avoid.
-          packages.default = pkgs.buildGo127Module rec {
+          #
+          # 1.26 rather than 1.27: golang/go#80974 splits a straight-line block at blank lines and
+          # writes the whole run's statement count into each piece, inflating every number this tool
+          # reports. A coverage tool cannot ship on a toolchain that miscounts statements.
+          packages.default = pkgs.buildGo126Module rec {
             pname = "prettycov";
             # A flake's `self` exposes rev/shortRev/revCount but NOT tags, so `git describe` is
             # impossible here. ./VERSION is the one thing both nix and the Makefile can read.
