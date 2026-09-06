@@ -106,6 +106,12 @@ func Scan(ctx context.Context, dir string, cfg Config) (Repo, error) {
 		return Repo{}, fmt.Errorf("resolving %q: %w", dir, err)
 	}
 
+	// Through the link, not to it. WalkDir lstats its root, so a symlink to a directory is visited
+	// as a single leaf and the walk finds nothing — no modules, no error, no output.
+	if resolved, linkErr := filepath.EvalSymlinks(root); linkErr == nil {
+		root = resolved
+	}
+
 	dirs, unreadable, err := moduleDirs(root)
 	if err != nil {
 		return Repo{}, err

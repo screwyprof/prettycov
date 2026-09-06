@@ -19,6 +19,15 @@ Replace a long root package path:
 	prettycov -old=gitlab.com/Company/Department/product/unicorn -new=unicorn
 Fail when total coverage is below a threshold, for CI:
 	prettycov -fail-under=80
+Stop counting code you never meant to test, one pattern per flag:
+	prettycov -exclude='/cmd/' -exclude='\.pb\.go$'
+
+Run every module's tests, one go test each:
+	prettycov measure -- -race
+Join their coverage into one profile:
+	prettycov measure -profile=coverage.out -- -race
+Attribution is go's own: -coverpkg=./... within a module, =work across a workspace:
+	prettycov measure -profile=coverage.out -- -coverpkg=work -covermode=atomic
 `
 
 // printUsage writes the help text and the flag defaults.

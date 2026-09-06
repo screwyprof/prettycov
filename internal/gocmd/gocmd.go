@@ -11,10 +11,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ErrBadOutput reports a row this package cannot read.
@@ -43,6 +45,20 @@ const format = "{{.ImportPath}}\t{{.Dir}}\t{{len .TestGoFiles}}\t{{len .XTestGoF
 // columns is how many fields format produces.
 const columns = 4
 
+// listArgs is a `go list` over the module in the working directory: -e so a package that fails to
+// load stays in the answer rather than losing the whole run, and the tags the caller will build
+// under, since a directory whose files are all excluded by constraints is not a package at all.
+func listArgs(tmpl string, tags []string, extra ...string) []string {
+	args := append([]string{"list", "-e"}, extra...)
+	args = append(args, "-f", tmpl)
+
+	if len(tags) > 0 {
+		args = append(args, "-tags="+strings.Join(tags, ","))
+	}
+
+	return append(args, "./...")
+}
+
 // Packages lists the packages of the module in dir, under the given build tags.
 //
 // ./... run from a module directory covers exactly that module, which is the one job this pattern
@@ -51,12 +67,7 @@ const columns = 4
 // tags are not decoration: a directory whose files are all excluded by constraints is not a
 // package, so ./... does not match it and -e does not rescue it.
 func Packages(ctx context.Context, dir string, tags []string) ([]Package, error) {
-	args := []string{"list", "-e", "-f", format}
-	if len(tags) > 0 {
-		args = append(args, "-tags="+strings.Join(tags, ","))
-	}
-
-	out, err := run(ctx, dir, noWorkspace, append(args, "./...")...)
+	out, err := run(ctx, dir, noWorkspace, listArgs(format, tags)...)
 	if err != nil {
 		return nil, err
 	}
@@ -127,12 +138,97 @@ func Workspace(ctx context.Context, dir string) (string, error) {
 	return "", nil
 }
 
+// TestConfig is one `go test` invocation.
+type TestConfig struct {
+	// Profile is where go writes the coverage profile. It must be absolute: the command runs in
+	// the module's directory, so a relative path would land inside the caller's tree.
+	//
+	// Empty runs the tests without measuring them at all.
+	Profile string
+
+	// Args are forwarded to go test verbatim. This package does not read them.
+	Args []string
+
+	// IgnoreWorkspace runs the command as if no go.work existed.
+	//
+	// Set it for a module the workspace omits, where `./...` otherwise matches nothing at all:
+	// "directory prefix . does not contain modules listed in go.work". Leave it clear for a member,
+	// whose siblings the workspace is what resolves — a member without replace directives in its
+	// go.mod cannot find them any other way.
+	IgnoreWorkspace bool
+
+	// Stdout and Stderr receive go test's output as it happens. A run takes minutes, and buffering
+	// it to reformat is how a wrapper stops being usable.
+	Stdout io.Writer
+	Stderr io.Writer
+}
+
+// Test runs the tests of the module in dir, under coverage when a Profile is given.
+//
+// ./... is what a module's whole suite means, and a package pattern the caller also passes is
+// harmless since overlapping patterns are absorbed.
+//
+// Nothing here inspects Args to enforce that. Placing our flags last is enough, and it avoids
+// modelling go test's grammar, where telling a flag's value from a package pattern needs the
+// arity of every flag we do not own.
+//
+// The error is non-nil when go test exits non-zero, which includes ordinary test failures. That is
+// a result rather than a fault, and the profile may well exist alongside it: a build failure in one
+// package still leaves every other package measured.
+func Test(ctx context.Context, dir string, cfg TestConfig) error {
+	// Ours last. go takes the last of two identical flags, so a caller's -coverprofile would
+	// otherwise win and send the data somewhere nothing reads, leaving an empty report and no
+	// error to explain it.
+	args := append([]string{"test"}, cfg.Args...)
+
+	// No Profile means run the tests and measure nothing. The run still reports its failures, which
+	// is the whole reason not to simply skip a module whose coverage nobody wants.
+	if cfg.Profile != "" {
+		args = append(args, "-coverprofile="+cfg.Profile)
+	}
+
+	var env []string
+	if cfg.IgnoreWorkspace {
+		env = noWorkspace
+	}
+
+	return stream(ctx, dir, env, append(args, "./..."), cfg.Stdout, cfg.Stderr)
+}
+
+// stream runs the go command in dir, passing its output through as it is produced.
+func stream(ctx context.Context, dir string, env, args []string, stdout, stderr io.Writer) error {
+	//nolint:gosec // args are this package's literals plus caller-supplied go test flags.
+	cmd := exec.CommandContext(ctx, "go", args...)
+	cmd.Dir = dir
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+
+	// SIGINT rather than the default SIGKILL: go writes the coverage profile incrementally as each
+	// test binary finishes, so a clean stop keeps the package that was in flight.
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = cancelGrace
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("go %s in %q: %w", args[0], dir, err)
+	}
+
+	return nil
+}
+
+// cancelGrace is how long a cancelled go test has to finish writing before it is killed.
+const cancelGrace = 5 * time.Second
+
 // noWorkspace makes a command answer about the module in dir rather than about the workspace.
 //
 // Inside a module that go.work omits, workspace mode answers about the workspace instead of the
 // module you are standing in — `go list -m` there names the workspace's modules, not this one —
-// and `go list ./...` fails outright. GOWORK=off asks the module about itself, and still resolves
-// imports between workspace siblings.
+// and `go list ./...` fails outright. GOWORK=off asks the module about itself. It does not resolve
+// imports between workspace siblings — go.work is what does that, and without it a sibling is
+// reachable only through require and replace in go.mod.
 //
 //nolint:gochecknoglobals // a constant list, and Go has no constant slices.
 var noWorkspace = []string{"GOWORK=off"}

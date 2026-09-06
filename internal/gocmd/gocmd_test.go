@@ -1,8 +1,11 @@
 package gocmd_test
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -195,4 +198,125 @@ func TestWorkspaceReportsNoneOutsideOne(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Empty(t, got)
+}
+
+// A package with one statement, and a test that covers it. Raw strings because escaped one-liners
+// of Go source are unreadable and the linter is right to say so.
+const (
+	source = "package %s\n\nfunc F() int { return 1 }\n"
+	test   = `package %s
+
+import "testing"
+
+func TestF(t *testing.T) {
+	if F() != 1 {
+		t.Fatal("no")
+	}
+}
+`
+)
+
+// writeCovered creates a package under root/dir whose single statement a test exercises.
+func writeCovered(t *testing.T, root, dir, pkg string, tags ...string) {
+	t.Helper()
+
+	prefix := ""
+	if len(tags) > 0 {
+		prefix = "//go:build " + strings.Join(tags, " ") + "\n\n"
+	}
+
+	write(t, root, filepath.Join(dir, pkg+".go"), fmt.Sprintf(source, pkg))
+	write(t, root, filepath.Join(dir, pkg+"_test.go"), prefix+fmt.Sprintf(test, pkg))
+}
+
+// TestTestWritesAProfile is the ordinary case: tests pass, coverage lands in the named file.
+func TestTestWritesAProfile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	profile := filepath.Join(t.TempDir(), "cover.out")
+
+	write(t, dir, "go.mod", "module run.test\n\ngo 1.27\n")
+	writeCovered(t, dir, "a", "a")
+
+	err := gocmd.Test(t.Context(), dir, gocmd.TestConfig{Profile: profile, Stdout: io.Discard, Stderr: io.Discard})
+
+	require.NoError(t, err)
+	assert.Contains(t, read(t, profile), "run.test/a/a.go", "the package was measured")
+}
+
+// TestTestKeepsDataFromAFailedRun is the state every wrapper has to model: go test exits non-zero
+// and the profile still holds every package that did compile. nats-server does exactly this —
+// exit 1 with 45,109 lines of usable coverage.
+func TestTestKeepsDataFromAFailedRun(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	profile := filepath.Join(t.TempDir(), "cover.out")
+
+	write(t, dir, "go.mod", "module partial.test\n\ngo 1.27\n")
+	writeCovered(t, dir, "good", "good")
+	write(t, dir, "broken/b.go", "package broken\n\nfunc B() int { return undefinedSymbol }\n")
+
+	err := gocmd.Test(t.Context(), dir, gocmd.TestConfig{Profile: profile, Stdout: io.Discard, Stderr: io.Discard})
+
+	require.Error(t, err, "one package failed to build")
+	assert.Contains(t, read(t, profile), "partial.test/good/good.go", "the healthy package survived it")
+}
+
+// TestTestIgnoresWorkspaceWhenAsked covers the module a go.work omits, where ./... otherwise
+// matches nothing: "directory prefix . does not contain modules listed in go.work". grafana has
+// five such modules and one of them has tests.
+func TestTestIgnoresWorkspaceWhenAsked(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	outside := filepath.Join(root, "outside")
+
+	write(t, root, "go.work", "go 1.27\n\nuse ./member\n")
+	write(t, root, "member/go.mod", "module ws.test/member\n\ngo 1.27\n")
+	write(t, root, "member/m.go", "package member\n")
+	write(t, root, "outside/go.mod", "module ws.test/outside\n\ngo 1.27\n")
+	writeCovered(t, outside, ".", "outside")
+
+	inWorkspaceMode := gocmd.Test(t.Context(), outside,
+		gocmd.TestConfig{Profile: filepath.Join(t.TempDir(), "a.out"), Stdout: io.Discard, Stderr: io.Discard})
+	require.Error(t, inWorkspaceMode, "the workspace hides a module it does not list")
+
+	profile := filepath.Join(t.TempDir(), "b.out")
+	err := gocmd.Test(t.Context(), outside,
+		gocmd.TestConfig{Profile: profile, IgnoreWorkspace: true, Stdout: io.Discard, Stderr: io.Discard})
+
+	require.NoError(t, err)
+	assert.Contains(t, read(t, profile), "ws.test/outside/outside.go", "and without it the module is reachable")
+}
+
+// TestTestForwardsArgs checks that a caller's flags reach go test unread.
+func TestTestForwardsArgs(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	profile := filepath.Join(t.TempDir(), "cover.out")
+
+	write(t, dir, "go.mod", "module tags.test\n\ngo 1.27\n")
+	writeCovered(t, dir, "a", "a", "acceptance")
+
+	err := gocmd.Test(t.Context(), dir, gocmd.TestConfig{
+		Profile: profile,
+		Args:    []string{"-tags=acceptance"},
+		Stdout:  io.Discard,
+		Stderr:  io.Discard,
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, read(t, profile), "1 1", "the tagged test ran and covered the statement")
+}
+
+func read(t *testing.T, path string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return string(data)
 }

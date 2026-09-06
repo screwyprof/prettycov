@@ -16,6 +16,12 @@ const (
 // Run is the whole command apart from exiting: args excludes the program name, and the int is the
 // status to exit with. Nothing it calls exits, so a caller keeps control.
 func Run(args []string, stdout, stderr io.Writer) int {
+	// measure runs tests and writes profiles; it shares no flags with the report, and everything
+	// after its -- belongs to go test.
+	if len(args) > 0 && args[0] == "measure" {
+		return runMeasure(args[1:], stdout, stderr)
+	}
+
 	cfg, err := parseFlags(args)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\nrun \"prettycov -help\" for usage\n", err)

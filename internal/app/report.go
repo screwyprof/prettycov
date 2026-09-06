@@ -27,11 +27,29 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 		return exitFailed
 	}
 
-	tree := prettycov.Process(items, cfg.CurrentRoot, cfg.NewRoot)
+	kept, excluded := prettycov.Exclude(items, cfg.Exclude)
+	reportExclusions(excluded, stderr)
+
+	tree := prettycov.Process(kept, cfg.CurrentRoot, cfg.NewRoot)
 
 	prettycov.DisplayTree(stdout, tree, prettycov.Options{Depth: cfg.Depth, Color: cfg.Color})
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
+}
+
+// reportExclusions says what each pattern took out, on stderr so the report itself stays pipeable.
+// Always, not behind a verbose flag: exclusion moves the denominator.
+func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
+	for _, ex := range excluded {
+		if ex.Files == 0 {
+			_, _ = fmt.Fprintf(stderr, "-exclude %q matched nothing\n", ex.Pattern)
+
+			continue
+		}
+
+		_, _ = fmt.Fprintf(stderr, "-exclude %q left out %d statements in %d files\n",
+			ex.Pattern, ex.Statements, ex.Files)
+	}
 }
 
 // checkThreshold grades the total against want, which is nil when no gate was asked for.

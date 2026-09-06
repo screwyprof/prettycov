@@ -99,6 +99,22 @@ total coverage 94.01% is below 99.00%
 1
 ```
 
+### Exclude files
+`-exclude` takes a regexp and drops every file whose path matches it, so generated code, `main` packages and test helpers stop dragging the number down. It is repeatable, and it says what each pattern took out:
+
+```shell
+❯ prettycov -exclude='/cmd/' -exclude='\.pb\.go$'
+-exclude "/cmd/" left out 354 statements in 3 files
+-exclude "\.pb\.go$" left out 908 statements in 12 files
+ github.com/screwyprof/delegator - 94.04
+```
+
+Those lines go to stderr, so the report itself still pipes. They are always printed, because exclusion moves the denominator and a total quietly resting on half the repository is the thing this tool exists to catch. A pattern that matches nothing says so too, which is usually a typo or a path that has moved.
+
+It filters the profile when it is read, not the tests that produced it. A package cannot be left out of `go test` — it is compiled and reported either way — so this saves no time; what it changes is the denominator. Patterns are unanchored and match the file's full path, so `cmd/` reaches every command in the tree and `\.pb\.go$` drops generated protobuf. That is what golangci-lint does too, and like golangci-lint the safeguard is not anchoring but the count: an unanchored `cmd/` also removes `pkg/subcmd`, and the report says so by naming two files rather than one.
+
+That is enough to express what projects already ignore. etcd's `codecov.yml` drops `**/*.pb.go`, `**/*.pb.gw.go` and `tests/**`, which is `-exclude='/tests/|\.pb(\.gw)?\.go$'` and takes its total from 60.29% to 68.32%, against the 69.68% it publishes.
+
 ### Colour
 Percentages are graded red, yellow and green using only the base ANSI colours, so your own terminal theme decides the shades. Colour is on when writing to a terminal and off when piped, honouring [`NO_COLOR`](https://no-color.org) and `TERM=dumb`. Override with `-color=always` or `-color=never`.
 
@@ -106,6 +122,19 @@ Percentages are graded red, yellow and green using only the base ANSI colours, s
 It parses the coverage profile to populate a prefix tree of paths and coverages.
 Then it traverses the tree from the furthermost leaves to top merging the coverage info. 
 Then it draws the top row plus `-depth` levels beneath it. A run of directories that each hold nothing but the next one renders as a single row.
+
+### It counts statements, so it will not match your dashboard
+`prettycov` counts **statements**, which is what a Go coverage profile records and what `go tool cover -func` reports. Coverage dashboards count **lines**, and they do not agree with each other either. The same profile, three ways:
+
+| | testify |
+| --- | --- |
+| statements — `go tool cover`, `prettycov` | **67.31%** (3471/5157) |
+| lines — coveralls, via `goveralls` or `gcov2lcov` | 62.54% (3865/6180) |
+| lines — codecov, which also counts partly-covered lines separately | 64.04% (3008/4697) |
+
+They differ in how they merge repeated blocks too: `gocovmerge` adds counts, codecov takes the maximum per line, `goveralls` sums. There is no specification to reproduce, so `prettycov` matches the Go toolchain and offers no other mode.
+
+If a badge says 69.68% and `prettycov` says 68.34%, that gap is the unit, not a disagreement about your tests.
 
 ## Contributors ✨
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
