@@ -10,6 +10,9 @@ I wanted to show a table or a tree with top-level packages and their correspondi
 I tried to search for some ready to use tools which would offer something similar but with not luck.
 After that, I decided to build it on my own. So here it is :)
 
+## Status
+Pre-1.0. Flags, output format and the Go API may all change between minor versions — pin a version if you gate CI on it. What changed and what broke is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Installation
 ```shell
 go install github.com/screwyprof/prettycov/cmd/prettycov@latest
