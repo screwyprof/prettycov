@@ -105,7 +105,7 @@ it did.
 - The coverage profile is parsed directly. It used to shell out to `go tool cover -html` and scrape
   the HTML, which is also why numbers move here: `-func` and `-html` did not agree.
 
-## [0.1.0] — [0.1.3] — 2022-09-02 … 2022-09-07
+## 0.1.0 – 0.1.3 — 2022-09-02 … 2022-09-07
 
 Initial release: a prefix tree of package paths and coverages, rendered to the terminal, with
 `-depth`, `-old` and `-new`.
@@ -120,4 +120,3 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 [0.2.0]: https://github.com/screwyprof/prettycov/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/screwyprof/prettycov/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/screwyprof/prettycov/compare/v0.1.3...v0.1.4
-[0.1.0]: https://github.com/screwyprof/prettycov/releases/tag/v0.1.0
