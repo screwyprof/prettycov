@@ -99,6 +99,34 @@ total coverage 94.01% is below 99.00%
 1
 ```
 
+### Stop counting code you never meant to test
+`-exclude` drops files whose path matches a regexp, before anything is totalled. Patterns are unanchored and match the full path, so a short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out — including nothing, which is how you spot a typo:
+
+```shell
+❯ prettycov
+ github.com/screwyprof/prettycov - 98.88
+ ├ cmd/prettycov - 0.00
+ └ internal/app - 98.29
+
+❯ prettycov -exclude='/cmd/' -exclude='\.pb\.go$'
+-exclude "/cmd/" left out 1 statement in 1 file
+-exclude "\\.pb\\.go$" matched nothing
+ github.com/screwyprof/prettycov - 99.25
+ └ internal/app - 98.29
+```
+
+The accounting goes to stderr, so the report itself stays pipeable.
+
+This is what lets `-coverpkg` stay a single pattern. One package's coverage never enters another's ratio, so excluding it here gives the same total as leaving it out of `-coverpkg` — without a package list computed by a `go list | grep -v` that can disagree with the build it feeds:
+
+```make
+COVERAGE_EXCLUDE := migrator|testcfg|cmd|web/config
+
+coverage:
+	go test -covermode=atomic -coverprofile=coverage.out -coverpkg=work work
+	prettycov -exclude='$(COVERAGE_EXCLUDE)' coverage.out
+```
+
 ### Colour
 Percentages are graded red, yellow and green using only the base ANSI colours, so your own terminal theme decides the shades. Colour is on when writing to a terminal and off when piped, honouring [`NO_COLOR`](https://no-color.org) and `TERM=dumb`. Override with `-color=always` or `-color=never`.
 

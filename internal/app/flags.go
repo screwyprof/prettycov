@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 
@@ -59,6 +60,7 @@ type config struct {
 	NewRoot     string
 	Depth       uint
 	Color       prettycov.ColorMode
+	Exclude     []*regexp.Regexp
 	FailUnder   *float64
 	Help        bool
 	Version     bool
@@ -82,6 +84,19 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 
 		//nolint:wrapcheck // parseColor's error is already phrased for the flag package.
 		return err
+	})
+	// Repeatable: assigning instead of appending would silently apply only the last pattern.
+	// Compiled here so a bad one is a flag error rather than a panic later.
+	set.Func("exclude", "omit files whose path matches this `regexp`; repeatable", func(s string) error {
+		re, err := regexp.Compile(s)
+		if err != nil {
+			//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
+			return err
+		}
+
+		cfg.Exclude = append(cfg.Exclude, re)
+
+		return nil
 	})
 	// A pointer, not a float with a default: zero is a legitimate threshold — it asks only that
 	// the profile hold some statements — so the value cannot say whether the flag was given.
