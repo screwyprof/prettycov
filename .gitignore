@@ -24,3 +24,6 @@ coverage.tmp
 /.direnv/
 .envrc
 .covdata/
+
+# Checkouts surveyed while working on coverage behaviour; never part of the build.
+/_reference/
