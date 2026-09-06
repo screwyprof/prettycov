@@ -27,11 +27,49 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 		return exitFailed
 	}
 
-	tree := prettycov.Process(items, cfg.CurrentRoot, cfg.NewRoot)
+	kept, excluded := prettycov.Exclude(items, cfg.Exclude)
+	reportExclusions(excluded, stderr)
+
+	tree := prettycov.Process(kept, cfg.CurrentRoot, cfg.NewRoot)
 
 	prettycov.DisplayTree(stdout, tree, prettycov.Options{Depth: cfg.Depth, Color: cfg.Color})
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
+}
+
+// reportExclusions says what each pattern took out, on stderr so the report itself stays pipeable.
+// Always, not behind a verbose flag: exclusion moves the denominator.
+func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
+	for _, ex := range excluded {
+		// Distinct from matching nothing: the pattern works, an earlier one just got there first.
+		// Saying "matched nothing" here sends someone to fix a pattern that is already right, and
+		// deleting it stops working the day such a file lands outside the earlier pattern's reach.
+		if ex.Files == 0 && ex.Overlapped > 0 {
+			_, _ = fmt.Fprintf(stderr, "-exclude %q took nothing out, %s already excluded\n",
+				ex.Pattern, plural(ex.Overlapped, "file"))
+
+			continue
+		}
+
+		if ex.Files == 0 {
+			_, _ = fmt.Fprintf(stderr, "-exclude %q matched nothing\n", ex.Pattern)
+
+			continue
+		}
+
+		_, _ = fmt.Fprintf(stderr, "-exclude %q left out %s in %s\n",
+			ex.Pattern, plural(ex.Statements, "statement"), plural(ex.Files, "file"))
+	}
+}
+
+// plural counts n things. "1 statements in 1 files" is the common case for a pattern aimed at one
+// generated file, so it is worth the three lines.
+func plural(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+
+	return fmt.Sprintf("%d %ss", n, thing)
 }
 
 // checkThreshold grades the total against want, which is nil when no gate was asked for.

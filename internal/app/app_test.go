@@ -406,3 +406,106 @@ func writeProfile(t *testing.T, content string) string {
 
 	return path
 }
+
+// -exclude changes the denominator, so it changes the number the gate reads. The fixture is 6 of
+// 10 statements; dropping the uncovered package leaves a full house.
+func TestRunExcludesPackages(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		args     []string
+		wantCode int
+		want     string
+	}{
+		{
+			name: "without it, the uncovered package counts",
+			args: []string{"-fail-under", "100"}, wantCode: codeBelow, want: "60.00",
+		},
+		{
+			name: "excluded, the same profile clears the gate",
+			args: []string{"-exclude", "uncovered", "-fail-under", "100"}, wantCode: codeOK, want: "100.00",
+		},
+		{
+			// A pattern that excludes the whole profile leaves nothing to average, which
+			// checkThreshold already refuses rather than passing silently.
+			name: "excluding everything cannot pass a gate",
+			args: []string{"-exclude", "example.com", "-fail-under", "0"}, wantCode: codeBelow,
+		},
+		{
+			name: "a pattern that does not compile is a flag error",
+			args: []string{"-exclude", "("}, wantCode: codeFailed,
+		},
+		{
+			// An unset make variable reaches the flag as "", which matches every file. Honouring
+			// it would empty the report and exit 0, turning a coverage step into a green no-op.
+			name: "the empty pattern is refused, not honoured",
+			args: []string{"-exclude", ""}, wantCode: codeFailed,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeProfile(t, "mode: set\n"+
+				"example.com/p/covered/a.go:1.1,2.2 6 1\n"+
+				"example.com/p/uncovered/b.go:1.1,2.2 4 0\n")
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run(append(tc.args, "-profile", path, "-color", "never"), stdout, stderr)
+
+			assert.Equal(t, tc.wantCode, code)
+
+			if tc.want != "" {
+				assert.Contains(t, stdout.String(), tc.want)
+			}
+		})
+	}
+}
+
+// The flag is repeatable and every pattern is kept. Assigning instead of appending made -exclude
+// look like it worked and silently applied only the last one.
+func TestRunAppliesEveryExcludePattern(t *testing.T) {
+	t.Parallel()
+
+	profile := "mode: set\n" +
+		"ex.com/p/cmd/web/main.go:1.1,2.2 10 0\n" +
+		"ex.com/p/testutil/t.go:1.1,2.2 10 1\n" +
+		"ex.com/p/web/handler.go:1.1,2.2 10 1\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "cmd/", "-exclude", "testutil", "-exclude", "absent",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Contains(t, stdout.String(), "100.00", "both excluded, only the covered handler is left")
+
+	// Every pattern is accounted for, including the one that took nothing.
+	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 10 statements in 1 file`)
+	assert.Contains(t, stderr.String(), `-exclude "testutil" left out 10 statements in 1 file`)
+	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+}
+
+// A pattern beaten to a file by an earlier one is not a typo, and must not be reported as one:
+// the fix a reader would make is to delete a pattern that is doing its job.
+func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
+	t.Parallel()
+
+	profile := "mode: set\n" +
+		"ex.com/p/cmd/gen.pb.go:1.1,2.2 10 1\n" +
+		"ex.com/p/web/handler.go:1.1,2.2 10 1\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "cmd/", "-exclude", `\.pb\.go$`, "-exclude", "absent",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 10 statements in 1 file`)
+	assert.Contains(t, stderr.String(), `took nothing out, 1 file already excluded`)
+	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+}
