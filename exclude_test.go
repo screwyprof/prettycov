@@ -102,6 +102,8 @@ func TestExcludeReportsWhatEachPatternRemoved(t *testing.T) {
 }
 
 // A file two patterns both match is charged once, so the reported statements add up to what left.
+// The loser is still credited with the match: a pattern that only ever meets files an earlier one
+// already took is working, and reporting it as matching nothing sends someone to fix what is right.
 func TestExcludeChargesAnOverlappingFileOnce(t *testing.T) {
 	t.Parallel()
 
@@ -116,6 +118,22 @@ func TestExcludeChargesAnOverlappingFileOnce(t *testing.T) {
 
 	assert.Equal(t, []prettycov.Exclusion{
 		{Pattern: "cmd/", Files: 1, Statements: 5},
-		{Pattern: `\.pb\.go$`, Files: 0, Statements: 0},
+		{Pattern: `\.pb\.go$`, Overlapped: 1},
 	}, dropped)
+}
+
+// Overlapping and matching nothing are different states, and only the second is a typo.
+func TestExcludeSeparatesOverlapFromNoMatch(t *testing.T) {
+	t.Parallel()
+
+	items := []prettycov.FileCoverage{file("ex.com/p/cmd/gen.pb.go", 2, 3)}
+
+	_, dropped := prettycov.Exclude(items, []*regexp.Regexp{
+		regexp.MustCompile("cmd/"),
+		regexp.MustCompile(`\.pb\.go$`),
+		regexp.MustCompile("typo"),
+	})
+
+	assert.Equal(t, 1, dropped[1].Overlapped, "matched, but an earlier pattern was charged")
+	assert.Equal(t, 0, dropped[2].Overlapped, "never matched at all")
 }

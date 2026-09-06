@@ -436,6 +436,12 @@ func TestRunExcludesPackages(t *testing.T) {
 			name: "a pattern that does not compile is a flag error",
 			args: []string{"-exclude", "("}, wantCode: codeFailed,
 		},
+		{
+			// An unset make variable reaches the flag as "", which matches every file. Honouring
+			// it would empty the report and exit 0, turning a coverage step into a green no-op.
+			name: "the empty pattern is refused, not honoured",
+			args: []string{"-exclude", ""}, wantCode: codeFailed,
+		},
 	}
 
 	for _, tc := range tests {
@@ -480,5 +486,26 @@ func TestRunAppliesEveryExcludePattern(t *testing.T) {
 	// Every pattern is accounted for, including the one that took nothing.
 	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 10 statements in 1 file`)
 	assert.Contains(t, stderr.String(), `-exclude "testutil" left out 10 statements in 1 file`)
+	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+}
+
+// A pattern beaten to a file by an earlier one is not a typo, and must not be reported as one:
+// the fix a reader would make is to delete a pattern that is doing its job.
+func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
+	t.Parallel()
+
+	profile := "mode: set\n" +
+		"ex.com/p/cmd/gen.pb.go:1.1,2.2 10 1\n" +
+		"ex.com/p/web/handler.go:1.1,2.2 10 1\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "cmd/", "-exclude", `\.pb\.go$`, "-exclude", "absent",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 10 statements in 1 file`)
+	assert.Contains(t, stderr.String(), `took nothing out, 1 file already excluded`)
 	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
 }

@@ -41,6 +41,16 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 // Always, not behind a verbose flag: exclusion moves the denominator.
 func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
 	for _, ex := range excluded {
+		// Distinct from matching nothing: the pattern works, an earlier one just got there first.
+		// Saying "matched nothing" here sends someone to fix a pattern that is already right, and
+		// deleting it stops working the day such a file lands outside the earlier pattern's reach.
+		if ex.Files == 0 && ex.Overlapped > 0 {
+			_, _ = fmt.Fprintf(stderr, "-exclude %q took nothing out, %s already excluded\n",
+				ex.Pattern, plural(ex.Overlapped, "file"))
+
+			continue
+		}
+
 		if ex.Files == 0 {
 			_, _ = fmt.Fprintf(stderr, "-exclude %q matched nothing\n", ex.Pattern)
 

@@ -22,6 +22,7 @@ var (
 	errTooManyProfiles = errors.New("want at most one profile path")
 	errTwoProfiles     = errors.New("profile given twice")
 	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
+	errEmptyExclude    = errors.New("want a pattern; an empty one matches every file")
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -88,6 +89,14 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	// Repeatable: assigning instead of appending would silently apply only the last pattern.
 	// Compiled here so a bad one is a flag error rather than a panic later.
 	set.Func("exclude", "omit files whose path matches this `regexp`; repeatable", func(s string) error {
+		// Refused rather than honoured: the empty pattern matches every file, so it empties the
+		// report and, with no -fail-under, exits 0 having measured nothing. An unset make variable
+		// reaches here as "" and would turn a coverage gate into a green no-op.
+		if s == "" {
+			//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
+			return errEmptyExclude
+		}
+
 		re, err := regexp.Compile(s)
 		if err != nil {
 			//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
