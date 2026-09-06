@@ -115,7 +115,7 @@ total coverage 94.01% is below 99.00%
  └ internal/app - 98.29
 ```
 
-The accounting goes to stderr, so the report itself stays pipeable.
+The accounting goes to stderr, so the report itself stays pipeable. It filters the report, not the profile on disk: `go tool cover -html` and anything else reading the file still sees everything in it.
 
 This is what lets `-coverpkg` stay a single pattern. One package's coverage never enters another's ratio, so excluding it here gives the same total as leaving it out of `-coverpkg` — without a package list computed by a `go list | grep -v` that can disagree with the build it feeds:
 
