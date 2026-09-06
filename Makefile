@@ -2,10 +2,23 @@
 BINARY ?= prettycov
 
 ## DO NOT EDIT BELLOW THIS LINE
-GO_FILES := $(shell find . -name "*.go" -not -path "./.direnv/*" | grep -v vendor | uniq)
+# Asked of git rather than found on disk, so the lists are the repository's files and not whatever
+# else the working tree holds. A `find` walks ignored directories too, and anything checked out
+# below the root — a scratch clone, a downloaded dataset — lands in the prerequisites: names with
+# spaces then split into targets make has no rule for, and it stops before running anything.
+#
+# -co keeps files that are merely untracked, so a new one still triggers a rebuild. quotePath=false
+# stops git C-quoting a non-ASCII name into "caf\303\251.go", which wildcard would then drop as a
+# path that does not exist. wildcard itself drops what -c goes on listing after an unstaged delete.
+#
+# Two limits worth knowing: this needs a checkout, since without .git both lists come out empty
+# (git says so, twice, on every invocation); and a tracked file with a space in its name is dropped
+# rather than reported, because make splits prerequisites on whitespace whatever we hand it.
+GIT_LS := git -c core.quotePath=false ls-files -co --exclude-standard
+GO_FILES := $(wildcard $(shell $(GIT_LS) "*.go"))
 # Fixtures are inputs too. Without them a changed profile or golden file leaves the report targets
 # reading a coverage.out that predates it, and make calls the file up to date.
-FIXTURES := $(shell find . -path "*/testdata/*" -type f -not -path "./.direnv/*")
+FIXTURES := $(wildcard $(shell $(GIT_LS) "*testdata/*"))
 LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
 # Counter files from the binary tests, folded into $(COVERAGE) below.
@@ -134,7 +147,7 @@ test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
 
 lint: require-golangci ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
-	golangci-lint  run ./...
+	golangci-lint run ./...
 
 lint-all: require-golangci ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
