@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"os"
 	"slices"
 	"strings"
@@ -40,10 +41,16 @@ const (
 	ColorAlways
 )
 
+// DepthAll shows every level. Named because Options.Depth is exported and the whole tree is a
+// value a caller has to be able to ask for; it is also a reminder that Depth can be at the top of
+// its range, so arithmetic on it — opts.Depth+1, int(opts.Depth) — wraps and renders nothing.
+const DepthAll = math.MaxUint
+
 // Options controls how a tree is rendered. The zero value prints the top row alone, colouring it
 // only if the destination is a terminal.
 type Options struct {
-	// Depth is how many levels to show below the top row, the way `tree -L` counts.
+	// Depth is how many levels to show below the top row, the way `tree -L` counts. DepthAll
+	// shows all of them.
 	Depth uint
 
 	// Color decides whether percentages carry the terminal's own red, yellow and green.

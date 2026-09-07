@@ -159,7 +159,7 @@ func (cfg *config) setDepth(s string) error {
 	// Guessing a big number is wrong in both directions: -depth=9 wastes six levels on a small
 	// repo and truncates kubernetes, which is 3232 rows deep, without saying it did.
 	if s == "max" {
-		cfg.Depth = math.MaxUint
+		cfg.Depth = prettycov.DepthAll
 
 		return nil
 	}

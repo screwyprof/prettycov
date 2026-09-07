@@ -184,7 +184,8 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 	fi; \
 	echo -e "$(OK_COLOR)==> Tagging $$v$(NO_COLOR)"; \
 	git tag -a "$$v" -m "$$v" && git push origin "$$v"
-	@$(MAKE) --no-print-directory publish
+	@$(MAKE) --no-print-directory publish \
+		|| { echo "the tag is pushed; rerun just: make publish"; exit 1; }
 
 # Step 6 of https://go.dev/doc/modules/publishing, taken the second of the three ways listed at
 # https://pkg.go.dev/about#adding-a-package: a request to the proxy. proxy.golang.org caches a
@@ -204,6 +205,8 @@ publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	curl -fsS "https://proxy.golang.org/$$(go list -m)/@v/$$v.info" >/dev/null && \
 	echo "  proxy has it; index.golang.org and pkg.go.dev follow"
 
+# The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit
+# on PATH (pip install pre-commit / brew install pre-commit).
 hooks: ## install git pre-commit hooks
 	@echo -e "$(OK_COLOR)==> Installing git hooks$(NO_COLOR)"
 	@pre-commit install
