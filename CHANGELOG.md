@@ -27,6 +27,16 @@ tags.
   prints as `80.00` on a run the gate fails. Use `-fail-under` rather than comparing the printed
   number to a threshold.
 
+### Changed
+
+- `100.00` is never rounded up to, in the tree or in `-total`: 73999 of 74000 statements now reads
+  `99.99`. It claimed full coverage for code that was not fully covered, which is the one figure
+  here that is a claim rather than a measurement — a badge, or a reason to stop writing tests.
+
+  Only ratios in `(99.995, 100)` change, so nothing this repository or its fixtures report moves.
+  It is a deliberate divergence from `go tool cover -func`, which rounds at one decimal and prints
+  `100.0%` from 99.95% upwards.
+
 ## [0.5.0] — 2026-09-06
 
 ### Added

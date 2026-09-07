@@ -167,26 +167,45 @@ func sanitize(label string) string {
 	}, label)
 }
 
-// Percentage renders a coverage ratio. Exported so a total printed on its own cannot disagree with
-// the same total in a row: two `%.2f` verbs in two packages are two chances to drift apart, and a
-// summary that rounds differently from the report it summarises is worse than no summary.
-func Percentage(pct float64) string {
-	return fmt.Sprintf("%.2f", pct)
+// Percentage renders a coverage ratio, and never reads 100.00 for code that is not fully covered.
+// ok is false when there is nothing to cover, which is not 0%.
+//
+// Exported so a total printed on its own cannot disagree with the same total in a row: two `%.2f`
+// verbs in two packages are two chances to drift apart.
+//
+// Rounding to nearest would report 73999 of 74000 statements as 100.00, and full coverage is the
+// one figure here that is a claim rather than a measurement — it is what a badge shows and what
+// stops someone writing another test. Decided on the counts, because covered == total is exact
+// where a float comparison against 100 is not. `go tool cover -func` rounds at one decimal and so
+// prints 100.0% from 99.95% upwards; this deliberately does not.
+func Percentage(stats CoverageStats) (string, bool) {
+	pct, ok := stats.Ratio()
+	if !ok {
+		return "", false
+	}
+
+	text := fmt.Sprintf("%.2f", pct)
+	if text == "100.00" && stats.Uncovered > 0 {
+		return "99.99", true
+	}
+
+	return text, true
 }
 
 // formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to
 // print "NaN", which is what 0/0 produces in float division.
 func formatRatio(stats CoverageStats, color bool) string {
-	pct, ok := stats.Ratio()
+	text, ok := Percentage(stats)
 	if !ok {
 		// Nothing to cover is not a grade, so it is not coloured either.
 		return "n/a"
 	}
 
-	text := Percentage(pct)
 	if !color {
 		return text
 	}
+
+	pct, _ := stats.Ratio()
 
 	return grade(pct) + text + reset
 }

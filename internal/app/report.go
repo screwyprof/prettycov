@@ -44,7 +44,7 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 // showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
 // It grades against -fail-under exactly as the report does.
 func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
-	pct, ok := tree.Coverage.Ratio()
+	text, ok := prettycov.Percentage(tree.Coverage)
 
 	// Nothing to cover is refused rather than printed: "n/a" is what the tree shows, and a caller
 	// reading `COVERAGE := $(shell prettycov -total)` would carry it into a comparison, while 0.00
@@ -58,7 +58,7 @@ func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) i
 	}
 
 	if ok {
-		_, _ = fmt.Fprintln(stdout, prettycov.Percentage(pct))
+		_, _ = fmt.Fprintln(stdout, text)
 	}
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
@@ -109,17 +109,17 @@ func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) i
 	// the gate useless on an empty or mis-pointed profile.
 	total, ok := tree.Coverage.Ratio()
 	if !ok {
-		_, _ = fmt.Fprintf(stderr, "no statements to cover, wanted at least %s%%\n",
-			prettycov.Percentage(*want))
+		_, _ = fmt.Fprintf(stderr, "no statements to cover, wanted at least %.2f%%\n", *want)
 
 		return exitBelow
 	}
 
 	if total < *want {
-		// Through Percentage, like every other figure: one rendering, so a gate message and the
-		// report it refers to cannot round differently.
-		_, _ = fmt.Fprintf(stderr, "total coverage %s%% is below %s%%\n",
-			prettycov.Percentage(total), prettycov.Percentage(*want))
+		// The measured figure goes through Percentage, like every other one, so this message and
+		// the report it refers to cannot disagree. The threshold does not: it is a number the
+		// caller typed, not a coverage ratio, and rounding it is all it needs.
+		text, _ := prettycov.Percentage(tree.Coverage)
+		_, _ = fmt.Fprintf(stderr, "total coverage %s%% is below %.2f%%\n", text, *want)
 
 		return exitBelow
 	}
