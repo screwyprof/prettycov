@@ -174,7 +174,7 @@ nix-hash: ## recompute flake.nix vendorHash (run after go.mod/go.sum change)
 	echo "vendorHash = $$hash"
 
 # ./VERSION holds the last released version — bump it, then run this.
-release: ## tag a release from ./VERSION
+release: ## tag a release from ./VERSION and publish it to the module proxy
 	@v="v$$(cat VERSION)"; \
 	if ! git diff --quiet || ! git diff --cached --quiet; then \
 		echo "working tree is dirty; commit first"; exit 1; \
@@ -184,6 +184,17 @@ release: ## tag a release from ./VERSION
 	fi; \
 	echo -e "$(OK_COLOR)==> Tagging $$v$(NO_COLOR)"; \
 	git tag -a "$$v" -m "$$v" && git push origin "$$v"
+	@$(MAKE) --no-print-directory publish
+
+# proxy.golang.org caches a version the first time anyone asks for it, and index.golang.org lists
+# what the proxy has learned, which is what pkg.go.dev builds from. Without this the release sits
+# unpublished until some user runs `go install ...@latest` and pulls it through, at a moment nobody
+# chose. Its own target, because the tag is already pushed by the time it runs: if the fetch fails,
+# `make publish` retries it, where `make release` would stop at the tag that now exists.
+publish: ## fetch ./VERSION through the module proxy, so pkg.go.dev indexes it
+	@v="v$$(cat VERSION)"; \
+	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
+	GOPROXY=https://proxy.golang.org GOFLAGS= go list -m "$$(go list -m)@$$v" >/dev/null
 
 # The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit
 # on PATH (pip install pre-commit / brew install pre-commit).
