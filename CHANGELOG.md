@@ -22,17 +22,23 @@ tags.
   Two decimals, rendered by the same code as the tree, so a summary line cannot disagree with the
   report it summarises by rounding — `go tool cover -func | awk 'END{print $NF}'` gives one decimal
   and a `%` sign. A profile with nothing to cover exits 2 rather than printing `n/a` or `0.00` into
-  a shell variable, unless `-fail-under` was given, in which case the gate decides.
+  a shell variable, unless `-fail-under` was given, in which case that reports instead.
 
   The figure is rounded to two decimals while `-fail-under` compares the exact ratio, so 79.999%
   prints as `80.00` on a run the gate fails. Use `-fail-under` rather than comparing the printed
   number to a threshold.
 
+### Go API
+
+- `Percentage(stats CoverageStats) (string, bool)` renders a ratio the way every row does, so a
+  caller of the library shows the same figures the report does. `ok` is false when there is nothing
+  to cover, which is not 0%. Additive: nothing existing changed shape.
+
 ### Changed
 
 - `100.00` is never rounded up to, in the tree or in `-total`: 73999 of 74000 statements now reads
-  `99.99`. It claimed full coverage for code that was not fully covered, which is the one figure
-  here that is a claim rather than a measurement — a badge, or a reason to stop writing tests.
+  `99.99`. It claimed full coverage for code that was not fully covered — and 100% is what a badge
+  shows and what stops someone writing another test.
 
   Only ratios in `(99.995, 100)` change, so nothing this repository or its fixtures report moves.
   It is a deliberate divergence from `go tool cover -func`, which rounds at one decimal and prints
