@@ -26,8 +26,20 @@ tags.
   it now means 10 — on a 13-level tree that is 9 rows against 11. The silent one is the reason this
   is labelled: a rejected argument says so, a reinterpreted one does not.
 
-- `prettycov.DepthAll` names the depth that shows every level, so `Options.Depth` has a value for
-  "all of it" rather than a caller knowing to pass `math.MaxUint`.
+### Go API
+
+**Breaking**, and the tool is CLI-first — the library is a by-product, and this is what pre-1.0 is
+for. Two concepts that were loose numbers with rules scattered around them are types that carry
+their own rules:
+
+- `Depth` replaces the `uint` on `Options.Depth` and `Rows`. `DepthAll` is the whole tree, and
+  `ParseDepth` reads `"max"` or a level count. The parsing, the clamping and the two ways of
+  getting it wrong lived in the CLI, which is where a magic `math.MaxUint` had to be known about.
+- `Percentage` replaces `CoverageStats.Ratio` and the `Percentage(CoverageStats)` function.
+  `CoverageStats.Percentage() (Percentage, bool)` builds one — `ok` is false when there is nothing
+  to cover — and it is the only way to, so a percentage that exists always has a number to show.
+  `String` rounds and never reads 100.00 for code that is not fully covered; `Float` does not
+  round, so `-fail-under` grades what was measured rather than what was shown.
 
 - `make publish` requests the current `./VERSION` from proxy.golang.org, and `make release` now
   runs it after pushing the tag. proxy.golang.org caches a version the first time anyone asks for

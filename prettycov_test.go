@@ -96,15 +96,15 @@ func TestProcessCountsEachStatementOnce(t *testing.T) {
 				node := tree.Get(path)
 				require.NotNilf(t, node, "path %q missing from tree", path)
 
-				pct, ok := node.Coverage.Ratio()
+				pct, ok := node.Coverage.Percentage()
 				require.Truef(t, ok, "no statements at %q", path)
-				assert.InDeltaf(t, want, pct, ratioTolerance, "coverage at %q", path)
+				assert.InDeltaf(t, want, pct.Float(), ratioTolerance, "coverage at %q", path)
 			}
 		})
 	}
 }
 
-func TestCoverageStatsRatio(t *testing.T) {
+func TestCoverageStatsPercentage(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -129,10 +129,10 @@ func TestCoverageStatsRatio(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			pct, ok := tc.stats.Ratio()
+			pct, ok := tc.stats.Percentage()
 
 			assert.Equal(t, tc.wantOK, ok)
-			assert.InDelta(t, tc.wantPct, pct, ratioTolerance)
+			assert.InDelta(t, tc.wantPct, pct.Float(), ratioTolerance)
 		})
 	}
 }

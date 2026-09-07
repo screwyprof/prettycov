@@ -1,12 +1,14 @@
 package prettycov
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"math"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -41,20 +43,52 @@ const (
 	ColorAlways
 )
 
-// DepthAll shows every level. Named because Options.Depth is exported and the whole tree is a
-// value a caller has to be able to ask for; it is also a reminder that Depth can be at the top of
-// its range, so arithmetic on it — opts.Depth+1, int(opts.Depth) — wraps and renders nothing.
+// Depth is how many levels of a tree to show below its top row, the way `tree -L` counts them.
+// DepthAll is all of them.
 //
-// Typed, because untyped it defaults to int in any context that does not force uint, and it does
-// not fit one: `d := prettycov.DepthAll` would not compile.
-const DepthAll uint = math.MaxUint
+// A type rather than a uint so the whole tree has a name instead of a magic number, and so the
+// clamping and the two ways of getting it wrong live here rather than in whatever parses a flag.
+type Depth uint
+
+// DepthAll shows every level, and is the top of Depth's range: adding to it wraps to nothing.
+const DepthAll Depth = math.MaxUint
+
+var (
+	// ErrBadDepth is a depth that is neither a number of levels nor "max".
+	ErrBadDepth = errors.New(`want a number of levels, or "max"`)
+	// ErrDepthTooLarge is a number too large to be a depth. Separate from ErrBadDepth because it
+	// says what to type: a number that big was reaching for the whole tree.
+	ErrDepthTooLarge = errors.New(`too many levels; use "max" for the whole tree`)
+)
+
+// ParseDepth reads a level count or "max".
+func ParseDepth(s string) (Depth, error) {
+	if s == "max" {
+		return DepthAll, nil
+	}
+
+	// Read at 64 bits and clamped, not read at Depth's own width: at its own width a 32-bit build
+	// would refuse a number a 64-bit build accepts, and the same command should not depend on the
+	// architecture. Clamping shows the same tree either way and cannot truncate.
+	levels, err := strconv.ParseUint(s, 10, 64)
+
+	switch {
+	case errors.Is(err, strconv.ErrRange):
+		//nolint:wrapcheck // a sentinel of this package's own, returned for errors.Is.
+		return 0, ErrDepthTooLarge
+	case err != nil:
+		//nolint:wrapcheck // see above.
+		return 0, ErrBadDepth
+	}
+
+	return Depth(min(levels, uint64(DepthAll))), nil
+}
 
 // Options controls how a tree is rendered. The zero value prints the top row alone, colouring it
 // only if the destination is a terminal.
 type Options struct {
-	// Depth is how many levels to show below the top row, the way `tree -L` counts. DepthAll
-	// shows all of them.
-	Depth uint
+	// Depth is how many levels to show below the top row. DepthAll shows all of them.
+	Depth Depth
 
 	// Color decides whether percentages carry the terminal's own red, yellow and green.
 	Color ColorMode
@@ -71,7 +105,7 @@ type Row struct {
 
 // Rows flattens tree into the lines a report prints, in order, to the given depth. Pure: no
 // writer, no colour, no terminal. DisplayTree is the one that decides how a Row looks.
-func Rows(tree *PathTree, depth uint) []Row {
+func Rows(tree *PathTree, depth Depth) []Row {
 	b := rowBuilder{depth: depth}
 	b.walk(tree, 0, " ")
 
@@ -91,7 +125,7 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
 // rowBuilder holds what stays the same for the whole traversal, so the recursion carries only
 // what actually varies: the node, how deep it is, and the indent it sits behind.
 type rowBuilder struct {
-	depth uint
+	depth Depth
 	rows  []Row
 }
 
@@ -126,7 +160,7 @@ func colorize(w io.Writer, mode ColorMode) bool {
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
 // level 0 means — it is not tracked separately, since a second flag can only drift from it.
-func (b *rowBuilder) walk(tree *PathTree, level uint, padding string) {
+func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 	if tree == nil || level > b.depth {
 		return
 	}
@@ -177,57 +211,20 @@ func sanitize(label string) string {
 	}, label)
 }
 
-// Percentage renders a coverage ratio, and never reads 100.00 for code that is not fully covered.
-// ok is false when there is nothing to cover, which is not 0%.
-//
-// Exported so a total printed on its own shows the same number as that total in a row. Writing
-// `%.2f` in both places instead would mean changing one and leaving the other on the old precision.
-//
-// Rounding to nearest would print 100.00 for 73999 of 74000 statements. 100% is what a badge shows
-// and what stops someone writing another test, so it is only printed when every statement really
-// is covered. `go tool cover -func` rounds at one decimal and so prints 100.0% from 99.95% upwards;
-// this deliberately does not.
-func Percentage(stats CoverageStats) (string, bool) {
-	text, _, ok := percentage(stats)
-
-	return text, ok
-}
-
-// percentage also hands back the ratio it rendered, which formatRatio needs to pick a colour and
-// Percentage's callers do not. Asking stats.Ratio() twice for one row would work; this says once
-// that the text and the number graded beside it come from the same division.
-//
-// The cap tests the rendered text rather than pct >= 99.995, which would be a second copy of where
-// %.2f rounds, free to disagree with what fmt actually does. Whether every statement is covered is
-// asked of the counts, since comparing floats for equality is not reliable.
-func percentage(stats CoverageStats) (text string, pct float64, ok bool) {
-	pct, ok = stats.Ratio()
-	if !ok {
-		return "", 0, false
-	}
-
-	text = fmt.Sprintf("%.2f", pct)
-	if text == "100.00" && stats.Uncovered > 0 {
-		text = "99.99"
-	}
-
-	return text, pct, true
-}
-
 // formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to
 // print "NaN", which is what 0/0 produces in float division.
 func formatRatio(stats CoverageStats, color bool) string {
-	text, pct, ok := percentage(stats)
+	pct, ok := stats.Percentage()
 	if !ok {
 		// Nothing to cover is not a grade, so it is not coloured either.
 		return "n/a"
 	}
 
 	if !color {
-		return text
+		return pct.String()
 	}
 
-	return grade(pct) + text + reset
+	return grade(pct.Float()) + pct.String() + reset
 }
 
 func grade(pct float64) string {

@@ -173,7 +173,7 @@ func TestDisplayTreeDepthCountsLevels(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		depth uint
+		depth prettycov.Depth
 		want  []string
 	}{
 		{name: "root only", depth: 0, want: []string{"m"}},
@@ -321,19 +321,19 @@ func printerFiles() []prettycov.FileCoverage {
 
 // Colour is a property of the terminal, not of the tree, so it is off in these tests unless a
 // test is specifically about it.
-func render(t *testing.T, tree *prettycov.PathTree, depth uint) string {
+func render(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth) string {
 	t.Helper()
 
 	return renderWith(t, tree, depth, prettycov.ColorNever)
 }
 
-func renderColor(t *testing.T, tree *prettycov.PathTree, depth uint) string {
+func renderColor(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth) string {
 	t.Helper()
 
 	return renderWith(t, tree, depth, prettycov.ColorAlways)
 }
 
-func renderWith(t *testing.T, tree *prettycov.PathTree, depth uint, color prettycov.ColorMode) string {
+func renderWith(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth, color prettycov.ColorMode) string {
 	t.Helper()
 
 	var buf bytes.Buffer
@@ -345,7 +345,7 @@ func renderWith(t *testing.T, tree *prettycov.PathTree, depth uint, color pretty
 
 // nodeNames is the labels a tree renders to, in order. Read off Rows rather than scraped back
 // out of the rendered text, so a change to the glyphs cannot break a test about ordering.
-func nodeNames(t *testing.T, tree *prettycov.PathTree, depth uint) []string {
+func nodeNames(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth) []string {
 	t.Helper()
 
 	rows := prettycov.Rows(tree, depth)
@@ -389,10 +389,10 @@ func TestPercentageNeverClaimsFullCoverage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok := prettycov.Percentage(tc.stats)
+			pct, ok := tc.stats.Percentage()
 
 			require.True(t, ok)
-			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.want, pct.String())
 		})
 	}
 }
@@ -401,8 +401,8 @@ func TestPercentageNeverClaimsFullCoverage(t *testing.T) {
 func TestPercentageReportsNothingToCover(t *testing.T) {
 	t.Parallel()
 
-	got, ok := prettycov.Percentage(prettycov.CoverageStats{})
+	pct, ok := prettycov.CoverageStats{}.Percentage()
 
 	assert.False(t, ok)
-	assert.Empty(t, got)
+	assert.Zero(t, pct.Float())
 }

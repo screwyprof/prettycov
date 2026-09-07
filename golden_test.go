@@ -33,7 +33,7 @@ func TestDisplayTreeMatchesGolden(t *testing.T) {
 
 	tree := prettycov.Process(files, "github.com/screwyprof/delegator", "delegator")
 
-	for _, depth := range []uint{0, 1, 2, 3} {
+	for _, depth := range []prettycov.Depth{0, 1, 2, 3} {
 		t.Run(fmt.Sprintf("depth-%d", depth), func(t *testing.T) {
 			t.Parallel()
 

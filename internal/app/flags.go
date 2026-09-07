@@ -20,7 +20,7 @@ const defaultProfile = "coverage.out"
 // defaultDepth shows the top row plus one level. Measured across 16 real repositories it is the
 // only fixed value that stays on a screen everywhere: the worst case is hugo at 37 rows, where
 // depth 2 gives 152 and gitea 196.
-const defaultDepth = 1
+const defaultDepth prettycov.Depth = 1
 
 var (
 	errBadColor        = errors.New(`want "auto", "never" or "always"`)
@@ -28,8 +28,6 @@ var (
 	errTwoProfiles     = errors.New("profile given twice")
 	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
 	errEmptyExclude    = errors.New("want a pattern; an empty one matches every file")
-	errBadDepth        = errors.New(`want a number of levels, or "max"`)
-	errDeepDepth       = errors.New(`too many levels; use "max" for the whole tree`)
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -66,7 +64,7 @@ type config struct {
 	Profile     string
 	CurrentRoot string
 	NewRoot     string
-	Depth       uint
+	Depth       prettycov.Depth
 	Color       prettycov.ColorMode
 	Exclude     []*regexp.Regexp
 	FailUnder   *float64
@@ -89,7 +87,15 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 
 	set.Func("depth",
 		fmt.Sprintf("`levels` below the top row, like tree -L, or \"max\" (default %d)", defaultDepth),
-		cfg.setDepth)
+		func(s string) error {
+			var err error
+
+			cfg.Depth, err = prettycov.ParseDepth(s)
+
+			//nolint:wrapcheck // ParseDepth's errors are already phrased for the flag package,
+			// which prefixes the flag name and the offending value.
+			return err
+		})
 	// Parsed here rather than handed back as a string for the caller to convert: ColorAuto is the
 	// zero value, so leaving the flag out lands on the default without stating it twice.
 	set.Func("color", "when to colour: \"auto\" (default), \"never\" or \"always\"", func(s string) error {
@@ -151,38 +157,6 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	set.Usage = func() {}
 
 	return set
-}
-
-// setDepth reads a level count or "max". A method rather than a closure inside newFlagSet, which
-// funlen holds to 60 lines.
-func (cfg *config) setDepth(s string) error {
-	// Guessing a big number is wrong in both directions: -depth=9 wastes six levels on a small
-	// repo and truncates kubernetes, which is 3232 rows deep, without saying it did.
-	if s == "max" {
-		cfg.Depth = prettycov.DepthAll
-
-		return nil
-	}
-
-	// Parsed at 64 bits and clamped, not parsed at uint's width: at uint's width a 32-bit build
-	// would refuse -depth=9999999999 that a 64-bit one accepts, and guessing a big number is the
-	// idiom this flag replaces. Clamping renders the same tree either way and cannot truncate.
-	levels, err := strconv.ParseUint(s, 10, 64)
-
-	switch {
-	case errors.Is(err, strconv.ErrRange):
-		// Told apart from a typo, and it says what to type: a number this large was reaching for
-		// the whole tree, which is the one thing "max" is for.
-		//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
-		return errDeepDepth
-	case err != nil:
-		//nolint:wrapcheck // see above.
-		return errBadDepth
-	}
-
-	cfg.Depth = uint(min(levels, uint64(prettycov.DepthAll)))
-
-	return nil
 }
 
 // subcommand matches a bare `help` or `version`, which have to be recognised before the flag

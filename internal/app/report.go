@@ -44,7 +44,7 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 // showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
 // -fail-under still checks it, exactly as it checks the report.
 func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
-	text, ok := prettycov.Percentage(tree.Coverage)
+	pct, ok := tree.Coverage.Percentage()
 
 	// Nothing to cover: print nothing at all. The tree shows "n/a" here, but a caller reading
 	// `COVERAGE := $(shell prettycov -total)` would carry that into a comparison, and 0.00 reads as
@@ -60,7 +60,7 @@ func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) i
 	}
 
 	if ok {
-		_, _ = fmt.Fprintln(stdout, text)
+		_, _ = fmt.Fprintln(stdout, pct)
 	}
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
@@ -109,14 +109,14 @@ func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) i
 
 	// A profile with nothing to cover cannot clear a threshold, and silently passing would make
 	// the gate useless on an empty or mis-pointed profile.
-	total, ok := tree.Coverage.Ratio()
+	pct, ok := tree.Coverage.Percentage()
 	if !ok {
 		_, _ = fmt.Fprintf(stderr, "no statements to cover, wanted at least %.2f%%\n", *want)
 
 		return exitBelow
 	}
 
-	if total < *want {
+	if pct.Float() < *want {
 		// Percentage renders the coverage figure, as it does everywhere else, so this message and
 		// the report cannot show different numbers for the same thing.
 		//
@@ -124,8 +124,7 @@ func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) i
 		// reads back as 100.00%, a figure Percentage will never print, and at 79.999% against
 		// -fail-under=80 both sides round to 80.00 and the line contradicts itself. Printing the
 		// threshold as typed would fix both, and would change this message for everyone.
-		text, _ := prettycov.Percentage(tree.Coverage)
-		_, _ = fmt.Fprintf(stderr, "total coverage %s%% is below %.2f%%\n", text, *want)
+		_, _ = fmt.Fprintf(stderr, "total coverage %s%% is below %.2f%%\n", pct, *want)
 
 		return exitBelow
 	}
