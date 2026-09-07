@@ -23,6 +23,10 @@ tags.
   and a `%` sign. A profile with nothing to cover exits 2 rather than printing `n/a` or `0.00` into
   a shell variable, unless `-fail-under` was given, in which case the gate decides.
 
+  The figure is rounded to two decimals while `-fail-under` compares the exact ratio, so 79.999%
+  prints as `80.00` on a run the gate fails. Use `-fail-under` rather than comparing the printed
+  number to a threshold.
+
 ## [0.5.0] — 2026-09-06
 
 ### Added
