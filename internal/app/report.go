@@ -33,17 +33,23 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	tree := prettycov.Process(kept, cfg.CurrentRoot, cfg.NewRoot)
 
 	if cfg.Total {
-		// Nothing to cover is refused rather than printed. "n/a" is what the tree shows, and a
-		// caller reading `COVERAGE := $(shell prettycov -total)` would carry that into a
-		// comparison; 0.00 would be worse still, since it reads as a real and terrible number.
 		pct, ok := tree.Coverage.Ratio()
-		if !ok {
+
+		switch {
+		case ok:
+			_, _ = fmt.Fprintln(stdout, prettycov.Percentage(pct))
+		case cfg.FailUnder != nil:
+			// The gate decides. Refusing here would report a failed threshold as exit 2, which
+			// says prettycov could not run, and a CI step branching on the two codes would take
+			// the infrastructure path for what is a coverage failure.
+		default:
+			// Nothing to cover is refused rather than printed. "n/a" is what the tree shows, and a
+			// caller reading `COVERAGE := $(shell prettycov -total)` would carry that into a
+			// comparison; 0.00 would be worse still, since it reads as a real and terrible number.
 			_, _ = fmt.Fprintln(stderr, "no statements to cover")
 
 			return exitFailed
 		}
-
-		_, _ = fmt.Fprintln(stdout, prettycov.Percentage(pct))
 	} else {
 		prettycov.DisplayTree(stdout, tree, prettycov.Options{Depth: cfg.Depth, Color: cfg.Color})
 	}
@@ -96,13 +102,17 @@ func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) i
 	// the gate useless on an empty or mis-pointed profile.
 	total, ok := tree.Coverage.Ratio()
 	if !ok {
-		_, _ = fmt.Fprintf(stderr, "no statements to cover, wanted at least %.2f%%\n", *want)
+		_, _ = fmt.Fprintf(stderr, "no statements to cover, wanted at least %s%%\n",
+			prettycov.Percentage(*want))
 
 		return exitBelow
 	}
 
 	if total < *want {
-		_, _ = fmt.Fprintf(stderr, "total coverage %.2f%% is below %.2f%%\n", total, *want)
+		// Through Percentage, like every other figure: one rendering, so a gate message and the
+		// report it refers to cannot round differently.
+		_, _ = fmt.Fprintf(stderr, "total coverage %s%% is below %s%%\n",
+			prettycov.Percentage(total), prettycov.Percentage(*want))
 
 		return exitBelow
 	}

@@ -570,6 +570,42 @@ func TestRunRefusesATotalItCannotCompute(t *testing.T) {
 	assert.Contains(t, stderr.String(), "no statements to cover")
 }
 
+// With a gate, the gate decides. Reporting a failed threshold as exit 2 would say prettycov could
+// not run, and a CI step branching on the two codes would take the infrastructure path.
+func TestRunLetsTheGateOutrankTheMissingTotal(t *testing.T) {
+	t.Parallel()
+
+	path := writeProfile(t, "mode: set\nm/doc.go:1.1,2.2 0 0\n")
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{"-total", "-fail-under", "50", "-profile", path, "-color", "never"},
+		stdout, stderr)
+
+	assert.Equal(t, codeBelow, code, "the same code the report gives without -total")
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "no statements to cover, wanted at least 50.00%",
+		"and the same message, threshold included")
+}
+
+// The root of a profile spanning two top-level paths is a node Rows never renders, since it walks
+// the root's children. -total still reports it, so the figure legitimately appears in no row.
+func TestTotalOverAProfileWithNoSingleRoot(t *testing.T) {
+	t.Parallel()
+
+	path := writeProfile(t, "mode: set\n"+
+		"example.com/p/a.go:1.1,2.2 2 1\n"+
+		"other.com/q/b.go:1.1,2.2 1 0\n")
+
+	total, tree := &bytes.Buffer{}, &bytes.Buffer{}
+	require.Equal(t, codeOK, app.Run([]string{"-total", "-profile", path, "-color", "never"}, total, io.Discard))
+	require.Equal(t, codeOK, app.Run([]string{"-profile", path, "-color", "never"}, tree, io.Discard))
+
+	assert.Equal(t, "66.67\n", total.String(), "the union of both roots")
+	assert.NotContains(t, tree.String(), "66.67", "which no row carries")
+	assert.Contains(t, tree.String(), "example.com/p - 100.00")
+	assert.Contains(t, tree.String(), "other.com/q - 0.00")
+}
+
 // The tree renders the same ratio, so the two must not round differently.
 func TestTotalMatchesTheTreesOwnRendering(t *testing.T) {
 	t.Parallel()

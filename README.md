@@ -120,7 +120,9 @@ COVERAGE := $(shell go tool cover -func coverage.out | awk 'END{print $$NF}')   
 COVERAGE := $(shell prettycov -total)                                           # 99.66
 ```
 
-Two decimals, matching the tree exactly, so the summary line and the report cannot disagree by rounding. A profile with no statements to cover has no total, so it exits 2 with a message rather than printing `n/a` or `0.00` into your variable.
+Two decimals, rendered by the same code as the tree, so a summary line and the report it summarises cannot round differently. (The figure is the whole profile's total, which is the root of the tree — with a profile spanning two top-level paths it is the union of both, and so appears in no single row.)
+
+A profile with no statements to cover has no total, so it exits 2 with a message rather than printing `n/a` or `0.00` into your variable — unless `-fail-under` was given, in which case the gate decides and you get its exit 1.
 
 ### Stop counting code you never meant to test
 `-exclude` drops files whose path matches a regexp, before anything is totalled. Patterns are unanchored and match the full path, so a short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out — including nothing, which is how you spot a typo:
