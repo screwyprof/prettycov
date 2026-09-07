@@ -29,6 +29,7 @@ var (
 	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
 	errEmptyExclude    = errors.New("want a pattern; an empty one matches every file")
 	errBadDepth        = errors.New(`want a number of levels, or "max"`)
+	errDeepDepth       = errors.New(`too many levels; use "max" for the whole tree`)
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -86,25 +87,7 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	// Set here rather than by the flag package, which does not carry a default through Func.
 	cfg.Depth = defaultDepth
 
-	set.Func("depth", `levels below the top row, like tree -L, or "max" (default 1)`, func(s string) error {
-		// Guessing a big number is wrong in both directions: -depth=9 wastes six levels on a small
-		// repo and truncates kubernetes, which is 3232 rows deep, without saying it did.
-		if s == "max" {
-			cfg.Depth = math.MaxUint
-
-			return nil
-		}
-
-		levels, err := strconv.ParseUint(s, 10, 64)
-		if err != nil {
-			//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
-			return errBadDepth
-		}
-
-		cfg.Depth = uint(levels)
-
-		return nil
-	})
+	set.Func("depth", `levels below the top row, like tree -L, or "max" (default 1)`, cfg.setDepth)
 	// Parsed here rather than handed back as a string for the caller to convert: ColorAuto is the
 	// zero value, so leaving the flag out lands on the default without stating it twice.
 	set.Func("color", "when to colour: \"auto\" (default), \"never\" or \"always\"", func(s string) error {
@@ -166,6 +149,37 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	set.Usage = func() {}
 
 	return set
+}
+
+// setDepth reads a level count or "max". A method rather than a closure inside newFlagSet, which
+// funlen holds to 60 lines.
+func (cfg *config) setDepth(s string) error {
+	// Guessing a big number is wrong in both directions: -depth=9 wastes six levels on a small
+	// repo and truncates kubernetes, which is 3232 rows deep, without saying it did.
+	if s == "max" {
+		cfg.Depth = math.MaxUint
+
+		return nil
+	}
+
+	// Bit size 0 is the width of uint, the field this lands in, so the range check is the
+	// conversion's and nothing truncates on a 32-bit platform.
+	levels, err := strconv.ParseUint(s, 10, 0)
+
+	switch {
+	case errors.Is(err, strconv.ErrRange):
+		// Told apart from a typo, and it says what to type: a number this large was reaching for
+		// the whole tree, which is the one thing "max" is for.
+		//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
+		return errDeepDepth
+	case err != nil:
+		//nolint:wrapcheck // see above.
+		return errBadDepth
+	}
+
+	cfg.Depth = uint(levels)
+
+	return nil
 }
 
 // subcommand matches a bare `help` or `version`, which have to be recognised before the flag

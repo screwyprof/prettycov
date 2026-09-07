@@ -660,11 +660,20 @@ func TestRunAcceptsMaxDepth(t *testing.T) {
 	}
 }
 
-// Anything else is a flag error rather than a silently different depth.
+// Anything else is a flag error rather than a silently different depth. A number too large to be a
+// depth is told apart from a typo: it was reaching for the whole tree, and "max" is how to ask.
 func TestRunRejectsADepthThatIsNeitherANumberNorMax(t *testing.T) {
 	t.Parallel()
 
-	for _, arg := range []string{"deep", "", "-1", "1.5", "99999999999999999999"} {
+	tests := map[string]string{
+		"deep":                 `want a number of levels, or "max"`,
+		"":                     `want a number of levels, or "max"`,
+		"-1":                   `want a number of levels, or "max"`,
+		"1.5":                  `want a number of levels, or "max"`,
+		"99999999999999999999": `too many levels; use "max" for the whole tree`,
+	}
+
+	for arg, want := range tests {
 		t.Run(arg, func(t *testing.T) {
 			t.Parallel()
 
@@ -672,7 +681,7 @@ func TestRunRejectsADepthThatIsNeitherANumberNorMax(t *testing.T) {
 			code := app.Run([]string{"-depth", arg, "-profile", "x.out"}, stdout, stderr)
 
 			assert.Equal(t, codeFailed, code)
-			assert.Contains(t, stderr.String(), `want a number of levels, or "max"`)
+			assert.Contains(t, stderr.String(), want)
 		})
 	}
 }
