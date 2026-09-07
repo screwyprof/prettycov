@@ -32,7 +32,36 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 
 	tree := prettycov.Process(kept, cfg.CurrentRoot, cfg.NewRoot)
 
+	if cfg.Total {
+		return showTotal(cfg, tree, stdout, stderr)
+	}
+
 	prettycov.DisplayTree(stdout, tree, prettycov.Options{Depth: cfg.Depth, Color: cfg.Color})
+
+	return checkThreshold(cfg.FailUnder, tree, stderr)
+}
+
+// showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
+// -fail-under still checks it, exactly as it checks the report.
+func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
+	text, ok := prettycov.Percentage(tree.Coverage)
+
+	// Nothing to cover: print nothing at all. The tree shows "n/a" here, but a caller reading
+	// `COVERAGE := $(shell prettycov -total)` would carry that into a comparison, and 0.00 reads as
+	// a real and terrible number.
+	//
+	// Unless -fail-under was given, in which case checkThreshold below already refuses it and says
+	// what the threshold was. Exiting 2 here instead would mean "prettycov could not run", so a CI
+	// step would report a broken build where the truth is that coverage was too low.
+	if !ok && cfg.FailUnder == nil {
+		_, _ = fmt.Fprintln(stderr, "no statements to cover")
+
+		return exitFailed
+	}
+
+	if ok {
+		_, _ = fmt.Fprintln(stdout, text)
+	}
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
 }
@@ -88,7 +117,15 @@ func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) i
 	}
 
 	if total < *want {
-		_, _ = fmt.Fprintf(stderr, "total coverage %.2f%% is below %.2f%%\n", total, *want)
+		// Percentage renders the coverage figure, as it does everywhere else, so this message and
+		// the report cannot show different numbers for the same thing.
+		//
+		// The threshold is rounded instead, which is not free of trouble: -fail-under=99.99999
+		// reads back as 100.00%, a figure Percentage will never print, and at 79.999% against
+		// -fail-under=80 both sides round to 80.00 and the line contradicts itself. Printing the
+		// threshold as typed would fix both, and would change this message for everyone.
+		text, _ := prettycov.Percentage(tree.Coverage)
+		_, _ = fmt.Fprintf(stderr, "total coverage %s%% is below %.2f%%\n", text, *want)
 
 		return exitBelow
 	}

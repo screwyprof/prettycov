@@ -167,16 +167,52 @@ func sanitize(label string) string {
 	}, label)
 }
 
+// Percentage renders a coverage ratio, and never reads 100.00 for code that is not fully covered.
+// ok is false when there is nothing to cover, which is not 0%.
+//
+// Exported so a total printed on its own shows the same number as that total in a row. Writing
+// `%.2f` in both places instead would mean changing one and leaving the other on the old precision.
+//
+// Rounding to nearest would print 100.00 for 73999 of 74000 statements. 100% is what a badge shows
+// and what stops someone writing another test, so it is only printed when every statement really
+// is covered. `go tool cover -func` rounds at one decimal and so prints 100.0% from 99.95% upwards;
+// this deliberately does not.
+func Percentage(stats CoverageStats) (string, bool) {
+	text, _, ok := percentage(stats)
+
+	return text, ok
+}
+
+// percentage also hands back the ratio it rendered, which formatRatio needs to pick a colour and
+// Percentage's callers do not. Asking stats.Ratio() twice for one row would work; this says once
+// that the text and the number graded beside it come from the same division.
+//
+// The cap tests the rendered text rather than pct >= 99.995, which would be a second copy of where
+// %.2f rounds, free to disagree with what fmt actually does. Whether every statement is covered is
+// asked of the counts, since comparing floats for equality is not reliable.
+func percentage(stats CoverageStats) (text string, pct float64, ok bool) {
+	pct, ok = stats.Ratio()
+	if !ok {
+		return "", 0, false
+	}
+
+	text = fmt.Sprintf("%.2f", pct)
+	if text == "100.00" && stats.Uncovered > 0 {
+		text = "99.99"
+	}
+
+	return text, pct, true
+}
+
 // formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to
 // print "NaN", which is what 0/0 produces in float division.
 func formatRatio(stats CoverageStats, color bool) string {
-	pct, ok := stats.Ratio()
+	text, pct, ok := percentage(stats)
 	if !ok {
 		// Nothing to cover is not a grade, so it is not coloured either.
 		return "n/a"
 	}
 
-	text := fmt.Sprintf("%.2f", pct)
 	if !color {
 		return text
 	}

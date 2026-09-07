@@ -63,6 +63,7 @@ type config struct {
 	Color       prettycov.ColorMode
 	Exclude     []*regexp.Regexp
 	FailUnder   *float64
+	Total       bool
 	Help        bool
 	Version     bool
 }
@@ -125,6 +126,7 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 
 		return nil
 	})
+	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")
 	set.BoolVar(&cfg.Help, "help", false, "show help")
 	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")
 	set.BoolVar(&cfg.Version, "version", false, "show version")

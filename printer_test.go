@@ -357,3 +357,52 @@ func nodeNames(t *testing.T, tree *prettycov.PathTree, depth uint) []string {
 
 	return names
 }
+
+// Only a ratio that is exactly 100% may render as 100.00. Every other value still rounds to
+// nearest, so the cap is confined to (99.995, 100).
+func TestPercentageNeverClaimsFullCoverage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		stats prettycov.CoverageStats
+		want  string
+	}{
+		{name: "everything covered", stats: prettycov.CoverageStats{Covered: 74000}, want: "100.00"},
+		{
+			// go tool cover -func rounds at one decimal and reports this as 100.0%.
+			name:  "one statement short of 74000",
+			stats: prettycov.CoverageStats{Covered: 73999, Uncovered: 1}, want: "99.99",
+		},
+		{
+			name:  "far enough short to round there anyway",
+			stats: prettycov.CoverageStats{Covered: 52919, Uncovered: 3}, want: "99.99",
+		},
+		{
+			name:  "an ordinary value still rounds up",
+			stats: prettycov.CoverageStats{Covered: 2, Uncovered: 1}, want: "66.67",
+		},
+		{name: "nothing covered", stats: prettycov.CoverageStats{Uncovered: 4}, want: "0.00"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := prettycov.Percentage(tc.stats)
+
+			require.True(t, ok)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// Nothing to cover is not 0%, and a caller has to be able to tell the two apart.
+func TestPercentageReportsNothingToCover(t *testing.T) {
+	t.Parallel()
+
+	got, ok := prettycov.Percentage(prettycov.CoverageStats{})
+
+	assert.False(t, ok)
+	assert.Empty(t, got)
+}

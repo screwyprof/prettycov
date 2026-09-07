@@ -102,20 +102,51 @@ total coverage 94.01% is below 99.00%
 1
 ```
 
+### Just the number
+`-total` prints the total percentage and nothing else, so a Makefile or a badge can read it.
+
+It changes how the report is printed, not what gets measured. The number is the tree's top row with the label and the glyphs stripped off, so every other flag still applies: `-exclude` changes it just as it changes the tree, and `-fail-under` still grades it.
+
+```shell
+❯ prettycov -total
+94.01
+❯ prettycov -total -exclude='/store/'
+-exclude "/store/" left out 116 statements in 4 files
+95.80
+```
+
+The accounting still goes to stderr, so `COVERAGE := $(shell prettycov -total)` stays clean. It replaces the recipe every project ends up writing:
+
+```make
+COVERAGE := $(shell go tool cover -func coverage.out | awk 'END{print $$NF}')   # 94.0%
+COVERAGE := $(shell prettycov -total)                                           # 94.01
+```
+
+Two decimals, rendered by the same code as the tree, so a summary line and the report it summarises cannot round differently. (The figure is the whole profile's total, which is the root of the tree — with a profile spanning two top-level paths it is the union of both, and so appears in no single row.)
+
+A profile with no statements to cover has no total, so it exits 2 with a message rather than printing `n/a` or `0.00` into your variable — unless `-fail-under` was given, in which case that reports the shortfall and exits 1 instead.
+
+The printed figure is rounded to two decimals while `-fail-under` compares the exact ratio, so don't build a second gate by comparing this number to a threshold. It goes wrong both ways: 79.999% prints as `80.00` on a run `-fail-under=80` fails, and 99.9996% prints as `99.99` on one `-fail-under=99.995` passes. Use `-fail-under`.
+
+One deliberate exception, and it differs from `go tool cover`: **`100.00` is never rounded up to.** 73999 of 74000 statements reads as `99.99` here, where `go tool cover -func` rounds at one decimal and reports `100.0%` from 99.95% upwards. 100% is what a badge shows and what stops someone writing another test, so it is only printed when every statement is covered. Everything else rounds to nearest, as before.
+
 ### Stop counting code you never meant to test
 `-exclude` drops files whose path matches a regexp, before anything is totalled. Patterns are unanchored and match the full path, so a short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out — including nothing, which is how you spot a typo:
 
 ```shell
 ❯ prettycov
- github.com/screwyprof/prettycov - 98.88
- ├ cmd/prettycov - 0.00
- └ internal/app - 98.29
+ github.com/screwyprof/delegator - 94.01
+ ├ pkg - 96.41
+ ├ scraper - 90.00
+ └ web - 95.15
 
-❯ prettycov -exclude='/cmd/' -exclude='\.pb\.go$'
--exclude "/cmd/" left out 1 statement in 1 file
+❯ prettycov -exclude='/store/' -exclude='\.pb\.go$'
+-exclude "/store/" left out 116 statements in 4 files
 -exclude "\\.pb\\.go$" matched nothing
- github.com/screwyprof/prettycov - 99.25
- └ internal/app - 98.29
+ github.com/screwyprof/delegator - 95.80
+ ├ pkg - 96.41
+ ├ scraper - 95.87
+ └ web - 94.44
 ```
 
 The accounting goes to stderr, so the report itself stays pipeable. It filters the report, not the profile on disk: `go tool cover -html` and anything else reading the file still sees everything in it.

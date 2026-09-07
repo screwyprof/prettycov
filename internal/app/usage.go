@@ -21,6 +21,8 @@ Fail when total coverage is below a threshold, for CI:
 	prettycov -fail-under=80
 Stop counting code you never meant to test, one pattern per flag:
 	prettycov -exclude='/cmd/' -exclude='\.pb\.go$'
+Print just the number, for a Makefile or a badge:
+	prettycov -total
 `
 
 // printUsage writes the help text and the flag defaults.
