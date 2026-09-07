@@ -23,7 +23,6 @@ const defaultProfile = "coverage.out"
 const defaultDepth prettycov.Depth = 1
 
 var (
-	errBadColor        = errors.New(`want "auto", "never" or "always"`)
 	errTooManyProfiles = errors.New("want at most one profile path")
 	errTwoProfiles     = errors.New("profile given twice")
 	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
@@ -65,7 +64,7 @@ type config struct {
 	CurrentRoot string
 	NewRoot     string
 	Depth       prettycov.Depth
-	Color       prettycov.ColorMode
+	Color       colorMode
 	Exclude     []*regexp.Regexp
 	FailUnder   *float64
 	Total       bool
@@ -82,7 +81,8 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	set.StringVar(&cfg.Profile, "profile", "", "coverage profile path")
 	set.StringVar(&cfg.CurrentRoot, "old", "", "old project's root package")
 	set.StringVar(&cfg.NewRoot, "new", "", "new project's root package")
-	// Set here rather than by the flag package, which does not carry a default through Func.
+	// Set here rather than by the flag package, which carries no default through Func. colorAuto
+	// is the zero value, so -color needs no such line.
 	cfg.Depth = defaultDepth
 
 	set.Func("depth",
@@ -96,13 +96,12 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 			// which prefixes the flag name and the offending value.
 			return err
 		})
-	// Parsed here rather than handed back as a string for the caller to convert: ColorAuto is the
-	// zero value, so leaving the flag out lands on the default without stating it twice.
-	set.Func("color", "when to colour: \"auto\" (default), \"never\" or \"always\"", func(s string) error {
-		mode, err := parseColor(s)
-		cfg.Color = mode
+	// Resolved here rather than handed back as a mode for the caller to combine with something:
+	// "auto" is not an answer until the destination is known, and it is known by now.
+	set.Func("color", "when to colour: \"auto\" (default), \"never\" or \"always\"", func(s string) (err error) {
+		//nolint:wrapcheck // parseColorMode's error is already phrased for the flag package.
+		cfg.Color, err = parseColorMode(s)
 
-		//nolint:wrapcheck // parseColor's error is already phrased for the flag package.
 		return err
 	})
 	// Repeatable: assigning instead of appending would silently apply only the last pattern.
@@ -217,20 +216,5 @@ func profilePath(flagged string, positional []string) (string, error) {
 		return positional[0], nil
 	default:
 		return defaultProfile, nil
-	}
-}
-
-func parseColor(name string) (prettycov.ColorMode, error) {
-	switch name {
-	case "auto":
-		return prettycov.ColorAuto, nil
-	case "never":
-		return prettycov.ColorNever, nil
-	case "always":
-		return prettycov.ColorAlways, nil
-	default:
-		// Terse: the flag package prefixes the flag name and the offending value.
-		//nolint:wrapcheck // see above.
-		return prettycov.ColorAuto, errBadColor
 	}
 }

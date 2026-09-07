@@ -40,7 +40,7 @@ func TestDisplayTreeMatchesGolden(t *testing.T) {
 			// Colour on, so the escapes are part of what is pinned. A golden file that stops at
 			// the text would miss a grade landing in the wrong band.
 			assertGolden(t, fmt.Sprintf("delegator-depth-%d.golden", depth),
-				renderWith(t, tree, depth, prettycov.ColorAlways))
+				renderWith(t, tree, depth, prettycov.ANSI))
 		})
 	}
 }

@@ -2,8 +2,6 @@ package prettycov_test
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -76,21 +74,6 @@ func TestRowsHandlesANilTree(t *testing.T) {
 
 	assert.Empty(t, prettycov.Rows(nil, 3))
 	assert.Empty(t, render(t, nil, 3))
-}
-
-// colorize asks the writer whether it is a terminal, and Stat can fail — a closed file is the
-// reachable way there. Failing that question means no colour, not a panic.
-func TestDisplayTreeStaysPlainWhenTheWriterCannotBeStatted(t *testing.T) {
-	t.Parallel()
-
-	f, err := os.CreateTemp(t.TempDir(), "closed")
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	tree := prettycov.Process(printerFiles(), "", "")
-
-	// ColorAuto, so the terminal check actually runs; the file is closed, so Stat errors.
-	prettycov.DisplayTree(f, tree, prettycov.Options{Depth: 1, Color: prettycov.ColorAuto})
 }
 
 // Coverage output gets diffed between CI runs, so the same tree must render byte-identically
@@ -218,99 +201,13 @@ func TestDisplayTreeGradesByThreshold(t *testing.T) {
 	assert.NotContains(t, out, "\x1b[4", "no background colours")
 }
 
-//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
-func TestDisplayTreeColorMode(t *testing.T) {
-	tree := prettycov.Process(printerFiles(), "", "")
-
-	tests := []struct {
-		name      string
-		mode      prettycov.ColorMode
-		env       map[string]string
-		wantColor bool
-	}{
-		{name: "always, even into a pipe", mode: prettycov.ColorAlways, wantColor: true},
-		{name: "never", mode: prettycov.ColorNever, wantColor: false},
-		{name: "auto into a pipe stays clean", mode: prettycov.ColorAuto, wantColor: false},
-		{
-			name: "always ignores NO_COLOR, the caller asked",
-			mode: prettycov.ColorAlways, env: map[string]string{"NO_COLOR": "1"}, wantColor: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			for k, v := range tc.env {
-				t.Setenv(k, v)
-			}
-
-			var buf bytes.Buffer
-
-			prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: 1, Color: tc.mode})
-
-			if tc.wantColor {
-				assert.Contains(t, buf.String(), "\x1b[")
-			} else {
-				assert.NotContains(t, buf.String(), "\x1b[")
-			}
-		})
-	}
-}
-
-// The auto heuristic's guards. A terminal cannot be faked here, so these pin the branches that
-// say no; the branch that says yes is only reachable against a real tty.
-//
-//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
-func TestDisplayTreeAutoColorGuards(t *testing.T) {
-	tree := prettycov.Process(printerFiles(), "", "")
-
-	tests := []struct {
-		name string
-		key  string
-		val  string
-	}{
-		{name: "NO_COLOR set", key: "NO_COLOR", val: "1"},
-		{name: "NO_COLOR set but empty still counts", key: "NO_COLOR", val: ""},
-		{name: "dumb terminal", key: "TERM", val: "dumb"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv(tc.key, tc.val)
-
-			var buf bytes.Buffer
-
-			prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: 1})
-
-			assert.NotContains(t, buf.String(), "\x1b[")
-		})
-	}
-}
-
-// A real file is not a terminal, so auto must stay clean writing to one. Covers the branch a
-// bytes.Buffer cannot reach: the destination is an *os.File and gets stat'd.
-func TestDisplayTreeAutoColorToRegularFile(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "report.txt")
-
-	out, err := os.Create(path)
-	require.NoError(t, err)
-
-	prettycov.DisplayTree(out, prettycov.Process(printerFiles(), "", ""), prettycov.Options{Depth: 1})
-	require.NoError(t, out.Close())
-
-	written, err := os.ReadFile(path)
-	require.NoError(t, err)
-
-	assert.NotEmpty(t, written)
-	assert.NotContains(t, string(written), "\x1b[")
-}
-
 // m/
 //
 //	├ alpha/deep/   (alpha holds only deep, so the two collapse into one row)
 //	├ beta/
 //	└ gamma/
+//
+//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
 func printerFiles() []prettycov.FileCoverage {
 	return []prettycov.FileCoverage{
 		file("m/gamma/g.go", 1, 1),
@@ -324,21 +221,21 @@ func printerFiles() []prettycov.FileCoverage {
 func render(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth) string {
 	t.Helper()
 
-	return renderWith(t, tree, depth, prettycov.ColorNever)
+	return renderWith(t, tree, depth, prettycov.Plain)
 }
 
 func renderColor(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth) string {
 	t.Helper()
 
-	return renderWith(t, tree, depth, prettycov.ColorAlways)
+	return renderWith(t, tree, depth, prettycov.ANSI)
 }
 
-func renderWith(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth, color prettycov.ColorMode) string {
+func renderWith(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth, palette prettycov.Palette) string {
 	t.Helper()
 
 	var buf bytes.Buffer
 
-	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: color})
+	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: palette})
 
 	return buf.String()
 }

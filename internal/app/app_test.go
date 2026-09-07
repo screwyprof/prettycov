@@ -471,7 +471,7 @@ func TestRunExcludesPackages(t *testing.T) {
 func TestRunAppliesEveryExcludePattern(t *testing.T) {
 	t.Parallel()
 
-	profile := "mode: set\n" +
+	patterned := "mode: set\n" +
 		"ex.com/p/cmd/web/main.go:1.1,2.2 10 0\n" +
 		"ex.com/p/testutil/t.go:1.1,2.2 10 1\n" +
 		"ex.com/p/web/handler.go:1.1,2.2 10 1\n"
@@ -479,7 +479,7 @@ func TestRunAppliesEveryExcludePattern(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
 		"-exclude", "cmd/", "-exclude", "testutil", "-exclude", "absent",
-		"-profile", writeProfile(t, profile), "-color", "never",
+		"-profile", writeProfile(t, patterned), "-color", "never",
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
@@ -496,14 +496,14 @@ func TestRunAppliesEveryExcludePattern(t *testing.T) {
 func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 	t.Parallel()
 
-	profile := "mode: set\n" +
+	overlapping := "mode: set\n" +
 		"ex.com/p/cmd/gen.pb.go:1.1,2.2 10 1\n" +
 		"ex.com/p/web/handler.go:1.1,2.2 10 1\n"
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
 		"-exclude", "cmd/", "-exclude", `\.pb\.go$`, "-exclude", "absent",
-		"-profile", writeProfile(t, profile), "-color", "never",
+		"-profile", writeProfile(t, overlapping), "-color", "never",
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
@@ -515,7 +515,7 @@ func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 
-	profile := "mode: set\n" +
+	sixtyOfTen := "mode: set\n" +
 		"example.com/p/covered/a.go:1.1,2.2 6 1\n" +
 		"example.com/p/uncovered/b.go:1.1,2.2 4 0\n"
 
@@ -544,7 +544,7 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			// Appending onto a fresh literal, not onto tc.args: the table's slices are shared
 			// across parallel subtests.
-			args := append([]string{"-total", "-profile", writeProfile(t, profile), "-color", "never"},
+			args := append([]string{"-total", "-profile", writeProfile(t, sixtyOfTen), "-color", "never"},
 				tc.args...)
 
 			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
@@ -631,7 +631,7 @@ func TestTotalMatchesTheTreesOwnRendering(t *testing.T) {
 func TestRunAcceptsMaxDepth(t *testing.T) {
 	t.Parallel()
 
-	profile := "mode: set\n" +
+	fourLevels := "mode: set\n" +
 		"ex.com/p/a.go:1.1,2.2 1 1\n" +
 		"ex.com/p/one/b.go:1.1,2.2 1 1\n" +
 		"ex.com/p/one/two/c.go:1.1,2.2 1 1\n" +
@@ -651,7 +651,7 @@ func TestRunAcceptsMaxDepth(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			args := append([]string{"-profile", writeProfile(t, profile), "-color", "never"}, tc.args...)
+			args := append([]string{"-profile", writeProfile(t, fourLevels), "-color", "never"}, tc.args...)
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
@@ -720,4 +720,66 @@ func TestRunReadsDepthAsDecimal(t *testing.T) {
 
 	assert.Equal(t, rows("10"), rows("010"), "010 is ten levels")
 	assert.NotEqual(t, rows("8"), rows("010"), "not the eight base 0 would have read")
+}
+
+// -color=auto asks what it is writing to, and these are the three ways the answer is no without a
+// terminal being involved. They live here rather than beside the report because they are questions
+// about the world: two environment variables and a file descriptor.
+//
+//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
+func TestRunAutoColorStaysPlain(t *testing.T) {
+	tests := []struct {
+		name string
+		key  string
+		val  string
+	}{
+		{name: "NO_COLOR set", key: "NO_COLOR", val: "1"},
+		{name: "NO_COLOR set but empty still counts", key: "NO_COLOR", val: ""},
+		{name: "dumb terminal", key: "TERM", val: "dumb"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(tc.key, tc.val)
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+			require.Equal(t, codeOK, app.Run([]string{writeProfile(t, profile)}, stdout, stderr))
+			assert.NotContains(t, stdout.String(), "\x1b[")
+		})
+	}
+}
+
+// A regular file is not a terminal, and a closed one cannot even be asked — Stat fails. Both are
+// branches a bytes.Buffer never reaches, since it is not an *os.File at all.
+func TestRunAutoColorAgainstRealFiles(t *testing.T) {
+	t.Parallel()
+
+	path := writeProfile(t, profile)
+
+	t.Run("a regular file gets no colour", func(t *testing.T) {
+		t.Parallel()
+
+		out, err := os.Create(filepath.Join(t.TempDir(), "report.txt"))
+		require.NoError(t, err)
+
+		require.Equal(t, codeOK, app.Run([]string{path}, out, io.Discard))
+		require.NoError(t, out.Close())
+
+		written, err := os.ReadFile(out.Name())
+		require.NoError(t, err)
+
+		assert.NotEmpty(t, written)
+		assert.NotContains(t, string(written), "\x1b[")
+	})
+
+	t.Run("a closed file is not a panic", func(t *testing.T) {
+		t.Parallel()
+
+		closed, err := os.CreateTemp(t.TempDir(), "closed")
+		require.NoError(t, err)
+		require.NoError(t, closed.Close())
+
+		assert.Equal(t, codeOK, app.Run([]string{path}, closed, io.Discard))
+	})
 }

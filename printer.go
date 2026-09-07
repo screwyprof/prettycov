@@ -1,88 +1,13 @@
 package prettycov
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"maps"
-	"math"
-	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode"
 )
-
-// Colour thresholds, in percent. Cosmetic: they grade a row at a glance and are deliberately not
-// tied to any pass/fail decision.
-const (
-	poor = 50.0
-	good = 80.0
-)
-
-// Base ANSI colours only. The 256-colour and truecolor ranges name an exact shade and so override
-// whatever the user's terminal theme chose; these four are remapped by it, which is the point.
-const (
-	red    = "\x1b[31m"
-	green  = "\x1b[32m"
-	yellow = "\x1b[33m"
-	reset  = "\x1b[0m"
-)
-
-// ColorMode says when to colour percentages. Auto is the zero value and the right answer almost
-// always; the other two exist because a caller sometimes knows better than the heuristic, which
-// is why every tool that colours output offers --color=auto|never|always.
-type ColorMode int
-
-const (
-	// ColorAuto colours only when writing to a terminal that has not asked otherwise.
-	ColorAuto ColorMode = iota
-	// ColorNever never colours, whatever it is writing to.
-	ColorNever
-	// ColorAlways colours even into a pipe, for a caller that will render the escapes itself.
-	ColorAlways
-)
-
-// Depth is how many levels of a tree to show below its top row, the way `tree -L` counts them.
-// DepthAll is all of them.
-//
-// A type rather than a uint so the whole tree has a name instead of a magic number, and so the
-// clamping and the two ways of getting it wrong live here rather than in whatever parses a flag.
-type Depth uint
-
-// DepthAll shows every level, and is the top of Depth's range: adding to it wraps to nothing.
-const DepthAll Depth = math.MaxUint
-
-var (
-	// ErrBadDepth is a depth that is neither a number of levels nor "max".
-	ErrBadDepth = errors.New(`want a number of levels, or "max"`)
-	// ErrDepthTooLarge is a number too large to be a depth. Separate from ErrBadDepth because it
-	// says what to type: a number that big was reaching for the whole tree.
-	ErrDepthTooLarge = errors.New(`too many levels; use "max" for the whole tree`)
-)
-
-// ParseDepth reads a level count or "max".
-func ParseDepth(s string) (Depth, error) {
-	if s == "max" {
-		return DepthAll, nil
-	}
-
-	// Read at 64 bits and clamped, not read at Depth's own width: at its own width a 32-bit build
-	// would refuse a number a 64-bit build accepts, and the same command should not depend on the
-	// architecture. Clamping shows the same tree either way and cannot truncate.
-	levels, err := strconv.ParseUint(s, 10, 64)
-
-	switch {
-	case errors.Is(err, strconv.ErrRange):
-		//nolint:wrapcheck // a sentinel of this package's own, returned for errors.Is.
-		return 0, ErrDepthTooLarge
-	case err != nil:
-		//nolint:wrapcheck // see above.
-		return 0, ErrBadDepth
-	}
-
-	return Depth(min(levels, uint64(DepthAll))), nil
-}
 
 // Options controls how a tree is rendered. The zero value prints the top row alone, colouring it
 // only if the destination is a terminal.
@@ -90,8 +15,9 @@ type Options struct {
 	// Depth is how many levels to show below the top row. DepthAll shows all of them.
 	Depth Depth
 
-	// Color decides whether percentages carry the terminal's own red, yellow and green.
-	Color ColorMode
+	// Color is how percentages are written. Resolving -color=auto against a destination is the
+	// caller's, since that is a question about the world rather than about coverage.
+	Color Palette
 }
 
 // Row is one line of the report: the indent and glyph that place it in the tree, the label of the
@@ -115,10 +41,8 @@ func Rows(tree *PathTree, depth Depth) []Row {
 // DisplayTree writes tree as an indented report. A collapsed run of directories is the one row it
 // renders as.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
-	color := colorize(w, opts.Color)
-
 	for _, row := range Rows(tree, opts.Depth) {
-		_, _ = fmt.Fprintf(w, "%s%s - %s\n", row.Prefix, row.Label, formatRatio(row.Coverage, color))
+		_, _ = fmt.Fprintf(w, "%s%s - %s\n", row.Prefix, row.Label, formatRatio(row.Coverage, opts.Color))
 	}
 }
 
@@ -127,35 +51,6 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
 type rowBuilder struct {
 	depth Depth
 	rows  []Row
-}
-
-// colorize resolves ColorAuto against the destination and the environment. NO_COLOR counts
-// however it is set, including empty, per the convention at https://no-color.org.
-func colorize(w io.Writer, mode ColorMode) bool {
-	switch mode {
-	case ColorAlways:
-		return true
-	case ColorNever:
-		return false
-	case ColorAuto:
-	}
-
-	if _, set := os.LookupEnv("NO_COLOR"); set {
-		return false
-	}
-
-	if os.Getenv("TERM") == "dumb" {
-		return false
-	}
-
-	file, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-
-	info, err := file.Stat()
-
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
@@ -213,29 +108,18 @@ func sanitize(label string) string {
 
 // formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to
 // print "NaN", which is what 0/0 produces in float division.
-func formatRatio(stats CoverageStats, color bool) string {
+func formatRatio(stats CoverageStats, palette Palette) string {
 	pct, ok := stats.Percentage()
 	if !ok {
 		// Nothing to cover is not a grade, so it is not coloured either.
 		return "n/a"
 	}
 
-	if !color {
+	if palette == Plain {
 		return pct.String()
 	}
 
 	return grade(pct.Float()) + pct.String() + reset
-}
-
-func grade(pct float64) string {
-	switch {
-	case pct < poor:
-		return red
-	case pct < good:
-		return yellow
-	default:
-		return green
-	}
 }
 
 type boxType int
