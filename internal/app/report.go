@@ -33,25 +33,32 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	tree := prettycov.Process(kept, cfg.CurrentRoot, cfg.NewRoot)
 
 	if cfg.Total {
-		pct, ok := tree.Coverage.Ratio()
+		return showTotal(cfg, tree, stdout, stderr)
+	}
 
-		switch {
-		case ok:
-			_, _ = fmt.Fprintln(stdout, prettycov.Percentage(pct))
-		case cfg.FailUnder != nil:
-			// The gate decides. Refusing here would report a failed threshold as exit 2, which
-			// says prettycov could not run, and a CI step branching on the two codes would take
-			// the infrastructure path for what is a coverage failure.
-		default:
-			// Nothing to cover is refused rather than printed. "n/a" is what the tree shows, and a
-			// caller reading `COVERAGE := $(shell prettycov -total)` would carry that into a
-			// comparison; 0.00 would be worse still, since it reads as a real and terrible number.
-			_, _ = fmt.Fprintln(stderr, "no statements to cover")
+	prettycov.DisplayTree(stdout, tree, prettycov.Options{Depth: cfg.Depth, Color: cfg.Color})
 
-			return exitFailed
-		}
-	} else {
-		prettycov.DisplayTree(stdout, tree, prettycov.Options{Depth: cfg.Depth, Color: cfg.Color})
+	return checkThreshold(cfg.FailUnder, tree, stderr)
+}
+
+// showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
+// It grades against -fail-under exactly as the report does.
+func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
+	pct, ok := tree.Coverage.Ratio()
+
+	// Nothing to cover is refused rather than printed: "n/a" is what the tree shows, and a caller
+	// reading `COVERAGE := $(shell prettycov -total)` would carry it into a comparison, while 0.00
+	// reads as a real and terrible number. With a gate it is checkThreshold's call, which already
+	// refuses it — reporting a failed threshold as exit 2 would say prettycov could not run, and a
+	// step branching on the two codes would take the infrastructure path.
+	if !ok && cfg.FailUnder == nil {
+		_, _ = fmt.Fprintln(stderr, "no statements to cover")
+
+		return exitFailed
+	}
+
+	if ok {
+		_, _ = fmt.Fprintln(stdout, prettycov.Percentage(pct))
 	}
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
