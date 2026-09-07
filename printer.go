@@ -167,6 +167,13 @@ func sanitize(label string) string {
 	}, label)
 }
 
+// Percentage renders a coverage ratio. Exported so a total printed on its own cannot disagree with
+// the same total in a row: two `%.2f` verbs in two packages are two chances to drift apart, and a
+// summary that rounds differently from the report it summarises is worse than no summary.
+func Percentage(pct float64) string {
+	return fmt.Sprintf("%.2f", pct)
+}
+
 // formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to
 // print "NaN", which is what 0/0 produces in float division.
 func formatRatio(stats CoverageStats, color bool) string {
@@ -176,7 +183,7 @@ func formatRatio(stats CoverageStats, color bool) string {
 		return "n/a"
 	}
 
-	text := fmt.Sprintf("%.2f", pct)
+	text := Percentage(pct)
 	if !color {
 		return text
 	}

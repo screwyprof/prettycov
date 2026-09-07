@@ -102,20 +102,40 @@ total coverage 94.01% is below 99.00%
 1
 ```
 
+### Just the number
+`-total` prints the total percentage and nothing else, so a Makefile or a badge can read it. It is a format, not a query: `-exclude` moves it exactly as it moves the tree.
+
+```shell
+❯ prettycov -total
+99.66
+❯ prettycov -total -exclude='/cmd/'
+-exclude "/cmd/" left out 1 statement in 1 file
+99.65
+```
+
+The accounting still goes to stderr, so `COVERAGE := $(shell prettycov -total)` stays clean. It replaces the recipe every project ends up writing:
+
+```make
+COVERAGE := $(shell go tool cover -func coverage.out | awk 'END{print $$NF}')   # 99.7%
+COVERAGE := $(shell prettycov -total)                                           # 99.66
+```
+
+Two decimals, matching the tree exactly, so the summary line and the report cannot disagree by rounding. A profile with no statements to cover has no total, so it exits 2 with a message rather than printing `n/a` or `0.00` into your variable.
+
 ### Stop counting code you never meant to test
 `-exclude` drops files whose path matches a regexp, before anything is totalled. Patterns are unanchored and match the full path, so a short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out — including nothing, which is how you spot a typo:
 
 ```shell
 ❯ prettycov
- github.com/screwyprof/prettycov - 98.88
- ├ cmd/prettycov - 0.00
- └ internal/app - 98.29
+ github.com/screwyprof/prettycov - 99.66
+ ├ cmd/prettycov - 100.00
+ └ internal/app - 99.24
 
 ❯ prettycov -exclude='/cmd/' -exclude='\.pb\.go$'
 -exclude "/cmd/" left out 1 statement in 1 file
 -exclude "\\.pb\\.go$" matched nothing
- github.com/screwyprof/prettycov - 99.25
- └ internal/app - 98.29
+ github.com/screwyprof/prettycov - 99.65
+ └ internal/app - 99.24
 ```
 
 The accounting goes to stderr, so the report itself stays pipeable. It filters the report, not the profile on disk: `go tool cover -html` and anything else reading the file still sees everything in it.

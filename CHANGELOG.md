@@ -10,6 +10,19 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## Unreleased
+
+### Added
+
+- `-total` prints the total percentage and nothing else, so a Makefile or a badge can read it. It
+  is a format rather than a query: `-exclude` moves it exactly as it moves the tree, and
+  `-fail-under` still gates.
+
+  Two decimals, rendered by the same code as the tree, so a summary line cannot disagree with the
+  report it summarises by rounding — `go tool cover -func | awk 'END{print $NF}'` gives one decimal
+  and a `%` sign. A profile with nothing to cover exits 2 rather than printing `n/a` or `0.00` into
+  a shell variable.
+
 ## [0.5.0] — 2026-09-06
 
 ### Added

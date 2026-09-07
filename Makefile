@@ -128,7 +128,7 @@ test-cover-html: coverage.html ## show html coverage report
 # such as codecov.
 test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
-	@go tool cover -func $(COVERAGE) | awk 'END{print $$NF}'
+	@go run ./cmd/prettycov -total $(COVERAGE)
 
 # Go measures statements, not branches: `return a && b` is one statement, covered the moment it
 # runs, whichever way it evaluates. gobco instruments the conditions themselves and says which

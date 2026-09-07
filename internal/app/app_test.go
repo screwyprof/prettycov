@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	_ "embed"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -508,4 +509,79 @@ func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 10 statements in 1 file`)
 	assert.Contains(t, stderr.String(), `took nothing out, 1 file already excluded`)
 	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+}
+
+// -total is a format, not a query: it prints the total of whatever the other flags selected, and
+// composes with the gate rather than replacing it.
+func TestRunPrintsOnlyTheTotal(t *testing.T) {
+	t.Parallel()
+
+	profile := "mode: set\n" +
+		"example.com/p/covered/a.go:1.1,2.2 6 1\n" +
+		"example.com/p/uncovered/b.go:1.1,2.2 4 0\n"
+
+	tests := []struct {
+		name     string
+		args     []string
+		wantCode int
+		want     string
+	}{
+		{name: "the number alone, no label, no tree", args: nil, wantCode: codeOK, want: "60.00\n"},
+		{
+			// The same denominator the tree would use, so a summary cannot disagree with the report.
+			name: "it follows -exclude", args: []string{"-exclude", "uncovered"},
+			wantCode: codeOK, want: "100.00\n",
+		},
+		{
+			name: "it still gates", args: []string{"-fail-under", "90"},
+			wantCode: codeBelow, want: "60.00\n",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			// Appending onto a fresh literal, not onto tc.args: the table's slices are shared
+			// across parallel subtests.
+			args := append([]string{"-total", "-profile", writeProfile(t, profile), "-color", "never"},
+				tc.args...)
+
+			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
+			assert.Equal(t, tc.want, stdout.String())
+		})
+	}
+}
+
+// A profile with nothing to cover has no total. The tree renders that as "n/a", but a caller
+// reading `COVERAGE := $(shell prettycov -total)` would carry "n/a" into a comparison, and 0.00
+// would be worse still: it reads as a real and terrible number.
+func TestRunRefusesATotalItCannotCompute(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-total", "-profile", writeProfile(t, "mode: set\nm/doc.go:1.1,2.2 0 0\n"), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code, "cannot produce the answer is exit 2, not a failed gate")
+	assert.Empty(t, stdout.String(), "nothing a script could mistake for a number")
+	assert.Contains(t, stderr.String(), "no statements to cover")
+}
+
+// The tree renders the same ratio, so the two must not round differently.
+func TestTotalMatchesTheTreesOwnRendering(t *testing.T) {
+	t.Parallel()
+
+	path := writeProfile(t, "mode: set\n"+
+		"example.com/p/a.go:1.1,2.2 2 1\n"+
+		"example.com/p/b.go:1.1,2.2 1 0\n")
+
+	total, tree := &bytes.Buffer{}, &bytes.Buffer{}
+	require.Equal(t, codeOK, app.Run([]string{"-total", "-profile", path, "-color", "never"}, total, io.Discard))
+	require.Equal(t, codeOK, app.Run([]string{"-depth", "0", "-profile", path, "-color", "never"}, tree, io.Discard))
+
+	assert.Equal(t, "66.67\n", total.String())
+	assert.Contains(t, tree.String(), "66.67", "the tree reports the same figure")
 }

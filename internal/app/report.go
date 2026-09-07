@@ -32,7 +32,21 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 
 	tree := prettycov.Process(kept, cfg.CurrentRoot, cfg.NewRoot)
 
-	prettycov.DisplayTree(stdout, tree, prettycov.Options{Depth: cfg.Depth, Color: cfg.Color})
+	if cfg.Total {
+		// Nothing to cover is refused rather than printed. "n/a" is what the tree shows, and a
+		// caller reading `COVERAGE := $(shell prettycov -total)` would carry that into a
+		// comparison; 0.00 would be worse still, since it reads as a real and terrible number.
+		pct, ok := tree.Coverage.Ratio()
+		if !ok {
+			_, _ = fmt.Fprintln(stderr, "no statements to cover")
+
+			return exitFailed
+		}
+
+		_, _ = fmt.Fprintln(stdout, prettycov.Percentage(pct))
+	} else {
+		prettycov.DisplayTree(stdout, tree, prettycov.Options{Depth: cfg.Depth, Color: cfg.Color})
+	}
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
 }
