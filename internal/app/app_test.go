@@ -511,8 +511,8 @@ func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
 }
 
-// -total is a format, not a query: it prints the total of whatever the other flags selected, and
-// composes with the gate rather than replacing it.
+// -total changes how the report is printed, not what is measured: the number is the tree's top row
+// without the label, so the other flags still apply and the gate still grades it.
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 

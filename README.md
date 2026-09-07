@@ -103,7 +103,9 @@ total coverage 94.01% is below 99.00%
 ```
 
 ### Just the number
-`-total` prints the total percentage and nothing else, so a Makefile or a badge can read it. It is a format, not a query: `-exclude` moves it exactly as it moves the tree.
+`-total` prints the total percentage and nothing else, so a Makefile or a badge can read it.
+
+It changes how the report is printed, not what gets measured. The number is the tree's top row with the label and the glyphs stripped off, so every other flag still applies: `-exclude` changes it just as it changes the tree, and `-fail-under` still grades it.
 
 ```shell
 ❯ prettycov -total

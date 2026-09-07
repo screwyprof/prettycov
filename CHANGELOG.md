@@ -15,8 +15,9 @@ tags.
 ### Added
 
 - `-total` prints the total percentage and nothing else, so a Makefile or a badge can read it. It
-  is a format rather than a query: `-exclude` moves it exactly as it moves the tree, and
-  `-fail-under` still gates.
+  changes how the report is printed, not what gets measured: the number is the tree's top row
+  without the label, so `-exclude` changes it just as it changes the tree and `-fail-under` still
+  grades it.
 
   Two decimals, rendered by the same code as the tree, so a summary line cannot disagree with the
   report it summarises by rounding — `go tool cover -func | awk 'END{print $NF}'` gives one decimal
