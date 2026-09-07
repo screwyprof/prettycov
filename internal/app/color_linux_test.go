@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/term"
 
 	"github.com/screwyprof/prettycov/internal/app"
 )
@@ -74,9 +75,7 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 
 	t.Cleanup(func() { _ = slave.Close() })
 
-	info, err := slave.Stat()
-	require.NoError(t, err)
-	require.NotZero(t, info.Mode()&os.ModeCharDevice, "the slave must look like a terminal")
+	require.True(t, term.IsTerminal(int(slave.Fd())), "the slave must be a terminal")
 
 	return master, slave
 }
