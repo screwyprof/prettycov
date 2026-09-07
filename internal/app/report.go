@@ -118,8 +118,12 @@ func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) i
 
 	if total < *want {
 		// Percentage renders the coverage figure, as it does everywhere else, so this message and
-		// the report cannot show different numbers for the same thing. Not the threshold: that is
-		// a number the caller typed, so plain rounding is all it needs.
+		// the report cannot show different numbers for the same thing.
+		//
+		// The threshold is rounded instead, which is not free of trouble: -fail-under=99.99999
+		// reads back as 100.00%, a figure Percentage will never print, and at 79.999% against
+		// -fail-under=80 both sides round to 80.00 and the line contradicts itself. Printing the
+		// threshold as typed would fix both, and would change this message for everyone.
 		text, _ := prettycov.Percentage(tree.Coverage)
 		_, _ = fmt.Fprintf(stderr, "total coverage %s%% is below %.2f%%\n", text, *want)
 

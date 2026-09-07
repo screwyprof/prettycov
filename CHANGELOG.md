@@ -15,9 +15,10 @@ tags.
 ### Added
 
 - `-total` prints the total percentage and nothing else, so a Makefile or a badge can read it. It
-  changes how the report is printed, not what gets measured: the number is the tree's top row
-  without the label, so `-exclude` changes it just as it changes the tree and `-fail-under` still
-  grades it.
+  changes how the report is printed, not what gets measured: it is the whole profile's total, so
+  `-exclude` changes it just as it changes the tree and `-fail-under` still grades it. That total
+  is the tree's top row, except on a profile spanning two top-level paths, where it is the union of
+  both roots and so appears in no row.
 
   Two decimals, rendered by the same code as the tree, so a summary line cannot disagree with the
   report it summarises by rounding — `go tool cover -func | awk 'END{print $NF}'` gives one decimal
@@ -36,9 +37,9 @@ tags.
 
 ### Changed
 
-- `100.00` is never rounded up to, in the tree or in `-total`: 73999 of 74000 statements now reads
-  `99.99`. It claimed full coverage for code that was not fully covered — and 100% is what a badge
-  shows and what stops someone writing another test.
+- **Breaking:** `100.00` is never rounded up to, in the tree or in `-total`: 73999 of 74000
+  statements now reads `99.99`. It claimed full coverage for code that was not fully covered, and
+  100% is what a badge shows and what stops someone writing another test.
 
   Only ratios in `(99.995, 100)` change, so nothing this repository or its fixtures report moves.
   It is a deliberate divergence from `go tool cover -func`, which rounds at one decimal and prints
