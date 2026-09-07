@@ -191,10 +191,17 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 # unpublished until some user runs `go install ...@latest` and pulls it through, at a moment nobody
 # chose. Its own target, because the tag is already pushed by the time it runs: if the fetch fails,
 # `make publish` retries it, where `make release` would stop at the tag that now exists.
+#
+# curl rather than `go list -m`, which answers from $GOMODCACHE without asking any proxy once the
+# version is local — so a maintainer who smoke-tested `go install ...@$$v` before releasing would
+# get a green run and an unpublished release. GOPRIVATE and GONOPROXY bypass GOPROXY the same way.
+# Uppercase in a module path is !lowercase in a proxy URL.
 publish: ## fetch ./VERSION through the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
+	mod=$$(go list -m | sed 's/\([A-Z]\)/!\l\1/g'); \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
-	GOPROXY=https://proxy.golang.org GOFLAGS= go list -m "$$(go list -m)@$$v" >/dev/null
+	curl -fsS "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null && \
+	echo "  proxy has it; index.golang.org and pkg.go.dev follow"
 
 # The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit
 # on PATH (pip install pre-commit / brew install pre-commit).
@@ -216,4 +223,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
 .PHONY: test cover-branches test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-all install hooks nix-hash release clean help
+.PHONY: lint lint-all install hooks nix-hash release publish clean help
