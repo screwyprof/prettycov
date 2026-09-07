@@ -170,14 +170,14 @@ func sanitize(label string) string {
 // Percentage renders a coverage ratio, and never reads 100.00 for code that is not fully covered.
 // ok is false when there is nothing to cover, which is not 0%.
 //
-// Exported so a total printed on its own cannot disagree with the same total in a row: two `%.2f`
-// verbs in two packages are two chances to drift apart.
+// Exported so a total printed on its own shows the same number as that total in a row. Writing
+// `%.2f` in both places instead would mean changing one and leaving the other on the old precision.
 //
-// Rounding to nearest would report 73999 of 74000 statements as 100.00, and full coverage is the
-// one figure here that is a claim rather than a measurement — it is what a badge shows and what
-// stops someone writing another test. Decided on the counts, because covered == total is exact
-// where a float comparison against 100 is not. `go tool cover -func` rounds at one decimal and so
-// prints 100.0% from 99.95% upwards; this deliberately does not.
+// Rounding to nearest would print 100.00 for 73999 of 74000 statements. 100% is what a badge shows
+// and what stops someone writing another test, so it is only printed when every statement really
+// is covered — tested with covered == total rather than pct == 100, since comparing floats for
+// equality is not reliable. `go tool cover -func` rounds at one decimal and so prints 100.0% from
+// 99.95% upwards; this deliberately does not.
 func Percentage(stats CoverageStats) (string, bool) {
 	pct, ok := stats.Ratio()
 	if !ok {

@@ -358,9 +358,8 @@ func nodeNames(t *testing.T, tree *prettycov.PathTree, depth uint) []string {
 	return names
 }
 
-// Full coverage is the one figure here that is a claim rather than a measurement — it is what a
-// badge shows and what stops someone writing another test — so it is never rounded up to. Every
-// other value still rounds to nearest, which is the honest rendering of a measurement.
+// 100% is what a badge shows and what stops someone writing another test, so it is never rounded
+// up to. Every other value still rounds to nearest, which is the closer rendering of the ratio.
 func TestPercentageNeverClaimsFullCoverage(t *testing.T) {
 	t.Parallel()
 

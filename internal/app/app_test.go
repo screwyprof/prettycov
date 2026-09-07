@@ -511,8 +511,6 @@ func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
 }
 
-// -total changes how the report is printed, not what is measured: the number is the tree's top row
-// without the label, so the other flags still apply and the gate still grades it.
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 
@@ -587,8 +585,8 @@ func TestRunLetsTheGateOutrankTheMissingTotal(t *testing.T) {
 		"and the same message, threshold included")
 }
 
-// The root of a profile spanning two top-level paths is a node Rows never renders, since it walks
-// the root's children. -total still reports it, so the figure legitimately appears in no row.
+// Rows walks the root's children, so when a profile spans two top-level paths the root itself is
+// never drawn. -total reports that root, so its number appears in no row.
 func TestTotalOverAProfileWithNoSingleRoot(t *testing.T) {
 	t.Parallel()
 

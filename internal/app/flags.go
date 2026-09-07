@@ -126,8 +126,6 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 
 		return nil
 	})
-	// Changes how the report is printed, not what is measured: the number is the tree's top row
-	// without the label, so every other flag still applies to it.
 	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")
 	set.BoolVar(&cfg.Help, "help", false, "show help")
 	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")

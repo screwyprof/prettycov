@@ -42,15 +42,17 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 }
 
 // showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
-// It grades against -fail-under exactly as the report does.
+// -fail-under still checks it, exactly as it checks the report.
 func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
 	text, ok := prettycov.Percentage(tree.Coverage)
 
-	// Nothing to cover is refused rather than printed: "n/a" is what the tree shows, and a caller
-	// reading `COVERAGE := $(shell prettycov -total)` would carry it into a comparison, while 0.00
-	// reads as a real and terrible number. With a gate it is checkThreshold's call, which already
-	// refuses it — reporting a failed threshold as exit 2 would say prettycov could not run, and a
-	// step branching on the two codes would take the infrastructure path.
+	// Nothing to cover: print nothing at all. The tree shows "n/a" here, but a caller reading
+	// `COVERAGE := $(shell prettycov -total)` would carry that into a comparison, and 0.00 reads as
+	// a real and terrible number.
+	//
+	// Unless -fail-under was given, in which case checkThreshold below already refuses it and says
+	// what the threshold was. Exiting 2 here instead would mean "prettycov could not run", so a CI
+	// step would report a broken build where the truth is that coverage was too low.
 	if !ok && cfg.FailUnder == nil {
 		_, _ = fmt.Fprintln(stderr, "no statements to cover")
 
@@ -115,9 +117,9 @@ func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) i
 	}
 
 	if total < *want {
-		// The measured figure goes through Percentage, like every other one, so this message and
-		// the report it refers to cannot disagree. The threshold does not: it is a number the
-		// caller typed, not a coverage ratio, and rounding it is all it needs.
+		// Percentage renders the coverage figure, as it does everywhere else, so this message and
+		// the report cannot show different numbers for the same thing. Not the threshold: that is
+		// a number the caller typed, so plain rounding is all it needs.
 		text, _ := prettycov.Percentage(tree.Coverage)
 		_, _ = fmt.Fprintf(stderr, "total coverage %s%% is below %.2f%%\n", text, *want)
 
