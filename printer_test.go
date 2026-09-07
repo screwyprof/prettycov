@@ -358,8 +358,8 @@ func nodeNames(t *testing.T, tree *prettycov.PathTree, depth uint) []string {
 	return names
 }
 
-// 100% is what a badge shows and what stops someone writing another test, so it is never rounded
-// up to. Every other value still rounds to nearest, which is the closer rendering of the ratio.
+// Only a ratio that is exactly 100% may render as 100.00. Every other value still rounds to
+// nearest, so the cap is confined to (99.995, 100).
 func TestPercentageNeverClaimsFullCoverage(t *testing.T) {
 	t.Parallel()
 

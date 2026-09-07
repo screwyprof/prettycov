@@ -124,13 +124,11 @@ COVERAGE := $(shell prettycov -total)                                           
 
 Two decimals, rendered by the same code as the tree, so a summary line and the report it summarises cannot round differently. (The figure is the whole profile's total, which is the root of the tree — with a profile spanning two top-level paths it is the union of both, and so appears in no single row.)
 
-A profile with no statements to cover has no total, so it exits 2 with a message rather than printing `n/a` or `0.00` into your variable — unless `-fail-under` was given, in which case the gate decides and you get its exit 1.
+A profile with no statements to cover has no total, so it exits 2 with a message rather than printing `n/a` or `0.00` into your variable — unless `-fail-under` was given, in which case that reports the shortfall and exits 1 instead.
 
-The printed figure is rounded to two decimals while `-fail-under` compares the exact ratio, so don't build a second gate by comparing this number to a threshold — 79.999% prints as `80.00`. Use `-fail-under`, which is the gate.
+The printed figure is rounded to two decimals while `-fail-under` compares the exact ratio, so don't build a second gate by comparing this number to a threshold. It goes wrong both ways: 79.999% prints as `80.00` on a run `-fail-under=80` fails, and 99.9996% prints as `99.99` on one `-fail-under=99.995` passes. Use `-fail-under`.
 
 One deliberate exception, and it differs from `go tool cover`: **`100.00` is never rounded up to.** 73999 of 74000 statements reads as `99.99` here, where `go tool cover -func` rounds at one decimal and reports `100.0%` from 99.95% upwards. 100% is what a badge shows and what stops someone writing another test, so it is only printed when every statement is covered. Everything else rounds to nearest, as before.
-
-That cuts both ways: at 99.9996% the report reads `99.99` while `-fail-under=99.995` passes and exits 0. Either direction, the rule is the same — `-fail-under` compares the ratio, the report shows a two-decimal rendering of it, and only the first of those is the gate.
 
 ### Stop counting code you never meant to test
 `-exclude` drops files whose path matches a regexp, before anything is totalled. Patterns are unanchored and match the full path, so a short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out — including nothing, which is how you spot a typo:

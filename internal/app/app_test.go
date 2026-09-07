@@ -554,35 +554,39 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 
 // A profile with nothing to cover has no total. The tree renders that as "n/a", but a caller
 // reading `COVERAGE := $(shell prettycov -total)` would carry "n/a" into a comparison, and 0.00
-// would be worse still: it reads as a real and terrible number.
-func TestRunRefusesATotalItCannotCompute(t *testing.T) {
-	t.Parallel()
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := app.Run([]string{
-		"-total", "-profile", writeProfile(t, "mode: set\nm/doc.go:1.1,2.2 0 0\n"), "-color", "never",
-	}, stdout, stderr)
-
-	assert.Equal(t, codeFailed, code, "cannot produce the answer is exit 2, not a failed gate")
-	assert.Empty(t, stdout.String(), "nothing a script could mistake for a number")
-	assert.Contains(t, stderr.String(), "no statements to cover")
-}
-
-// With a gate, the gate decides. Reporting a failed threshold as exit 2 would say prettycov could
-// not run, and a CI step branching on the two codes would take the infrastructure path.
-func TestRunLetsTheGateOutrankTheMissingTotal(t *testing.T) {
+// would be worse still: it reads as a real and terrible number. With -fail-under, that reports
+// instead, so a CI step is not told the tool broke when the truth is coverage was too low.
+func TestRunOnATotalItCannotCompute(t *testing.T) {
 	t.Parallel()
 
 	path := writeProfile(t, "mode: set\nm/doc.go:1.1,2.2 0 0\n")
 
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := app.Run([]string{"-total", "-fail-under", "50", "-profile", path, "-color", "never"},
-		stdout, stderr)
+	tests := []struct {
+		name     string
+		args     []string
+		wantCode int
+		wantErr  string
+	}{
+		{name: "refused outright", wantCode: codeFailed, wantErr: "no statements to cover"},
+		{
+			name: "-fail-under reports it instead", args: []string{"-fail-under", "50"},
+			wantCode: codeBelow, wantErr: "no statements to cover, wanted at least 50.00%",
+		},
+	}
 
-	assert.Equal(t, codeBelow, code, "the same code the report gives without -total")
-	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "no statements to cover, wanted at least 50.00%",
-		"and the same message, threshold included")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			args := append([]string{"-total", "-profile", path, "-color", "never"}, tc.args...)
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
+			assert.Empty(t, stdout.String(), "nothing a script could mistake for a number")
+			assert.Contains(t, stderr.String(), tc.wantErr)
+		})
+	}
 }
 
 // Rows walks the root's children, so when a profile spans two top-level paths the root itself is
