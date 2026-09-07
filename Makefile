@@ -186,25 +186,24 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 	git tag -a "$$v" -m "$$v" && git push origin "$$v"
 	@$(MAKE) --no-print-directory publish
 
-# proxy.golang.org caches a version the first time anyone asks for it, and index.golang.org lists
-# what the proxy has learned, which is what pkg.go.dev builds from. Without this the release sits
-# unpublished until some user runs `go install ...@latest` and pulls it through, at a moment nobody
-# chose. Its own target, because the tag is already pushed by the time it runs: if the fetch fails,
-# `make publish` retries it, where `make release` would stop at the tag that now exists.
+# Step 6 of https://go.dev/doc/modules/publishing, taken the second of the three ways listed at
+# https://pkg.go.dev/about#adding-a-package: a request to the proxy. proxy.golang.org caches a
+# version the first time anyone asks for it, index.golang.org lists what the proxy has learned, and
+# pkg.go.dev builds from that — so a release nobody asks for stays unpublished. Its own target
+# because the tag is already pushed by the time it runs: if this fails, `make publish` retries it,
+# where `make release` would stop at the tag that now exists.
 #
-# curl rather than `go list -m`, which answers from $GOMODCACHE without asking any proxy once the
-# version is local — so a maintainer who smoke-tested `go install ...@$$v` before releasing would
-# get a green run and an unpublished release. GOPRIVATE and GONOPROXY bypass GOPROXY the same way.
-# Uppercase in a module path is !lowercase in a proxy URL.
-publish: ## fetch ./VERSION through the module proxy, so pkg.go.dev indexes it
+# Not the publishing guide's `GOPROXY=... go list -m`, which answers from $GOMODCACHE without
+# asking any proxy once the version is local — so anyone who smoke-tested the release first gets a
+# green run and nothing published. A request to the proxy cannot be served from a cache, and -f
+# makes a 404 an error rather than a silent success. An uppercase letter in a module path is
+# !lowercase in a proxy URL; this one has none.
+publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
-	mod=$$(go list -m | sed 's/\([A-Z]\)/!\l\1/g'); \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
-	curl -fsS "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null && \
+	curl -fsS "https://proxy.golang.org/$$(go list -m)/@v/$$v.info" >/dev/null && \
 	echo "  proxy has it; index.golang.org and pkg.go.dev follow"
 
-# The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit
-# on PATH (pip install pre-commit / brew install pre-commit).
 hooks: ## install git pre-commit hooks
 	@echo -e "$(OK_COLOR)==> Installing git hooks$(NO_COLOR)"
 	@pre-commit install

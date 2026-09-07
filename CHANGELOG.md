@@ -21,10 +21,10 @@ tags.
   The default stays 1. Measured across 16 repositories it is the only fixed value that stays on a
   screen everywhere: worst case is hugo at 37 rows, where depth 2 gives 152 and gitea 196.
 
-- `make publish` fetches the current `./VERSION` through proxy.golang.org, and `make release` now
+- `make publish` requests the current `./VERSION` from proxy.golang.org, and `make release` now
   runs it after pushing the tag. proxy.golang.org caches a version the first time anyone asks for
-  it and index.golang.org lists what the proxy learned, which is what pkg.go.dev builds from —
-  so without it a release stayed unpublished until some user pulled it through by accident.
+  it and index.golang.org lists what the proxy learned, which is what pkg.go.dev builds from — so
+  without it a release stayed unpublished until some user pulled it through by accident.
 
 ## [0.6.0] — 2026-09-07
 

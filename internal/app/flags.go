@@ -88,7 +88,7 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	cfg.Depth = defaultDepth
 
 	set.Func("depth",
-		fmt.Sprintf(`levels below the top row, like tree -L, or "max" (default %d)`, defaultDepth),
+		fmt.Sprintf("`levels` below the top row, like tree -L, or \"max\" (default %d)", defaultDepth),
 		cfg.setDepth)
 	// Parsed here rather than handed back as a string for the caller to convert: ColorAuto is the
 	// zero value, so leaving the flag out lands on the default without stating it twice.
