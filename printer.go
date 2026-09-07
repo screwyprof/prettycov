@@ -44,7 +44,10 @@ const (
 // DepthAll shows every level. Named because Options.Depth is exported and the whole tree is a
 // value a caller has to be able to ask for; it is also a reminder that Depth can be at the top of
 // its range, so arithmetic on it — opts.Depth+1, int(opts.Depth) — wraps and renders nothing.
-const DepthAll = math.MaxUint
+//
+// Typed, because untyped it defaults to int in any context that does not force uint, and it does
+// not fit one: `d := prettycov.DepthAll` would not compile.
+const DepthAll uint = math.MaxUint
 
 // Options controls how a tree is rendered. The zero value prints the top row alone, colouring it
 // only if the destination is a terminal.

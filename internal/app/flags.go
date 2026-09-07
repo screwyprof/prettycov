@@ -164,9 +164,10 @@ func (cfg *config) setDepth(s string) error {
 		return nil
 	}
 
-	// Bit size 0 is the width of uint, the field this lands in, so the range check is the
-	// conversion's and nothing truncates on a 32-bit platform.
-	levels, err := strconv.ParseUint(s, 10, 0)
+	// Parsed at 64 bits and clamped, not parsed at uint's width: at uint's width a 32-bit build
+	// would refuse -depth=9999999999 that a 64-bit one accepts, and guessing a big number is the
+	// idiom this flag replaces. Clamping renders the same tree either way and cannot truncate.
+	levels, err := strconv.ParseUint(s, 10, 64)
 
 	switch {
 	case errors.Is(err, strconv.ErrRange):
@@ -179,7 +180,7 @@ func (cfg *config) setDepth(s string) error {
 		return errBadDepth
 	}
 
-	cfg.Depth = uint(levels)
+	cfg.Depth = uint(min(levels, uint64(prettycov.DepthAll)))
 
 	return nil
 }
