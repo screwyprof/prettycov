@@ -202,7 +202,8 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
-	curl -fsS "https://proxy.golang.org/$$(go list -m)/@v/$$v.info" >/dev/null && \
+	mod=$$(go list -m) || exit $$?; \
+	curl -fsS "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null && \
 	echo "  proxy has it; index.golang.org and pkg.go.dev follow"
 
 # The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit

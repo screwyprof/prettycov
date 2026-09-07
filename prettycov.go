@@ -34,9 +34,12 @@ func (c CoverageStats) Percentage() (Percentage, bool) {
 	}, true
 }
 
-// Percentage is a share of statements covered. It exists only where there was something to cover,
-// so unlike the counts it comes from it always has a number to show; CoverageStats.Percentage is
-// the only way to build one, and the zero value shows 0.00.
+// Percentage is a share of statements covered. Build one with CoverageStats.Percentage, which
+// reports whether there was anything to cover; a Percentage that came from there always has a
+// number to show, so no caller carries that question further.
+//
+// The zero value is not one of those and means nothing — it renders 0.00, which is a real and
+// terrible coverage figure rather than a visible mistake. Do not declare a Percentage and use it.
 type Percentage struct {
 	value float64
 	// complete is carried rather than derived from value, because whether every statement is

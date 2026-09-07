@@ -26,6 +26,11 @@ tags.
   it now means 10 — on a 13-level tree that is 9 rows against 11. The silent one is the reason this
   is labelled: a rejected argument says so, a reinterpreted one does not.
 
+- `make publish` requests the current `./VERSION` from proxy.golang.org, and `make release` now
+  runs it after pushing the tag. proxy.golang.org caches a version the first time anyone asks for
+  it and index.golang.org lists what the proxy learned, which is what pkg.go.dev builds from — so
+  without it a release stayed unpublished until some user pulled it through by accident.
+
 ### Go API
 
 **Breaking**, and the tool is CLI-first — the library is a by-product, and this is what pre-1.0 is
@@ -40,11 +45,6 @@ their own rules:
   to cover — and it is the only way to, so a percentage that exists always has a number to show.
   `String` rounds and never reads 100.00 for code that is not fully covered; `Float` does not
   round, so `-fail-under` grades what was measured rather than what was shown.
-
-- `make publish` requests the current `./VERSION` from proxy.golang.org, and `make release` now
-  runs it after pushing the tag. proxy.golang.org caches a version the first time anyone asks for
-  it and index.golang.org lists what the proxy learned, which is what pkg.go.dev builds from — so
-  without it a release stayed unpublished until some user pulled it through by accident.
 
 ## [0.6.0] — 2026-09-07
 

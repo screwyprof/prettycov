@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -666,10 +667,13 @@ func TestRunRejectsADepthThatIsNeitherANumberNorMax(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]string{
-		"deep":                 `want a number of levels, or "max"`,
-		"":                     `want a number of levels, or "max"`,
-		"-1":                   `want a number of levels, or "max"`,
-		"1.5":                  `want a number of levels, or "max"`,
+		"deep": `want a number of levels, or "max"`,
+		"":     `want a number of levels, or "max"`,
+		"-1":   `want a number of levels, or "max"`,
+		"1.5":  `want a number of levels, or "max"`,
+		// The flag package read these as base 0 and took them; a depth is decimal now.
+		"0x3":                  `want a number of levels, or "max"`,
+		"1_0":                  `want a number of levels, or "max"`,
 		"99999999999999999999": `too many levels; use "max" for the whole tree`,
 	}
 
@@ -684,4 +688,36 @@ func TestRunRejectsADepthThatIsNeitherANumberNorMax(t *testing.T) {
 			assert.Contains(t, stderr.String(), want)
 		})
 	}
+}
+
+// Base 10, not the flag package's base 0, and this is the half that would not announce itself:
+// -depth=010 was octal 8 and is ten, so it renders a deeper tree rather than refusing anything.
+func TestRunReadsDepthAsDecimal(t *testing.T) {
+	t.Parallel()
+
+	// Every level is a package, or collapse would fold the chain into one row and the two depths
+	// would be indistinguishable.
+	var profile strings.Builder
+
+	profile.WriteString("mode: set\n")
+
+	for i, path := 0, "ex.com"; i < 12; i++ {
+		path += "/" + string(rune('a'+i))
+		fmt.Fprintf(&profile, "%s/x.go:1.1,2.2 1 1\n", path)
+	}
+
+	path := writeProfile(t, profile.String())
+
+	rows := func(depth string) int {
+		t.Helper()
+
+		stdout := &bytes.Buffer{}
+		require.Equal(t, codeOK, app.Run([]string{"-depth", depth, "-profile", path, "-color", "never"},
+			stdout, io.Discard))
+
+		return len(strings.Split(strings.TrimSpace(stdout.String()), "\n"))
+	}
+
+	assert.Equal(t, rows("10"), rows("010"), "010 is ten levels")
+	assert.NotEqual(t, rows("8"), rows("010"), "not the eight base 0 would have read")
 }
