@@ -623,3 +623,56 @@ func TestTotalMatchesTheTreesOwnRendering(t *testing.T) {
 	assert.Equal(t, "66.67\n", total.String())
 	assert.Contains(t, tree.String(), "66.67", "the tree reports the same figure")
 }
+
+// Setting -depth past the bottom of the tree is how the README told people to see all of it, and
+// guessing that number is wrong both ways: too small truncates without saying so, too large is
+// harmless but arbitrary. "max" is the only value that is right without knowing the answer first.
+func TestRunAcceptsMaxDepth(t *testing.T) {
+	t.Parallel()
+
+	profile := "mode: set\n" +
+		"ex.com/p/a.go:1.1,2.2 1 1\n" +
+		"ex.com/p/one/b.go:1.1,2.2 1 1\n" +
+		"ex.com/p/one/two/c.go:1.1,2.2 1 1\n" +
+		"ex.com/p/one/two/three/d.go:1.1,2.2 1 0\n"
+
+	tests := []struct {
+		name     string
+		args     []string
+		wantRows int
+	}{
+		{name: "the default is one level below the top row", wantRows: 2},
+		{name: "max reaches the bottom", args: []string{"-depth", "max"}, wantRows: 4},
+		{name: "a number past the bottom reaches it too", args: []string{"-depth", "9"}, wantRows: 4},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			args := append([]string{"-profile", writeProfile(t, profile), "-color", "never"}, tc.args...)
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+			require.Equal(t, codeOK, app.Run(args, stdout, stderr))
+			assert.Len(t, strings.Split(strings.TrimSpace(stdout.String()), "\n"), tc.wantRows)
+		})
+	}
+}
+
+// Anything else is a flag error rather than a silently different depth.
+func TestRunRejectsADepthThatIsNeitherANumberNorMax(t *testing.T) {
+	t.Parallel()
+
+	for _, arg := range []string{"deep", "", "-1", "1.5", "99999999999999999999"} {
+		t.Run(arg, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{"-depth", arg, "-profile", "x.out"}, stdout, stderr)
+
+			assert.Equal(t, codeFailed, code)
+			assert.Contains(t, stderr.String(), `want a number of levels, or "max"`)
+		})
+	}
+}

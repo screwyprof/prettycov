@@ -17,12 +17,18 @@ import (
 // prettycov with no arguments in a repo that just ran its tests does the obvious thing.
 const defaultProfile = "coverage.out"
 
+// defaultDepth shows the top row plus one level. Measured across 16 real repositories it is the
+// only fixed value that stays on a screen everywhere: the worst case is hugo at 37 rows, where
+// depth 2 gives 152 and gitea 196.
+const defaultDepth = 1
+
 var (
 	errBadColor        = errors.New(`want "auto", "never" or "always"`)
 	errTooManyProfiles = errors.New("want at most one profile path")
 	errTwoProfiles     = errors.New("profile given twice")
 	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
 	errEmptyExclude    = errors.New("want a pattern; an empty one matches every file")
+	errBadDepth        = errors.New(`want a number of levels, or "max"`)
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -77,7 +83,28 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	set.StringVar(&cfg.Profile, "profile", "", "coverage profile path")
 	set.StringVar(&cfg.CurrentRoot, "old", "", "old project's root package")
 	set.StringVar(&cfg.NewRoot, "new", "", "new project's root package")
-	set.UintVar(&cfg.Depth, "depth", 1, "levels to show below the top row, like tree -L")
+	// Set here rather than by the flag package, which does not carry a default through Func.
+	cfg.Depth = defaultDepth
+
+	set.Func("depth", `levels below the top row, like tree -L, or "max" (default 1)`, func(s string) error {
+		// Guessing a big number is wrong in both directions: -depth=9 wastes six levels on a small
+		// repo and truncates kubernetes, which is 3232 rows deep, without saying it did.
+		if s == "max" {
+			cfg.Depth = math.MaxUint
+
+			return nil
+		}
+
+		levels, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
+			return errBadDepth
+		}
+
+		cfg.Depth = uint(levels)
+
+		return nil
+	})
 	// Parsed here rather than handed back as a string for the caller to convert: ColorAuto is the
 	// zero value, so leaving the flag out lands on the default without stating it twice.
 	set.Func("color", "when to colour: \"auto\" (default), \"never\" or \"always\"", func(s string) error {
