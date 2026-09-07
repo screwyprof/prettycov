@@ -34,17 +34,25 @@ tags.
 ### Go API
 
 **Breaking**, and the tool is CLI-first — the library is a by-product, and this is what pre-1.0 is
-for. Two concepts that were loose numbers with rules scattered around them are types that carry
-their own rules:
+for. Concepts that were loose numbers with their rules scattered around them are now types that
+carry those rules, and the environment-reading moved out to the CLI:
+
+- `ColorMode`, `ColorAuto`, `ColorNever` and `ColorAlways` are **removed**. `Options.Color` is a
+  `Palette` — `Plain` or `ANSI` — so `DisplayTree` renders what it is told instead of reading
+  `NO_COLOR`, `TERM` and the file descriptor to decide. Resolving `auto` needs those, and they are
+  questions about the world rather than about coverage, so the CLI asks them and passes the answer.
 
 - `Depth` replaces the `uint` on `Options.Depth` and `Rows`. `DepthAll` is the whole tree, and
   `ParseDepth` reads `"max"` or a level count. The parsing, the clamping and the two ways of
   getting it wrong lived in the CLI, which is where a magic `math.MaxUint` had to be known about.
+- `ParseExclude` compiles one `-exclude` pattern and refuses the empty one, which matches every
+  file. That guard used to live in the CLI, so only `-exclude` was protected: a caller of `Exclude`
+  could pass `regexp.MustCompile("")` and silently zero the report.
 - `Percentage` replaces `CoverageStats.Ratio` and the `Percentage(CoverageStats)` function.
   `CoverageStats.Percentage() (Percentage, bool)` builds one — `ok` is false when there is nothing
   to cover — and it is the only way to, so a percentage that exists always has a number to show.
   `String` rounds and never reads 100.00 for code that is not fully covered; `Float` does not
-  round, so `-fail-under` grades what was measured rather than what was shown.
+  round, so `-fail-under` compares the exact ratio.
 
 ## [0.6.0] — 2026-09-07
 

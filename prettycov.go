@@ -47,8 +47,7 @@ type Percentage struct {
 	complete bool
 }
 
-// Float is the ratio itself, for a caller comparing against a threshold. String rounds; this does
-// not, so a gate grades what was measured rather than what was shown.
+// Float is the unrounded ratio, for comparing against a threshold.
 func (p Percentage) Float() float64 { return p.value }
 
 // String renders the ratio to two decimals, and never reads 100.00 for code that is not fully

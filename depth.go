@@ -8,12 +8,9 @@ import (
 
 // Depth is how many levels of a tree to show below its top row, the way `tree -L` counts them.
 // DepthAll is all of them.
-//
-// A type rather than a uint so the whole tree has a name instead of a magic number, and so the
-// clamping and the two ways of getting it wrong live here rather than in whatever parses a flag.
 type Depth uint
 
-// DepthAll shows every level, and is the top of Depth's range: adding to it wraps to nothing.
+// DepthAll shows every level.
 const DepthAll Depth = math.MaxUint
 
 var (

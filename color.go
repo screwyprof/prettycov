@@ -18,10 +18,6 @@ const (
 
 // Palette is how a percentage is written. Plain is the zero value, so a caller that says nothing
 // about colour gets none.
-//
-// An enum and not a bool: the choice belongs to this package because it owns what a row looks
-// like, and a second palette — 256-colour, or none of the escapes at all — would be a value here
-// rather than a second parameter everywhere.
 type Palette int
 
 const (

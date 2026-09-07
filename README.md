@@ -30,7 +30,7 @@ Run `prettycov help`, `prettycov -help` or `prettycov -h` for the built-in usage
 ### Show coverage summary up to the given depth
 The profile defaults to `./coverage.out`. Name another one positionally (`prettycov path/to/cov.out`) or with `-profile`.
 
-You may also specify `-depth` to set how many levels to show below the top row, the way `tree -L` counts them. `-depth=max` goes all the way down, which beats guessing a number: too small truncates the tree without saying so, and on a repository like kubernetes even `-depth=9` is six levels short of the bottom.
+You may also specify `-depth` to set how many levels to show below the top row, the way `tree -L` counts them. `-depth=max` goes all the way down, which beats guessing a number: too small truncates the tree without saying so.
 
 ```shell
 ❯ prettycov -depth=max

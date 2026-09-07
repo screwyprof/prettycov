@@ -10,8 +10,9 @@ import (
 
 var errBadColor = errors.New(`want "auto", "never" or "always"`)
 
-// colorMode is what -color said, which is not yet what the report will do: two of the three are
-// answers and one is a question. Flags read what was typed; "auto" is a valid thing to have typed.
+// colorMode is what -color said. auto needs the destination to mean anything; never and always
+// exist because a caller sometimes knows better than the heuristic, which is why every tool that
+// colours output offers the same three.
 type colorMode int
 
 const (
