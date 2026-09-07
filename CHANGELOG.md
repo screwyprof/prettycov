@@ -31,6 +31,13 @@ tags.
   it and index.golang.org lists what the proxy learned, which is what pkg.go.dev builds from — so
   without it a release stayed unpublished until some user pulled it through by accident.
 
+### Changed
+
+- `-color=auto` asks the descriptor whether it is a terminal, through
+  `golang.org/x/term`, instead of stat'ing it for a character device. `/dev/null` and
+  `/dev/urandom` are character devices too and were being coloured; a terminal still is one, so
+  nothing a reader sees changes.
+
 ### Go API
 
 **Breaking**, and the tool is CLI-first — the library is a by-product, and this is what pre-1.0 is

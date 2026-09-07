@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 
+	"golang.org/x/term"
+
 	"github.com/screwyprof/prettycov"
 )
 
@@ -60,12 +62,10 @@ func (m colorMode) palette(w io.Writer) prettycov.Palette {
 		return prettycov.Plain
 	}
 
+	// term.IsTerminal asks the descriptor itself, where stat'ing for a character device only
+	// guesses: /dev/null and /dev/urandom are character devices too, and would have been coloured.
 	file, ok := w.(*os.File)
-	if !ok {
-		return prettycov.Plain
-	}
-
-	if info, err := file.Stat(); err != nil || info.Mode()&os.ModeCharDevice == 0 {
+	if !ok || !term.IsTerminal(int(file.Fd())) {
 		return prettycov.Plain
 	}
 
