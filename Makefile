@@ -84,9 +84,14 @@ require-golangci:
 # golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
 # which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
 # standalone pair never applied at all, so a 128-column line survived `make fmt` unchanged.
+#
+# The file list, not ./..., because `fmt` walks the tree to expand it and `lint` does not: run
+# loads packages, and the go tool skips directories starting with _ or . on the way. So a checkout
+# left under the root cost this target a minute per commit while lint stayed instant — 74469 files
+# walked to format 25.
 fmt: require-golangci ## format code
 	@echo -e "$(OK_COLOR)==> Formatting$(NO_COLOR)"
-	@golangci-lint fmt ./...
+	@golangci-lint fmt $(GO_FILES)
 
 # One recipe produces the profile, and it is a real file rule so make can tell when it is stale.
 # The reports depend on the file rather than on `test`, so they rebuild it when a source has
