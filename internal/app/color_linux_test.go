@@ -52,17 +52,6 @@ func TestRunAutoColorRefusedByTheEnvironment(t *testing.T) {
 	}
 }
 
-// clearColorEnv puts the environment in the state where only the destination decides. Its callers
-// cannot be parallel: t.Setenv panics if the test or any parent has called t.Parallel.
-func clearColorEnv(t *testing.T) {
-	t.Helper()
-
-	// Registers the restore, then clears it: NO_COLOR set to anything, empty included, means no.
-	t.Setenv("NO_COLOR", "")
-	require.NoError(t, os.Unsetenv("NO_COLOR"))
-	t.Setenv("TERM", "xterm")
-}
-
 // runToTerminal renders the report to a real terminal and returns what the terminal received.
 func runToTerminal(t *testing.T) string {
 	t.Helper()

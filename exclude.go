@@ -5,7 +5,7 @@ import (
 	"regexp"
 )
 
-// ErrEmptyExclude is the pattern that matches every file.
+// ErrEmptyExclude reports the empty pattern, which matches every file.
 var ErrEmptyExclude = errors.New("want a pattern; an empty one matches every file")
 
 // ParseExclude compiles one exclusion pattern, refusing the empty one.

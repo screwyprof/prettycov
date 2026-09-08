@@ -11,8 +11,8 @@ type CoverageStats struct {
 	Uncovered int
 }
 
-// Percentage reports the share of statements covered. ok is false when there are none to cover,
-// which is not 0% — there is nothing to report.
+// Percentage reports the share of statements covered. The bool is false when there are none to
+// cover, which is not 0% — there is nothing to report.
 //
 // Derived rather than stored: a stored percentage can disagree with the counts beside it, which is
 // exactly how the roll-up used to go wrong.
@@ -47,7 +47,7 @@ type Percentage struct {
 	complete bool
 }
 
-// Float is the unrounded ratio, for comparing against a threshold.
+// Float is the unrounded percentage, for comparing against a threshold.
 func (p Percentage) Float() float64 { return p.value }
 
 // String renders the ratio to two decimals, and never reads 100.00 for code that is not fully
