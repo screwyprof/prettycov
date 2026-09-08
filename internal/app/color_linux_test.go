@@ -95,7 +95,11 @@ func runToTerminal(t *testing.T) string {
 func openPTY(t *testing.T) (master, slave *os.File) {
 	t.Helper()
 
-	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)
+	// O_NOCTTY on both ends. Without it, a test binary that is a session leader with no controlling
+	// terminal — which is how some sandboxes start one — would adopt this pty as its controlling
+	// terminal, and closing the master below would SIGHUP the process group and kill the run with
+	// no failure to read.
+	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR|unix.O_NOCTTY, 0)
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = master.Close() })
@@ -105,7 +109,7 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 	num, err := unix.IoctlGetInt(int(master.Fd()), unix.TIOCGPTN)
 	require.NoError(t, err, "ask which slave")
 
-	slave, err = os.OpenFile("/dev/pts/"+strconv.Itoa(num), os.O_RDWR, 0)
+	slave, err = os.OpenFile("/dev/pts/"+strconv.Itoa(num), os.O_RDWR|unix.O_NOCTTY, 0)
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = slave.Close() })
