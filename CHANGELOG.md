@@ -10,7 +10,7 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
-## Unreleased
+## [0.7.0] — 2026-09-08
 
 ### Added
 
@@ -231,6 +231,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[0.7.0]: https://github.com/screwyprof/prettycov/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/screwyprof/prettycov/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/screwyprof/prettycov/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/screwyprof/prettycov/compare/v0.4.0...v0.4.1
