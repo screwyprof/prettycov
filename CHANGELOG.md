@@ -50,8 +50,10 @@ carry those rules, and the environment-reading moved out to the CLI:
   `ParseDepth` reads `"max"` or a level count. The parsing, the clamping and the two ways of
   getting it wrong lived in the CLI, which is where a magic `math.MaxUint` had to be known about.
 - `ParseExclude` compiles one `-exclude` pattern and refuses the empty one, which matches every
-  file. That guard used to live in the CLI, so only `-exclude` was protected: a caller of `Exclude`
-  could pass `regexp.MustCompile("")` and silently zero the report.
+  file and would silently zero the report. That guard used to live in the CLI, so it protected only
+  the flag; it is on the way in now, for any caller that goes through it. `Exclude` still takes
+  compiled patterns and asks no questions about them, the same way a hand-built `Depth` skips
+  `ParseDepth`'s clamp.
 - `Percentage` replaces `CoverageStats.Ratio` and the `Percentage(CoverageStats)` function.
   `CoverageStats.Percentage() (Percentage, bool)` builds one — `ok` is false when there is nothing
   to cover — and it is the only way to, so a percentage that exists always has a number to show.

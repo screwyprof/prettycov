@@ -9,8 +9,7 @@ import (
 	"unicode"
 )
 
-// Options controls how a tree is rendered. The zero value prints the top row alone, colouring it
-// only if the destination is a terminal.
+// Options controls how a tree is rendered. The zero value prints the top row alone, in plain text.
 type Options struct {
 	// Depth is how many levels to show below the top row. DepthAll shows all of them.
 	Depth Depth

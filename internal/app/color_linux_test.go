@@ -1,6 +1,8 @@
 package app_test
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"strconv"
 	"testing"
@@ -14,33 +16,86 @@ import (
 	"github.com/screwyprof/prettycov/internal/app"
 )
 
-// The yes branch of the auto heuristic. Every other colour test proves a negative — a buffer, a
-// regular file, NO_COLOR — because the branch that says yes needs a real terminal, and a pty is
-// the only way to have one in a test.
-//
 // Linux only: macOS hands out pseudo-terminals through different ioctls, and CI is ubuntu.
+
+// The yes branch of the auto heuristic. Every other colour test proves a negative, because the
+// branch that says yes needs a real terminal and a pty is the only way to have one in a test.
 //
 //nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
 func TestRunAutoColorToATerminal(t *testing.T) {
+	clearColorEnv(t)
+
+	assert.Contains(t, runToTerminal(t), "\x1b[", "a terminal gets the escapes")
+}
+
+// The two guards that say no even to a terminal. They have to be tested against one: writing to a
+// buffer takes the branch that asks whether the destination is a file at all, so both of these
+// could be deleted and a buffer would still come back plain.
+//
+//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
+func TestRunAutoColorRefusedByTheEnvironment(t *testing.T) {
+	tests := []struct {
+		name string
+		key  string
+		val  string
+	}{
+		{name: "NO_COLOR set", key: "NO_COLOR", val: "1"},
+		{name: "NO_COLOR set but empty still counts", key: "NO_COLOR", val: ""},
+		{name: "dumb terminal", key: "TERM", val: "dumb"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			clearColorEnv(t)
+			t.Setenv(tc.key, tc.val)
+
+			assert.NotContains(t, runToTerminal(t), "\x1b[")
+		})
+	}
+}
+
+// clearColorEnv puts the environment in the state where only the destination decides.
+func clearColorEnv(t *testing.T) {
+	t.Helper()
+
 	// Registers the restore, then clears it: NO_COLOR set to anything, empty included, means no.
 	t.Setenv("NO_COLOR", "")
 	require.NoError(t, os.Unsetenv("NO_COLOR"))
 	t.Setenv("TERM", "xterm")
+}
+
+// runToTerminal renders the report to a real terminal and returns what the terminal received.
+func runToTerminal(t *testing.T) string {
+	t.Helper()
 
 	master, slave := openPTY(t)
 
+	// Drained from the start, not after: app.Run writes the whole report into the slave, and with
+	// nobody reading the master a report past the line discipline's buffer would block forever —
+	// a package timeout rather than a failed assertion.
+	var out bytes.Buffer
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		_, _ = io.Copy(&out, master)
+	}()
+
 	// No -color at all, so the default really is auto.
-	assert.Equal(t, codeOK, app.Run([]string{writeProfile(t, profile)}, slave, os.Stderr))
+	require.Equal(t, codeOK, app.Run([]string{writeProfile(t, profile)}, slave, os.Stderr))
+
+	// Closing the last slave makes the master's read fail, which is what ends the copy.
 	require.NoError(t, slave.Close())
 
-	// A ceiling in case the write never happens; on the way through it returns at once.
-	require.NoError(t, master.SetReadDeadline(time.Now().Add(5*time.Second)))
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out reading the terminal")
+	}
 
-	buf := make([]byte, 4096)
-	n, err := master.Read(buf)
-	require.NoError(t, err)
-
-	assert.Contains(t, string(buf[:n]), "\x1b[", "a terminal gets the escapes")
+	return out.String()
 }
 
 // openPTY returns the two ends of a pseudo-terminal. The slave is what a program writes to and is

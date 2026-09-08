@@ -684,34 +684,6 @@ func TestRunRejectsABadDepth(t *testing.T) {
 	}
 }
 
-// -color=auto asks what it is writing to, and these are the three ways the answer is no without a
-// terminal being involved. They live here rather than beside the report because they are questions
-// about the world: two environment variables and a file descriptor.
-//
-//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
-func TestRunAutoColorStaysPlain(t *testing.T) {
-	tests := []struct {
-		name string
-		key  string
-		val  string
-	}{
-		{name: "NO_COLOR set", key: "NO_COLOR", val: "1"},
-		{name: "NO_COLOR set but empty still counts", key: "NO_COLOR", val: ""},
-		{name: "dumb terminal", key: "TERM", val: "dumb"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv(tc.key, tc.val)
-
-			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-
-			require.Equal(t, codeOK, app.Run([]string{writeProfile(t, profile)}, stdout, stderr))
-			assert.NotContains(t, stdout.String(), "\x1b[")
-		})
-	}
-}
-
 // A regular file is not a terminal, and a closed one cannot even be asked — Stat fails. Both are
 // branches a bytes.Buffer never reaches, since it is not an *os.File at all.
 func TestRunAutoColorAgainstRealFiles(t *testing.T) {

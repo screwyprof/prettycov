@@ -197,11 +197,13 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 # Not the publishing guide's `GOPROXY=... go list -m`, which answers from $GOMODCACHE without
 # asking any proxy once the version is local — so anyone who smoke-tested the release first gets a
 # green run and nothing published. A request to the proxy cannot be served from a cache, and -f
-# makes a 404 an error rather than a silent success.
+# makes a 404 an error rather than a silent success. The marker-then-tr encoding is the proxy's own
+# rule for uppercase in a module path, done without sed's \l, which is a GNU extension BSD sed
+# emits literally.
 publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
-	mod=$$(go list -m) || exit $$?; \
+	mod=$$(go list -m | sed 's/[A-Z]/!&/g' | tr 'A-Z' 'a-z') || exit $$?; \
 	curl -fsS "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null && \
 	echo "  proxy has it; index.golang.org and pkg.go.dev follow"
 
