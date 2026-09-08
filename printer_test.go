@@ -206,8 +206,6 @@ func TestDisplayTreeGradesByThreshold(t *testing.T) {
 //	├ alpha/deep/   (alpha holds only deep, so the two collapse into one row)
 //	├ beta/
 //	└ gamma/
-//
-//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
 func printerFiles() []prettycov.FileCoverage {
 	return []prettycov.FileCoverage{
 		file("m/gamma/g.go", 1, 1),

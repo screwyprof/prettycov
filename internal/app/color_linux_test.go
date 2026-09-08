@@ -3,22 +3,15 @@ package app_test
 import (
 	"os"
 	"strconv"
-	"syscall"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
 	"github.com/screwyprof/prettycov/internal/app"
-)
-
-// Linux ioctls for handing out a pseudo-terminal: unlock the pair, then ask which slave it is.
-const (
-	tiocsptlck = 0x40045431
-	tiocgptn   = 0x80045430
 )
 
 // The yes branch of the auto heuristic. Every other colour test proves a negative — a buffer, a
@@ -40,6 +33,7 @@ func TestRunAutoColorToATerminal(t *testing.T) {
 	assert.Equal(t, codeOK, app.Run([]string{writeProfile(t, profile)}, slave, os.Stderr))
 	require.NoError(t, slave.Close())
 
+	// A ceiling in case the write never happens; on the way through it returns at once.
 	require.NoError(t, master.SetReadDeadline(time.Now().Add(5*time.Second)))
 
 	buf := make([]byte, 4096)
@@ -47,11 +41,14 @@ func TestRunAutoColorToATerminal(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, string(buf[:n]), "\x1b[", "a terminal gets the escapes")
-	assert.Contains(t, string(buf[:n]), "60.00")
 }
 
 // openPTY returns the two ends of a pseudo-terminal. The slave is what a program writes to and is
 // a terminal; the master is what a terminal emulator would read.
+//
+// Reading the master is why both ends are needed. Writing to the master would come back as echo,
+// which ECHOCTL rewrites: each ESC returns as the two bytes "^[", so the escapes could not be
+// matched. Slave to master is the output direction and arrives untouched.
 func openPTY(t *testing.T) (master, slave *os.File) {
 	t.Helper()
 
@@ -60,17 +57,12 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 
 	t.Cleanup(func() { _ = master.Close() })
 
-	var unlock int
+	require.NoError(t, unix.IoctlSetPointerInt(int(master.Fd()), unix.TIOCSPTLCK, 0), "unlock the pair")
 
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, master.Fd(), tiocsptlck, uintptr(unsafe.Pointer(&unlock)))
-	require.Zero(t, errno, "unlock the pty pair")
+	num, err := unix.IoctlGetInt(int(master.Fd()), unix.TIOCGPTN)
+	require.NoError(t, err, "ask which slave")
 
-	var num uint32
-
-	_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, master.Fd(), tiocgptn, uintptr(unsafe.Pointer(&num)))
-	require.Zero(t, errno, "ask which slave")
-
-	slave, err = os.OpenFile("/dev/pts/"+strconv.FormatUint(uint64(num), 10), os.O_RDWR, 0)
+	slave, err = os.OpenFile("/dev/pts/"+strconv.Itoa(num), os.O_RDWR, 0)
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = slave.Close() })

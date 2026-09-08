@@ -18,18 +18,15 @@ tags.
   everything, and guessing that number is wrong in both directions: too small truncates without
   saying it did, and on kubernetes — 3232 rows — even 9 is six levels short.
 
-  The default stays 1. Measured across 16 repositories it is the only fixed value that stays on a
-  screen everywhere: worst case is hugo at 37 rows, where depth 2 gives 152 and gitea 196.
+  The default stays 1; the `defaultDepth` comment carries the measurement behind that.
 
   **Breaking:** `-depth` now reads its argument as decimal. The flag package read it as base 0, so
   `-depth=0x3` and `-depth=1_0` were accepted and are now refused, and `-depth=010` meant 8 where
   it now means 10 — on a 13-level tree that is 9 rows against 11. The silent one is the reason this
   is labelled: a rejected argument says so, a reinterpreted one does not.
 
-- `make publish` requests the current `./VERSION` from proxy.golang.org, and `make release` now
-  runs it after pushing the tag. proxy.golang.org caches a version the first time anyone asks for
-  it and index.golang.org lists what the proxy learned, which is what pkg.go.dev builds from — so
-  without it a release stayed unpublished until some user pulled it through by accident.
+- `make release` publishes the tag to the module proxy, so pkg.go.dev indexes it; `make publish`
+  does that step alone. Releases used to sit unindexed until some user pulled one through.
 
 ### Changed
 
