@@ -17,12 +17,15 @@ import (
 // prettycov with no arguments in a repo that just ran its tests does the obvious thing.
 const defaultProfile = "coverage.out"
 
+// defaultDepth shows the top row plus one level. Measured across 16 real repositories it is the
+// only fixed value that stays on a screen everywhere: the worst case is hugo at 37 rows, where
+// depth 2 gives 152 and gitea 196.
+const defaultDepth prettycov.Depth = 1
+
 var (
-	errBadColor        = errors.New(`want "auto", "never" or "always"`)
 	errTooManyProfiles = errors.New("want at most one profile path")
 	errTwoProfiles     = errors.New("profile given twice")
 	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
-	errEmptyExclude    = errors.New("want a pattern; an empty one matches every file")
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -59,8 +62,8 @@ type config struct {
 	Profile     string
 	CurrentRoot string
 	NewRoot     string
-	Depth       uint
-	Color       prettycov.ColorMode
+	Depth       prettycov.Depth
+	Color       colorMode
 	Exclude     []*regexp.Regexp
 	FailUnder   *float64
 	Total       bool
@@ -77,28 +80,33 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	set.StringVar(&cfg.Profile, "profile", "", "coverage profile path")
 	set.StringVar(&cfg.CurrentRoot, "old", "", "old project's root package")
 	set.StringVar(&cfg.NewRoot, "new", "", "new project's root package")
-	set.UintVar(&cfg.Depth, "depth", 1, "levels to show below the top row, like tree -L")
-	// Parsed here rather than handed back as a string for the caller to convert: ColorAuto is the
-	// zero value, so leaving the flag out lands on the default without stating it twice.
-	set.Func("color", "when to colour: \"auto\" (default), \"never\" or \"always\"", func(s string) error {
-		mode, err := parseColor(s)
-		cfg.Color = mode
+	// Set here rather than by the flag package, which carries no default through Func. colorAuto
+	// is the zero value, so -color needs no such line.
+	cfg.Depth = defaultDepth
 
-		//nolint:wrapcheck // parseColor's error is already phrased for the flag package.
+	set.Func("depth",
+		fmt.Sprintf("`levels` below the top row, like tree -L, or \"max\" (default %d)", defaultDepth),
+		func(s string) error {
+			var err error
+
+			cfg.Depth, err = prettycov.ParseDepth(s)
+
+			//nolint:wrapcheck // ParseDepth's errors are already phrased for the flag package,
+			// which prefixes the flag name and the offending value.
+			return err
+		})
+	// Resolved here rather than handed back as a mode for the caller to combine with something:
+	// "auto" is not an answer until the destination is known, and it is known by now.
+	set.Func("color", "when to colour: \"auto\" (default), \"never\" or \"always\"", func(s string) (err error) {
+		//nolint:wrapcheck // parseColorMode's error is already phrased for the flag package.
+		cfg.Color, err = parseColorMode(s)
+
 		return err
 	})
 	// Repeatable: assigning instead of appending would silently apply only the last pattern.
 	// Compiled here so a bad one is a flag error rather than a panic later.
 	set.Func("exclude", "omit files whose path matches this `regexp`; repeatable", func(s string) error {
-		// Refused rather than honoured: the empty pattern matches every file, so it empties the
-		// report and, with no -fail-under, exits 0 having measured nothing. An unset make variable
-		// reaches here as "" and would turn a coverage gate into a green no-op.
-		if s == "" {
-			//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
-			return errEmptyExclude
-		}
-
-		re, err := regexp.Compile(s)
+		re, err := prettycov.ParseExclude(s)
 		if err != nil {
 			//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
 			return err
@@ -199,20 +207,5 @@ func profilePath(flagged string, positional []string) (string, error) {
 		return positional[0], nil
 	default:
 		return defaultProfile, nil
-	}
-}
-
-func parseColor(name string) (prettycov.ColorMode, error) {
-	switch name {
-	case "auto":
-		return prettycov.ColorAuto, nil
-	case "never":
-		return prettycov.ColorNever, nil
-	case "always":
-		return prettycov.ColorAlways, nil
-	default:
-		// Terse: the flag package prefixes the flag name and the offending value.
-		//nolint:wrapcheck // see above.
-		return prettycov.ColorAuto, errBadColor
 	}
 }

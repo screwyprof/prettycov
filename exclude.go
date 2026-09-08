@@ -1,6 +1,33 @@
 package prettycov
 
-import "regexp"
+import (
+	"errors"
+	"regexp"
+)
+
+// ErrEmptyExclude reports the empty pattern, which matches every file.
+var ErrEmptyExclude = errors.New("want a pattern; an empty one matches every file")
+
+// ParseExclude compiles one exclusion pattern, refusing the empty one.
+//
+// Here rather than in whatever reads a flag, because it is a fact about what Exclude means: the
+// empty pattern takes every file, so the report ends up covering nothing and, with no threshold to
+// fail, says so with a zero exit. An unset variable in `prettycov -exclude=$(EXCLUDES)` arrives as
+// "" and would turn a coverage gate into a green no-op.
+func ParseExclude(s string) (*regexp.Regexp, error) {
+	if s == "" {
+		//nolint:wrapcheck // a sentinel of this package's own, returned for errors.Is.
+		return nil, ErrEmptyExclude
+	}
+
+	re, err := regexp.Compile(s)
+	if err != nil {
+		//nolint:wrapcheck // regexp's message already quotes the expression and the fault in it.
+		return nil, err
+	}
+
+	return re, nil
+}
 
 // Exclude drops every file matching any of patterns, and reports what each one took out.
 //

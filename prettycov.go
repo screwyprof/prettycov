@@ -1,6 +1,7 @@
 package prettycov
 
 import (
+	"fmt"
 	"path"
 	"strings"
 )
@@ -10,10 +11,12 @@ type CoverageStats struct {
 	Uncovered int
 }
 
-// Ratio reports the percentage of statements covered. ok is false when there are none to cover,
-// which is not 0% — there is nothing to report. Derived rather than stored: a stored percentage
-// can disagree with the counts beside it, which is exactly how the roll-up used to go wrong.
-func (c CoverageStats) Ratio() (pct float64, ok bool) {
+// Percentage reports the share of statements covered. The bool is false when there are none to
+// cover, which is not 0% — there is nothing to report.
+//
+// Derived rather than stored: a stored percentage can disagree with the counts beside it, which is
+// exactly how the roll-up used to go wrong.
+func (c CoverageStats) Percentage() (Percentage, bool) {
 	total := c.Covered + c.Uncovered
 
 	// Both counts are statement totals, so they are non-negative and covered is at most total.
@@ -22,10 +25,41 @@ func (c CoverageStats) Ratio() (pct float64, ok bool) {
 	// "-461168601842738790400.00", and another 100.00, its uncovered statements having wrapped
 	// past zero and taken the shortfall with them.
 	if total <= 0 || c.Covered < 0 || c.Covered > total {
-		return 0, false
+		return Percentage{}, false
 	}
 
-	return float64(c.Covered) / float64(total) * 100, true
+	return Percentage{
+		value:    float64(c.Covered) / float64(total) * 100,
+		complete: c.Uncovered == 0,
+	}, true
+}
+
+// Percentage is a share of statements covered. Build one with CoverageStats.Percentage, which
+// reports whether there was anything to cover; a Percentage that came from there always has a
+// number to show, so no caller carries that question further.
+//
+// The zero value is not one of those and means nothing — it renders 0.00, which is a real and
+// terrible coverage figure rather than a visible mistake. Do not declare a Percentage and use it.
+type Percentage struct {
+	value float64
+	// complete is carried rather than derived from value, because whether every statement is
+	// covered is a fact about the counts and 99.9986% rounds to 100.00 either way.
+	complete bool
+}
+
+// Float is the unrounded percentage, for comparing against a threshold.
+func (p Percentage) Float() float64 { return p.value }
+
+// String renders the ratio to two decimals, and never reads 100.00 for code that is not fully
+// covered. Rounding to nearest would print 100.00 for 73999 of 74000 statements, and 100% is what
+// a badge shows and what stops someone writing another test.
+func (p Percentage) String() string {
+	text := fmt.Sprintf("%.2f", p.value)
+	if text == "100.00" && !p.complete {
+		return "99.99"
+	}
+
+	return text
 }
 
 type FileCoverage struct {

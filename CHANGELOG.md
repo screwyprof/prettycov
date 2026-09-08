@@ -10,6 +10,60 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## Unreleased
+
+### Added
+
+- `-depth=max` shows the whole tree. The README told people to set `-depth` past the bottom to see
+  everything, and guessing that number is wrong in both directions: too small truncates without
+  saying it did, and on kubernetes — 3232 rows — even 9 is six levels short.
+
+  The default stays 1; the `defaultDepth` comment carries the measurement behind that.
+
+  **Breaking:** `-depth` now reads its argument as decimal. The flag package read it as base 0, so
+  `-depth=0x3` and `-depth=1_0` were accepted and are now refused, and `-depth=010` meant 8 where
+  it now means 10 — on a 13-level tree that is 9 rows against 11. The silent one is the reason this
+  is labelled: a rejected argument says so, a reinterpreted one does not.
+
+- `make release` publishes the tag to the module proxy, so pkg.go.dev indexes it; `make publish`
+  does that step alone. Releases used to sit unindexed until some user pulled one through.
+
+### Changed
+
+- `-color=auto` asks the descriptor whether it is a terminal, through
+  `golang.org/x/term`, instead of stat'ing it for a character device. `/dev/null` and
+  `/dev/urandom` are character devices too and were being coloured; a terminal still is one, so
+  nothing a reader sees changes.
+
+### Go API
+
+**Breaking**, and the tool is CLI-first — the library is a by-product, and this is what pre-1.0 is
+for. Concepts that were loose numbers with their rules scattered around them are now types that
+carry those rules, and the environment-reading moved out to the CLI:
+
+- `ColorMode`, `ColorAuto`, `ColorNever` and `ColorAlways` are **removed**. `Options.Color` is a
+  `Palette` — `Plain` or `ANSI` — so `DisplayTree` renders what it is told instead of reading
+  `NO_COLOR`, `TERM` and the file descriptor to decide. Resolving `auto` needs those, and they are
+  questions about the world rather than about coverage, so the CLI asks them and passes the answer.
+
+  This is the one that does not announce itself. Naming a removed constant fails to compile, but
+  `Options{Depth: 2}` still builds and its zero `Color` used to mean "decide for me" and now means
+  `Plain` — so a caller that left the field out stops colouring a terminal, silently.
+
+- `Depth` replaces the `uint` on `Options.Depth` and `Rows`. `DepthAll` is the whole tree, and
+  `ParseDepth` reads `"max"` or a level count. The parsing, the clamping and the two ways of
+  getting it wrong lived in the CLI, which is where a magic `math.MaxUint` had to be known about.
+- `ParseExclude` compiles one `-exclude` pattern and refuses the empty one, which matches every
+  file and would silently zero the report. That guard used to live in the CLI, so it protected only
+  the flag; it is on the way in now, for any caller that goes through it. `Exclude` still takes
+  compiled patterns and asks no questions about them, the same way a hand-built `Depth` skips
+  `ParseDepth`'s clamp.
+- `Percentage` replaces `CoverageStats.Ratio` and the `Percentage(CoverageStats)` function.
+  `CoverageStats.Percentage() (Percentage, bool)` builds one — `ok` is false when there is nothing
+  to cover — and it is the only way to, so a percentage that exists always has a number to show.
+  `String` rounds and never reads 100.00 for code that is not fully covered; `Float` does not
+  round, so `-fail-under` compares the exact ratio.
+
 ## [0.6.0] — 2026-09-07
 
 ### Added

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -136,4 +137,39 @@ func TestExcludeSeparatesOverlapFromNoMatch(t *testing.T) {
 
 	assert.Equal(t, 1, dropped[1].Overlapped, "matched, but an earlier pattern was charged")
 	assert.Equal(t, 0, dropped[2].Overlapped, "never matched at all")
+}
+
+// The empty pattern matches every file, so honouring it empties the report and, with no threshold
+// to fail, says so with a zero exit. Refused here rather than in whatever reads a flag, so a
+// caller driving the library directly is guarded too.
+func TestParseExclude(t *testing.T) {
+	t.Parallel()
+
+	t.Run("compiles a pattern", func(t *testing.T) {
+		t.Parallel()
+
+		re, err := prettycov.ParseExclude(`\.pb\.go$`)
+
+		require.NoError(t, err)
+		assert.True(t, re.MatchString("api/v1/api.pb.go"))
+		assert.False(t, re.MatchString("api/v1/api.go"))
+	})
+
+	t.Run("refuses the empty one", func(t *testing.T) {
+		t.Parallel()
+
+		re, err := prettycov.ParseExclude("")
+
+		require.ErrorIs(t, err, prettycov.ErrEmptyExclude)
+		assert.Nil(t, re)
+	})
+
+	t.Run("reports one that does not compile", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := prettycov.ParseExclude("(")
+
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, prettycov.ErrEmptyExclude)
+	})
 }

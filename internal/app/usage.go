@@ -13,8 +13,9 @@ Show the top level packages, reading ./coverage.out:
 	prettycov
 Read a profile elsewhere:
 	prettycov path/to/coverage.out
-Show another level down:
+Show another level down, or the whole tree:
 	prettycov -depth=2
+	prettycov -depth=max
 Replace a long root package path:
 	prettycov -old=gitlab.com/Company/Department/product/unicorn -new=unicorn
 Fail when total coverage is below a threshold, for CI:

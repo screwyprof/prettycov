@@ -470,7 +470,7 @@ func TestRunExcludesPackages(t *testing.T) {
 func TestRunAppliesEveryExcludePattern(t *testing.T) {
 	t.Parallel()
 
-	profile := "mode: set\n" +
+	patterned := "mode: set\n" +
 		"ex.com/p/cmd/web/main.go:1.1,2.2 10 0\n" +
 		"ex.com/p/testutil/t.go:1.1,2.2 10 1\n" +
 		"ex.com/p/web/handler.go:1.1,2.2 10 1\n"
@@ -478,7 +478,7 @@ func TestRunAppliesEveryExcludePattern(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
 		"-exclude", "cmd/", "-exclude", "testutil", "-exclude", "absent",
-		"-profile", writeProfile(t, profile), "-color", "never",
+		"-profile", writeProfile(t, patterned), "-color", "never",
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
@@ -495,14 +495,14 @@ func TestRunAppliesEveryExcludePattern(t *testing.T) {
 func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 	t.Parallel()
 
-	profile := "mode: set\n" +
+	overlapping := "mode: set\n" +
 		"ex.com/p/cmd/gen.pb.go:1.1,2.2 10 1\n" +
 		"ex.com/p/web/handler.go:1.1,2.2 10 1\n"
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
 		"-exclude", "cmd/", "-exclude", `\.pb\.go$`, "-exclude", "absent",
-		"-profile", writeProfile(t, profile), "-color", "never",
+		"-profile", writeProfile(t, overlapping), "-color", "never",
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
@@ -514,7 +514,7 @@ func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 
-	profile := "mode: set\n" +
+	sixtyOfTen := "mode: set\n" +
 		"example.com/p/covered/a.go:1.1,2.2 6 1\n" +
 		"example.com/p/uncovered/b.go:1.1,2.2 4 0\n"
 
@@ -543,7 +543,7 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			// Appending onto a fresh literal, not onto tc.args: the table's slices are shared
 			// across parallel subtests.
-			args := append([]string{"-total", "-profile", writeProfile(t, profile), "-color", "never"},
+			args := append([]string{"-total", "-profile", writeProfile(t, sixtyOfTen), "-color", "never"},
 				tc.args...)
 
 			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
@@ -622,4 +622,112 @@ func TestTotalMatchesTheTreesOwnRendering(t *testing.T) {
 
 	assert.Equal(t, "66.67\n", total.String())
 	assert.Contains(t, tree.String(), "66.67", "the tree reports the same figure")
+}
+
+// Setting -depth past the bottom of the tree is how the README told people to see all of it, and
+// guessing that number is wrong both ways: too small truncates without saying so, too large is
+// harmless but arbitrary. "max" is the only value that is right without knowing the answer first.
+func TestRunAcceptsMaxDepth(t *testing.T) {
+	t.Parallel()
+
+	fourLevels := "mode: set\n" +
+		"ex.com/p/a.go:1.1,2.2 1 1\n" +
+		"ex.com/p/one/b.go:1.1,2.2 1 1\n" +
+		"ex.com/p/one/two/c.go:1.1,2.2 1 1\n" +
+		"ex.com/p/one/two/three/d.go:1.1,2.2 1 0\n"
+
+	tests := []struct {
+		name     string
+		args     []string
+		wantRows int
+	}{
+		{name: "the default is one level below the top row", wantRows: 2},
+		{name: "max reaches the bottom", args: []string{"-depth", "max"}, wantRows: 4},
+		{name: "a number past the bottom reaches it too", args: []string{"-depth", "9"}, wantRows: 4},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			args := append([]string{"-profile", writeProfile(t, fourLevels), "-color", "never"}, tc.args...)
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+			require.Equal(t, codeOK, app.Run(args, stdout, stderr))
+			assert.Len(t, strings.Split(strings.TrimSpace(stdout.String()), "\n"), tc.wantRows)
+		})
+	}
+}
+
+// One case per error, not the whole matrix: which strings ParseDepth refuses is its own business
+// and TestParseDepthRejections owns it. What only this layer can show is that the refusal reaches
+// stderr and exits 2 rather than rendering a silently different depth.
+func TestRunRejectsABadDepth(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"deep":                 `want a number of levels, or "max"`,
+		"99999999999999999999": `too many levels; use "max" for the whole tree`,
+	}
+
+	for arg, want := range tests {
+		t.Run(arg, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{"-depth", arg, "-profile", "x.out"}, stdout, stderr)
+
+			assert.Equal(t, codeFailed, code)
+			assert.Contains(t, stderr.String(), want)
+		})
+	}
+}
+
+// clearColorEnv puts the environment in the state where only the destination decides. Its callers
+// cannot be parallel: t.Setenv panics if the test or any parent has called t.Parallel.
+func clearColorEnv(t *testing.T) {
+	t.Helper()
+
+	// Registers the restore, then clears it: NO_COLOR set to anything, empty included, means no.
+	t.Setenv("NO_COLOR", "")
+	require.NoError(t, os.Unsetenv("NO_COLOR"))
+	t.Setenv("TERM", "xterm")
+}
+
+// A regular file is not a terminal, and a closed one answers no rather than panicking — its
+// descriptor is -1 by then. Both are branches a bytes.Buffer never reaches, since it is not an
+// *os.File at all.
+//
+// The environment is cleared first, and nothing here is parallel because of it: palette asks about
+// NO_COLOR and TERM before it looks at the descriptor, so a runner with NO_COLOR exported would
+// pass these at the first guard and never test what they are named for.
+//
+//nolint:paralleltest // t.Setenv, through clearColorEnv, panics under t.Parallel.
+func TestRunAutoColorAgainstRealFiles(t *testing.T) {
+	clearColorEnv(t)
+
+	path := writeProfile(t, profile)
+
+	t.Run("a regular file gets no colour", func(t *testing.T) {
+		out, err := os.Create(filepath.Join(t.TempDir(), "report.txt"))
+		require.NoError(t, err)
+
+		require.Equal(t, codeOK, app.Run([]string{path}, out, io.Discard))
+		require.NoError(t, out.Close())
+
+		written, err := os.ReadFile(out.Name())
+		require.NoError(t, err)
+
+		assert.NotEmpty(t, written)
+		assert.NotContains(t, string(written), "\x1b[")
+	})
+
+	t.Run("a closed file is not a panic", func(t *testing.T) {
+		closed, err := os.CreateTemp(t.TempDir(), "closed")
+		require.NoError(t, err)
+		require.NoError(t, closed.Close())
+
+		assert.Equal(t, codeOK, app.Run([]string{path}, closed, io.Discard))
+	})
 }

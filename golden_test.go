@@ -33,14 +33,14 @@ func TestDisplayTreeMatchesGolden(t *testing.T) {
 
 	tree := prettycov.Process(files, "github.com/screwyprof/delegator", "delegator")
 
-	for _, depth := range []uint{0, 1, 2, 3} {
+	for _, depth := range []prettycov.Depth{0, 1, 2, 3} {
 		t.Run(fmt.Sprintf("depth-%d", depth), func(t *testing.T) {
 			t.Parallel()
 
 			// Colour on, so the escapes are part of what is pinned. A golden file that stops at
 			// the text would miss a grade landing in the wrong band.
 			assertGolden(t, fmt.Sprintf("delegator-depth-%d.golden", depth),
-				renderWith(t, tree, depth, prettycov.ColorAlways))
+				renderWith(t, tree, depth, prettycov.ANSI))
 		})
 	}
 }
