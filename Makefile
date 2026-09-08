@@ -211,10 +211,12 @@ publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
 	path=$$(go list -m) || exit $$?; \
 	mod=$$(printf '%s' "$$path" | sed 's/[A-Z]/!&/g' | tr 'A-Z' 'a-z'); \
+	command -v curl >/dev/null 2>&1 || { echo "curl not found"; exit 1; }; \
 	for try in 1 2 3; do \
 		if curl -fsS "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null; then \
 			echo "  proxy has it; index.golang.org and pkg.go.dev follow"; exit 0; \
 		fi; \
+		[ $$try = 3 ] && break; \
 		echo "  not there yet, waiting for the tag to reach the origin"; sleep 5; \
 	done; \
 	echo "  the proxy still cannot see $$v — it fetches from the origin, so leave it a minute and rerun: make publish"; \

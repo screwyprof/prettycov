@@ -46,6 +46,10 @@ carry those rules, and the environment-reading moved out to the CLI:
   `NO_COLOR`, `TERM` and the file descriptor to decide. Resolving `auto` needs those, and they are
   questions about the world rather than about coverage, so the CLI asks them and passes the answer.
 
+  This is the one that does not announce itself. Naming a removed constant fails to compile, but
+  `Options{Depth: 2}` still builds and its zero `Color` used to mean "decide for me" and now means
+  `Plain` — so a caller that left the field out stops colouring a terminal, silently.
+
 - `Depth` replaces the `uint` on `Options.Depth` and `Rows`. `DepthAll` is the whole tree, and
   `ParseDepth` reads `"max"` or a level count. The parsing, the clamping and the two ways of
   getting it wrong lived in the CLI, which is where a magic `math.MaxUint` had to be known about.

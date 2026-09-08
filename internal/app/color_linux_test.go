@@ -52,8 +52,20 @@ func TestRunAutoColorRefusedByTheEnvironment(t *testing.T) {
 	}
 }
 
+// -color=always overrides them, which is what "always" is for. It works because the mode is
+// settled before the environment is consulted at all, and nothing else pins that order: move the
+// NO_COLOR lookup above the switch and every other test still passes.
+//
+//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
+func TestRunColorAlwaysIgnoresTheEnvironment(t *testing.T) {
+	clearColorEnv(t)
+	t.Setenv("NO_COLOR", "1")
+
+	assert.Contains(t, runToTerminal(t, "-color", "always"), "\x1b[", "the caller asked for colour")
+}
+
 // runToTerminal renders the report to a real terminal and returns what the terminal received.
-func runToTerminal(t *testing.T) string {
+func runToTerminal(t *testing.T, args ...string) string {
 	t.Helper()
 
 	master, slave := openPTY(t)
@@ -71,8 +83,8 @@ func runToTerminal(t *testing.T) string {
 		_, _ = io.Copy(&out, master)
 	}()
 
-	// No -color at all, so the default really is auto.
-	require.Equal(t, codeOK, app.Run([]string{writeProfile(t, profile)}, slave, os.Stderr))
+	// The profile last, so a caller's -color lands before it and the default is auto without one.
+	require.Equal(t, codeOK, app.Run(append(args, writeProfile(t, profile)), slave, os.Stderr))
 
 	// Closing the last slave makes the master's read fail, which is what ends the copy.
 	require.NoError(t, slave.Close())
@@ -100,7 +112,11 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 	// terminal, and closing the master below would SIGHUP the process group and kill the run with
 	// no failure to read.
 	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR|unix.O_NOCTTY, 0)
-	require.NoError(t, err)
+	if err != nil {
+		// A container without devpts has no pty to give. Skipping says the branch went untested,
+		// where failing would blame this repository for the sandbox.
+		t.Skipf("no pseudo-terminal available: %v", err)
+	}
 
 	t.Cleanup(func() { _ = master.Close() })
 
