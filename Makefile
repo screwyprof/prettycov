@@ -91,6 +91,7 @@ require-golangci:
 # walked to format 25.
 fmt: require-golangci ## format code
 	@echo -e "$(OK_COLOR)==> Formatting$(NO_COLOR)"
+	@test -n "$(GO_FILES)" || { echo "no Go files; GO_FILES needs a git checkout"; exit 1; }
 	@golangci-lint fmt $(GO_FILES)
 
 # One recipe produces the profile, and it is a real file rule so make can tell when it is stale.
@@ -208,9 +209,16 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
-	mod=$$(go list -m | sed 's/[A-Z]/!&/g' | tr 'A-Z' 'a-z') || exit $$?; \
-	curl -fsS "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null && \
-	echo "  proxy has it; index.golang.org and pkg.go.dev follow"
+	path=$$(go list -m) || exit $$?; \
+	mod=$$(printf '%s' "$$path" | sed 's/[A-Z]/!&/g' | tr 'A-Z' 'a-z'); \
+	for try in 1 2 3; do \
+		if curl -fsS "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null; then \
+			echo "  proxy has it; index.golang.org and pkg.go.dev follow"; exit 0; \
+		fi; \
+		echo "  not there yet, waiting for the tag to reach the origin"; sleep 5; \
+	done; \
+	echo "  the proxy still cannot see $$v — it fetches from the origin, so leave it a minute and rerun: make publish"; \
+	exit 1
 
 # The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit
 # on PATH (pip install pre-commit / brew install pre-commit).
