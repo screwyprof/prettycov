@@ -31,8 +31,6 @@ func TestRunAutoColorToATerminal(t *testing.T) {
 // The two guards that say no even to a terminal. They have to be tested against one: writing to a
 // buffer takes the branch that asks whether the destination is a file at all, so both of these
 // could be deleted and a buffer would still come back plain.
-//
-//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
 func TestRunAutoColorRefusedByTheEnvironment(t *testing.T) {
 	tests := []struct {
 		name string
@@ -54,7 +52,8 @@ func TestRunAutoColorRefusedByTheEnvironment(t *testing.T) {
 	}
 }
 
-// clearColorEnv puts the environment in the state where only the destination decides.
+// clearColorEnv puts the environment in the state where only the destination decides. Its callers
+// cannot be parallel: t.Setenv panics if the test or any parent has called t.Parallel.
 func clearColorEnv(t *testing.T) {
 	t.Helper()
 
