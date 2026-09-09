@@ -81,6 +81,11 @@ GOLANGCI_MISSING := golangci-lint not found. Enter the nix devShell, or install 
 require-golangci:
 	@command -v golangci-lint >/dev/null 2>&1 || { echo "$(GOLANGCI_MISSING)"; exit 1; }
 
+# Checked before `release` pushes anything: a missing curl found afterwards leaves a public tag
+# that every rerun of `make release` refuses and `make publish` cannot use.
+require-curl:
+	@command -v curl >/dev/null 2>&1 || { echo "curl not found; publishing asks the module proxy over HTTPS"; exit 1; }
+
 # golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
 # which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
 # standalone pair never applied at all, so a 128-column line survived `make fmt` unchanged.
@@ -180,7 +185,10 @@ nix-hash: ## recompute flake.nix vendorHash (run after go.mod/go.sum change)
 	echo "vendorHash = $$hash"
 
 # ./VERSION holds the last released version — bump it, then run this.
-release: ## tag a release from ./VERSION and publish it to the module proxy
+#
+# The local tag is dropped when the push fails, so a rerun tags again instead of hitting the guard
+# above and being told to bump ./VERSION for a release that never left the machine.
+release: require-curl ## tag a release from ./VERSION and publish it to the module proxy
 	@v="v$$(cat VERSION)"; \
 	if ! git diff --quiet || ! git diff --cached --quiet; then \
 		echo "working tree is dirty; commit first"; exit 1; \
@@ -189,7 +197,8 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 		echo "$$v already exists — bump ./VERSION first"; exit 1; \
 	fi; \
 	echo -e "$(OK_COLOR)==> Tagging $$v$(NO_COLOR)"; \
-	git tag -a "$$v" -m "$$v" && git push origin "$$v"
+	git tag -a "$$v" -m "$$v"; \
+	git push origin "$$v" || { git tag -d "$$v"; exit 1; }
 	@$(MAKE) --no-print-directory publish \
 		|| { echo "the tag is pushed; rerun just: make publish"; exit 1; }
 
@@ -205,21 +214,23 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 # green run and nothing published. A request to the proxy cannot be served from a cache, and -f
 # makes a 404 an error rather than a silent success. The marker-then-tr encoding is the proxy's own
 # rule for uppercase in a module path, done without sed's \l, which is a GNU extension BSD sed
-# emits literally.
-publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
+# emits literally. [[:upper:]] rather than [A-Z]: on glibc before 2.28 a UTF-8 locale collates
+# that range across lowercase letters too, and the whole path came out marked.
+#
+# One request, not a retry loop. `git push` returns once the origin has the tag, so a 404 here is
+# never the push still landing: it is the proxy fetching the module for the first time, which the
+# timeout covers, or its negative cache from someone asking for this version before the tag
+# existed, which lasts up to half an hour and no loop of seconds outwaits.
+publish: require-curl ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
 	path=$$(go list -m) || exit $$?; \
-	mod=$$(printf '%s' "$$path" | sed 's/[A-Z]/!&/g' | tr 'A-Z' 'a-z'); \
-	command -v curl >/dev/null 2>&1 || { echo "curl not found"; exit 1; }; \
-	for try in 1 2 3; do \
-		if curl -fsS "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null; then \
-			echo "  proxy has it; index.golang.org and pkg.go.dev follow"; exit 0; \
-		fi; \
-		[ $$try = 3 ] && break; \
-		echo "  not there yet, waiting for the tag to reach the origin"; sleep 5; \
-	done; \
-	echo "  the proxy still cannot see $$v — it fetches from the origin, so leave it a minute and rerun: make publish"; \
+	mod=$$(printf '%s' "$$path" | sed 's/[[:upper:]]/!&/g' | tr '[:upper:]' '[:lower:]'); \
+	if curl -fsS --max-time 60 "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null; then \
+		echo "  proxy has it; index.golang.org and pkg.go.dev follow"; exit 0; \
+	fi; \
+	echo "  the proxy does not have $$v. A 404 means it was asked for this version before the tag existed"; \
+	echo "  and is remembering the miss, for up to 30 minutes; wait that out and rerun: make publish"; \
 	exit 1
 
 # The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit
@@ -240,6 +251,6 @@ help: ## show this help
 # To avoid unintended conflicts with file names, always add to .PHONY
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
-.PHONY: all build fmt require-golangci
+.PHONY: all build fmt require-golangci require-curl
 .PHONY: test cover-branches test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all install hooks nix-hash release publish clean help

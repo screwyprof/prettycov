@@ -10,6 +10,24 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** `-exclude` patterns that between them drop every file now exit 2 with
+  `-exclude left nothing to report`, where the report used to come out empty and exit 0. The
+  empty pattern was already refused for this reason; `.*`, or `.go` typed for `\.pb\.go$`, empty the
+  report just as well and were not. With `-fail-under` the gate reports it instead, as before.
+- `make release` drops the local tag when the push fails, so a rerun tags again instead of being
+  told to bump `./VERSION`; it checks for `curl` before tagging rather than after; and `make
+  publish` asks the proxy once with a timeout instead of retrying a 404 the proxy will keep
+  returning for up to half an hour.
+
+### Go API
+
+- `Depth.String` writes `DepthAll` back as `"max"`, the way `ParseDepth` reads it, instead of the
+  sentinel `18446744073709551615`.
+
 ## [0.7.0] — 2026-09-08
 
 ### Added
@@ -60,7 +78,9 @@ carry those rules, and the environment-reading moved out to the CLI:
   `ParseDepth`'s clamp.
 - `Percentage` replaces `CoverageStats.Ratio` and the `Percentage(CoverageStats)` function.
   `CoverageStats.Percentage() (Percentage, bool)` builds one — `ok` is false when there is nothing
-  to cover — and it is the only way to, so a percentage that exists always has a number to show.
+  to cover — so a percentage from there always has a number to show. The zero value is still a
+  `Percentage`, and it renders `0.00`, so declare one and the report says the code is uncovered
+  rather than that something is wrong.
   `String` rounds and never reads 100.00 for code that is not fully covered; `Float` does not
   round, so `-fail-under` compares the exact ratio.
 

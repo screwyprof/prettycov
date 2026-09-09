@@ -36,6 +36,16 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 		return showTotal(cfg, tree, stdout, stderr)
 	}
 
+	// Every file excluded is an empty report, which would exit 0 and turn a coverage step into a
+	// green no-op. ParseExclude refuses the empty pattern, but ".*" or a typo like ".go" for
+	// "\.pb\.go$" match every file just as well, so the check is here, on what actually left.
+	// With -fail-under, checkThreshold refuses it instead, for the reason showTotal gives.
+	if len(kept) == 0 && len(items) > 0 && cfg.FailUnder == nil {
+		_, _ = fmt.Fprintln(stderr, "-exclude left nothing to report")
+
+		return exitFailed
+	}
+
 	// The destination is asked about here and nowhere earlier: parsing argv is too early to know
 	// where the report goes, and no other flag needs to.
 	prettycov.DisplayTree(stdout, tree, prettycov.Options{

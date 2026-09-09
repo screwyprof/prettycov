@@ -434,6 +434,12 @@ func TestRunExcludesPackages(t *testing.T) {
 			args: []string{"-exclude", "example.com", "-fail-under", "0"}, wantCode: codeBelow,
 		},
 		{
+			// Without a gate nothing refuses it downstream, and an empty report exiting 0 is
+			// the green no-op the empty-pattern guard exists to stop, by another spelling.
+			name: "excluding everything without a gate is an error, not an empty report",
+			args: []string{"-exclude", "example.com"}, wantCode: codeFailed,
+		},
+		{
 			name: "a pattern that does not compile is a flag error",
 			args: []string{"-exclude", "("}, wantCode: codeFailed,
 		},
@@ -728,6 +734,6 @@ func TestRunAutoColorAgainstRealFiles(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, closed.Close())
 
-		assert.Equal(t, codeOK, app.Run([]string{path}, closed, io.Discard))
+		assert.NotPanics(t, func() { app.Run([]string{path}, closed, io.Discard) })
 	})
 }

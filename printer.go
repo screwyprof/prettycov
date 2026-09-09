@@ -114,11 +114,13 @@ func formatRatio(stats CoverageStats, palette Palette) string {
 		return "n/a"
 	}
 
-	if palette == Plain {
-		return pct.String()
+	// Colour only for the one value that asks for it: Palette is an exported int, so a caller can
+	// hand over any number, and escapes into a file are worse than a missing colour.
+	if palette == ANSI {
+		return grade(pct.Float()) + pct.String() + reset
 	}
 
-	return grade(pct.Float()) + pct.String() + reset
+	return pct.String()
 }
 
 type boxType int

@@ -13,6 +13,9 @@ type Depth uint
 // DepthAll shows every level.
 const DepthAll Depth = math.MaxUint
 
+// depthMax is how DepthAll is spelled on the way in and the way out.
+const depthMax = "max"
+
 var (
 	// ErrBadDepth is a depth that is neither a number of levels nor "max".
 	ErrBadDepth = errors.New(`want a number of levels, or "max"`)
@@ -21,9 +24,18 @@ var (
 	ErrDepthTooLarge = errors.New(`too many levels; use "max" for the whole tree`)
 )
 
+// String writes DepthAll back as "max", the way ParseDepth reads it, rather than as the sentinel.
+func (d Depth) String() string {
+	if d == DepthAll {
+		return depthMax
+	}
+
+	return strconv.FormatUint(uint64(d), 10)
+}
+
 // ParseDepth reads a level count or "max".
 func ParseDepth(s string) (Depth, error) {
-	if s == "max" {
+	if s == depthMax {
 		return DepthAll, nil
 	}
 

@@ -61,3 +61,11 @@ func TestParseDepthRejections(t *testing.T) {
 		})
 	}
 }
+
+// DepthAll reads as "max" both ways, so a message that echoes the depth never shows the sentinel.
+func TestDepthString(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "max", prettycov.DepthAll.String())
+	assert.Equal(t, "3", prettycov.Depth(3).String())
+}

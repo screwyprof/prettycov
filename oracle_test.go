@@ -37,7 +37,7 @@ func TestProcessMatchesProfileTotals(t *testing.T) {
 				node := tree.Get(dir)
 				require.NotNilf(t, node, "%q is in the profile but missing from the tree", dir)
 
-				// Counts only. The ratio is derived from these by CoverageStats.Ratio, so it
+				// Counts only. The ratio is derived from these by CoverageStats.Percentage, so it
 				// cannot disagree with them — which it could when it was a stored field, and did.
 				assert.Equalf(t, want.Covered, node.Coverage.Covered, "covered statements at %q", dir)
 				assert.Equalf(t, want.Uncovered, node.Coverage.Uncovered, "uncovered statements at %q", dir)

@@ -18,50 +18,15 @@ import (
 
 // Linux only: macOS hands out pseudo-terminals through different ioctls, and CI is ubuntu.
 
-// The yes branch of the auto heuristic. Every other colour test proves a negative, because the
-// branch that says yes needs a real terminal and a pty is the only way to have one in a test.
+// The yes branch of the auto heuristic against a real terminal. The guards around it are pinned
+// on every platform in color_test.go through the isTerminal seam; this is the one check that the
+// seam's real implementation says yes to a terminal, and a pty is the only way to have one.
 //
 //nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
 func TestRunAutoColorToATerminal(t *testing.T) {
 	clearColorEnv(t)
 
 	assert.Contains(t, runToTerminal(t), "\x1b[", "a terminal gets the escapes")
-}
-
-// The two guards that say no even to a terminal. They have to be tested against one: writing to a
-// buffer takes the branch that asks whether the destination is a file at all, so both of these
-// could be deleted and a buffer would still come back plain.
-func TestRunAutoColorRefusedByTheEnvironment(t *testing.T) {
-	tests := []struct {
-		name string
-		key  string
-		val  string
-	}{
-		{name: "NO_COLOR set", key: "NO_COLOR", val: "1"},
-		{name: "NO_COLOR set but empty still counts", key: "NO_COLOR", val: ""},
-		{name: "dumb terminal", key: "TERM", val: "dumb"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			clearColorEnv(t)
-			t.Setenv(tc.key, tc.val)
-
-			assert.NotContains(t, runToTerminal(t), "\x1b[")
-		})
-	}
-}
-
-// -color=always overrides them, which is what "always" is for. It works because the mode is
-// settled before the environment is consulted at all, and nothing else pins that order: move the
-// NO_COLOR lookup above the switch and every other test still passes.
-//
-//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
-func TestRunColorAlwaysIgnoresTheEnvironment(t *testing.T) {
-	clearColorEnv(t)
-	t.Setenv("NO_COLOR", "1")
-
-	assert.Contains(t, runToTerminal(t, "-color", "always"), "\x1b[", "the caller asked for colour")
 }
 
 // runToTerminal renders the report to a real terminal and returns what the terminal received.
@@ -111,22 +76,32 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 	// terminal — which is how some sandboxes start one — would adopt this pty as its controlling
 	// terminal, and closing the master below would SIGHUP the process group and kill the run with
 	// no failure to read.
+	//
+	// Every failure to get the pair is a skip, not a failure: a container without devpts has no
+	// pty to give, and a kernel before 4.7 can pair /dev/ptmx with a different devpts instance
+	// than /dev/pts, so the slave's number names a file that is missing or someone else's.
+	// Skipping says the branch went untested, where failing would blame this repository for
+	// the sandbox.
 	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR|unix.O_NOCTTY, 0)
 	if err != nil {
-		// A container without devpts has no pty to give. Skipping says the branch went untested,
-		// where failing would blame this repository for the sandbox.
 		t.Skipf("no pseudo-terminal available: %v", err)
 	}
 
 	t.Cleanup(func() { _ = master.Close() })
 
-	require.NoError(t, unix.IoctlSetPointerInt(int(master.Fd()), unix.TIOCSPTLCK, 0), "unlock the pair")
+	if err = unix.IoctlSetPointerInt(int(master.Fd()), unix.TIOCSPTLCK, 0); err != nil {
+		t.Skipf("cannot unlock the pseudo-terminal: %v", err)
+	}
 
 	num, err := unix.IoctlGetInt(int(master.Fd()), unix.TIOCGPTN)
-	require.NoError(t, err, "ask which slave")
+	if err != nil {
+		t.Skipf("cannot ask which slave: %v", err)
+	}
 
 	slave, err = os.OpenFile("/dev/pts/"+strconv.Itoa(num), os.O_RDWR|unix.O_NOCTTY, 0)
-	require.NoError(t, err)
+	if err != nil {
+		t.Skipf("cannot open the slave: %v", err)
+	}
 
 	t.Cleanup(func() { _ = slave.Close() })
 
