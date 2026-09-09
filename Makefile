@@ -187,7 +187,9 @@ nix-hash: ## recompute flake.nix vendorHash (run after go.mod/go.sum change)
 # ./VERSION holds the last released version — bump it, then run this.
 #
 # The local tag is dropped when the push fails, so a rerun tags again instead of hitting the guard
-# above and being told to bump ./VERSION for a release that never left the machine.
+# below and being told to bump ./VERSION for a release that never left the machine — unless origin
+# has it after all, since a push can land and still report failure, and re-tagging would then mint
+# an object origin rejects on every rerun.
 release: require-curl ## tag a release from ./VERSION and publish it to the module proxy
 	@v="v$$(cat VERSION)"; \
 	if ! git diff --quiet || ! git diff --cached --quiet; then \
@@ -198,7 +200,12 @@ release: require-curl ## tag a release from ./VERSION and publish it to the modu
 	fi; \
 	echo -e "$(OK_COLOR)==> Tagging $$v$(NO_COLOR)"; \
 	git tag -a "$$v" -m "$$v"; \
-	git push origin "$$v" || { git tag -d "$$v"; exit 1; }
+	git push origin "$$v" || { \
+		if git ls-remote --exit-code --tags origin "$$v" >/dev/null 2>&1; then \
+			echo "origin has $$v; rerun just: make publish"; \
+		else \
+			git tag -d "$$v"; \
+		fi; exit 1; }
 	@$(MAKE) --no-print-directory publish \
 		|| { echo "the tag is pushed; rerun just: make publish"; exit 1; }
 
@@ -220,17 +227,23 @@ release: require-curl ## tag a release from ./VERSION and publish it to the modu
 # One request, not a retry loop. `git push` returns once the origin has the tag, so a 404 here is
 # never the push still landing: it is the proxy fetching the module for the first time, which the
 # timeout covers, or its negative cache from someone asking for this version before the tag
-# existed, which lasts up to half an hour and no loop of seconds outwaits.
+# existed, which lasts up to half an hour and no loop of seconds outwaits. The 404 body is shown,
+# because it also names the faults that no waiting fixes — a v2 without a /v2 module path, a
+# go.mod the proxy cannot read — and --fail alone would throw it away. Anything but a 404 (curl
+# exits 22 for one) is a different problem and says so instead of that advice.
 publish: require-curl ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
 	path=$$(go list -m) || exit $$?; \
 	mod=$$(printf '%s' "$$path" | sed 's/[[:upper:]]/!&/g' | tr '[:upper:]' '[:lower:]'); \
-	if curl -fsS --max-time 60 "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null; then \
-		echo "  proxy has it; index.golang.org and pkg.go.dev follow"; exit 0; \
-	fi; \
-	echo "  the proxy does not have $$v. A 404 means it was asked for this version before the tag existed"; \
-	echo "  and is remembering the miss, for up to 30 minutes; wait that out and rerun: make publish"; \
+	rc=0; body=$$(curl -sS --fail-with-body --max-time 60 "https://proxy.golang.org/$$mod/@v/$$v.info") || rc=$$?; \
+	case $$rc in \
+		0) echo "  proxy has it; index.golang.org and pkg.go.dev follow"; exit 0;; \
+		22) echo "  proxy: $$body"; \
+			echo "  if that names no fault, the proxy was asked for $$v before the tag existed and is remembering"; \
+			echo "  the miss, for up to 30 minutes; wait that out and rerun: make publish";; \
+		*) echo "  the request did not complete (curl exit $$rc); rerun: make publish";; \
+	esac; \
 	exit 1
 
 # The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit

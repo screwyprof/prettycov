@@ -14,10 +14,13 @@ tags.
 
 ### Changed
 
-- **Breaking:** `-exclude` patterns that between them drop every file now exit 2 with
-  `-exclude left nothing to report`, where the report used to come out empty and exit 0. The
-  empty pattern was already refused for this reason; `.*`, or `.go` typed for `\.pb\.go$`, empty the
-  report just as well and were not. With `-fail-under` the gate reports it instead, as before.
+- **Breaking:** a profile with no statements to cover exits 2 on every path, with
+  `no statements to cover`, where the tree used to print a lone `n/a` and exit 0 — which is what
+  a `go test -coverprofile` that matched no packages produces, and a coverage step would call
+  green. `-total` already refused it. When `-exclude` patterns are what emptied it, the message
+  says so: `-exclude left nothing to report`. The empty pattern was already refused for this
+  reason; `.*`, or `.go` typed for `\.pb\.go$`, empty the report just as well and were not. With
+  `-fail-under` the gate reports it instead, as before.
 - `make release` drops the local tag when the push fails, so a rerun tags again instead of being
   told to bump `./VERSION`; it checks for `curl` before tagging rather than after; and `make
   publish` asks the proxy once with a timeout instead of retrying a 404 the proxy will keep

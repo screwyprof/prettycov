@@ -30,7 +30,7 @@ func TestRunAutoColorToATerminal(t *testing.T) {
 }
 
 // runToTerminal renders the report to a real terminal and returns what the terminal received.
-func runToTerminal(t *testing.T, args ...string) string {
+func runToTerminal(t *testing.T) string {
 	t.Helper()
 
 	master, slave := openPTY(t)
@@ -48,8 +48,7 @@ func runToTerminal(t *testing.T, args ...string) string {
 		_, _ = io.Copy(&out, master)
 	}()
 
-	// The profile last, so a caller's -color lands before it and the default is auto without one.
-	require.Equal(t, codeOK, app.Run(append(args, writeProfile(t, profile)), slave, os.Stderr))
+	require.Equal(t, codeOK, app.Run([]string{writeProfile(t, profile)}, slave, os.Stderr))
 
 	// Closing the last slave makes the master's read fail, which is what ends the copy.
 	require.NoError(t, slave.Close())

@@ -27,15 +27,20 @@ func TestPalette(t *testing.T) {
 	require.NoError(t, os.Unsetenv("NO_COLOR"))
 	t.Setenv("TERM", "xterm")
 
+	// The heuristic itself, before it is stubbed: /dev/null is a character device, which is what
+	// the old Stat-based check mistook for a terminal and coloured.
+	t.Run("auto asks the descriptor, not the device type", func(t *testing.T) {
+		null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+		require.NoError(t, err)
+
+		t.Cleanup(func() { _ = null.Close() })
+
+		assert.Equal(t, prettycov.Plain, colorAuto.palette(null))
+	})
+
 	isTerminal = func(int) bool { return true }
 
 	t.Cleanup(func() { isTerminal = term.IsTerminal })
-
-	// Any *os.File: isTerminal above says yes for it.
-	terminal, err := os.Open(os.DevNull)
-	require.NoError(t, err)
-
-	t.Cleanup(func() { _ = terminal.Close() })
 
 	tests := []struct {
 		name string
@@ -60,28 +65,12 @@ func TestPalette(t *testing.T) {
 				t.Setenv(tc.key, tc.val)
 			}
 
-			assert.Equal(t, tc.want, tc.mode.palette(terminal))
+			// Any *os.File will do: isTerminal above says yes for it without looking.
+			assert.Equal(t, tc.want, tc.mode.palette(os.Stderr))
 		})
 	}
 
 	t.Run("auto to something that is not a file", func(t *testing.T) {
 		assert.Equal(t, prettycov.Plain, colorAuto.palette(&bytes.Buffer{}))
 	})
-}
-
-// The heuristic itself, unstubbed: /dev/null is a character device, which is what the old
-// Stat-based check mistook for a terminal and coloured.
-//
-//nolint:paralleltest // t.Setenv.
-func TestAutoColorAsksTheDescriptorNotTheDeviceType(t *testing.T) {
-	t.Setenv("NO_COLOR", "")
-	require.NoError(t, os.Unsetenv("NO_COLOR"))
-	t.Setenv("TERM", "xterm")
-
-	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	require.NoError(t, err)
-
-	t.Cleanup(func() { _ = null.Close() })
-
-	assert.Equal(t, prettycov.Plain, colorAuto.palette(null))
 }
