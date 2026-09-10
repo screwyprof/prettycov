@@ -24,7 +24,7 @@ import (
 //
 //nolint:paralleltest // t.Setenv cannot be combined with t.Parallel.
 func TestRunAutoColorToATerminal(t *testing.T) {
-	app.ClearColorEnv(t)
+	clearColorEnv(t)
 
 	assert.Contains(t, runToTerminal(t), "\x1b[", "a terminal gets the escapes")
 }

@@ -185,9 +185,6 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 	if ! git diff --quiet || ! git diff --cached --quiet; then \
 		echo "working tree is dirty; commit first"; exit 1; \
 	fi; \
-	if git rev-parse "$$v" >/dev/null 2>&1; then \
-		echo "$$v already exists — bump ./VERSION first"; exit 1; \
-	fi; \
 	echo -e "$(OK_COLOR)==> Tagging $$v$(NO_COLOR)"; \
 	git tag -a "$$v" -m "$$v"; \
 	git push origin "$$v"

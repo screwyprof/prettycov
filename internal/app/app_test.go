@@ -716,6 +716,17 @@ func TestRunRejectsABadDepth(t *testing.T) {
 	}
 }
 
+// clearColorEnv puts the environment in the state where only the destination decides. Its callers
+// cannot be parallel: t.Setenv panics if the test or any parent has called t.Parallel.
+func clearColorEnv(t *testing.T) {
+	t.Helper()
+
+	// Registers the restore, then clears it: NO_COLOR set to anything, empty included, means no.
+	t.Setenv("NO_COLOR", "")
+	require.NoError(t, os.Unsetenv("NO_COLOR"))
+	t.Setenv("TERM", "xterm")
+}
+
 // A regular file is not a terminal, and a closed one answers no rather than panicking — its
 // descriptor is -1 by then. Both are branches a bytes.Buffer never reaches, since it is not an
 // *os.File at all. The closed one also pins the exit code: the printer discards write errors, so a
@@ -725,9 +736,9 @@ func TestRunRejectsABadDepth(t *testing.T) {
 // NO_COLOR and TERM before it looks at the descriptor, so a runner with NO_COLOR exported would
 // pass these at the first guard and never test what they are named for.
 //
-//nolint:paralleltest // t.Setenv, through app.ClearColorEnv, panics under t.Parallel.
+//nolint:paralleltest // t.Setenv, through clearColorEnv, panics under t.Parallel.
 func TestRunAutoColorAgainstRealFiles(t *testing.T) {
-	app.ClearColorEnv(t)
+	clearColorEnv(t)
 
 	path := writeProfile(t, profile)
 
