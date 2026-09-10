@@ -41,6 +41,12 @@ func TestDisplayTreeNeutralisesEscapesFromTheProfile(t *testing.T) {
 		{name: "colour", pkg: "m/\x1b[31mred"},
 		{name: "carriage return", pkg: "m/\roverwritten"},
 		{name: "bell", pkg: "m/\anoisy"},
+		// Not control characters — these are category Cf, so unicode.IsControl says no — but a
+		// terminal obeys them just the same and reverses everything after them, which is how a
+		// file gets drawn under a name it does not have. Written as escapes rather than as the
+		// characters themselves, which is what gosec's G116 asks of Go source for this very reason.
+		{name: "right-to-left override", pkg: "m/\u202egps.go"},
+		{name: "right-to-left isolate", pkg: "m/\u2067gps.go"},
 	}
 
 	for _, tc := range tests {
@@ -54,8 +60,23 @@ func TestDisplayTreeNeutralisesEscapesFromTheProfile(t *testing.T) {
 			assert.NotContains(t, out, "\x1b", "escape reached the terminal")
 			assert.NotContains(t, out, "\r")
 			assert.NotContains(t, out, "\a")
+			assert.NotContains(t, out, "\u202e", "bidi override reached the terminal")
+			assert.NotContains(t, out, "\u2067")
 		})
 	}
+}
+
+// The joiners share a category with the bidi controls and are how several scripts spell ordinary
+// words, so they are drawn rather than replaced. Blanking every Cf rune would mangle a real path.
+func TestDisplayTreeKeepsZeroWidthJoiners(t *testing.T) {
+	t.Parallel()
+
+	// U+200D between the Devanagari letters is part of the spelling, not a control.
+	joined := "\u0915\u094d\u200d\u0937"
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/"+joined+"/a.go", 1, 1)}, "", "")
+
+	assert.Contains(t, render(t, tree, 2), joined)
 }
 
 // Only control characters are touched. A path is allowed to be non-ASCII.

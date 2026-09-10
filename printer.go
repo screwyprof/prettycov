@@ -135,13 +135,21 @@ func collapse(label string, node *PathTree) (string, *PathTree) {
 	return label, node
 }
 
-// sanitize replaces control characters in a label. Chiefly hygiene — a stray control byte in a
-// path garbles the report, which is why ls and git quote them too. It also stops a spoof: a
-// package named "\x1b[1A\x1b[2Kforged" erases the row above and writes over it, and above the
-// first child is the total. Only control characters go; a path may be non-ASCII.
+// sanitize replaces the characters in a label that a terminal would obey rather than draw.
+// Chiefly hygiene — a stray control byte in a path garbles the report, which is why ls and git
+// quote them too. It also stops a spoof: a package named "\x1b[1A\x1b[2Kforged" erases the row
+// above and writes over it, and above the first child is the total.
+//
+// Bidi controls go for the same reason and are not control characters: U+202E and its relatives
+// are category Cf, which unicode.IsControl does not cover, and a path holding one reverses the
+// reading order of everything after it, so a file can be drawn under a name it does not have.
+// That is the Trojan Source trick, and gosec's G116 is the same rule pointed at Go source.
+//
+// Only these two classes go, so a path may still be non-ASCII: Cf also holds the joiners U+200C
+// and U+200D, which spell ordinary words in Persian and Devanagari, and those are left alone.
 func sanitize(label string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
 			return '�'
 		}
 
