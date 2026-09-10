@@ -76,11 +76,10 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 	// terminal, and closing the master below would SIGHUP the process group and kill the run with
 	// no failure to read.
 	//
-	// Skipped, not failed, where the sandbox is what is missing: a container without devpts has no
-	// pty to give, and a kernel before 4.7 can pair /dev/ptmx with a different devpts instance than
-	// /dev/pts, so the slave's number names a file that is missing or someone else's. An ioctl
-	// failing on a master we just opened is neither, and this is the only test of the real
-	// term.IsTerminal, so it fails rather than passing quietly.
+	// Skipped only where the sandbox is what is missing: no devpts, or a kernel before 4.7 pairing
+	// /dev/ptmx with a different devpts instance, so the slave number names someone else's file. An
+	// ioctl failing on a master we just opened is a fault, and this is the only test of the real
+	// term.IsTerminal, so it fails loudly.
 	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR|unix.O_NOCTTY, 0)
 	if err != nil {
 		t.Skipf("no pseudo-terminal available: %v", err)

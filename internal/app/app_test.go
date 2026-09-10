@@ -564,12 +564,8 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	}
 }
 
-// A profile with nothing to cover has no total. The tree used to render that as a lone "n/a" and
-// exit 0, which is what `go test -coverprofile` over no packages produces and a coverage step
-// would call green; a caller reading `COVERAGE := $(shell prettycov -total)` would carry "n/a"
-// into a comparison, and 0.00 would be worse still: it reads as a real and terrible number. With
-// -fail-under, that reports instead, so a CI step is not told the tool broke when the truth is
-// coverage was too low.
+// A `go test -coverprofile` that matched no packages produces this, and an empty report exiting 0
+// would call it green. -fail-under grades it rather than reporting a tool that could not run.
 func TestRunOnAProfileWithNothingToCover(t *testing.T) {
 	t.Parallel()
 
@@ -609,9 +605,7 @@ func TestRunOnAProfileWithNothingToCover(t *testing.T) {
 	}
 }
 
-// Which message an empty report gets is settled by whether -exclude took the statements out, not
-// by whether any file came through it: a zero-statement file left behind would otherwise send the
-// reader off to check `go test -coverprofile` for a report a pattern emptied.
+// Settled by whether -exclude took the statements out, not by whether any file came through it.
 func TestRunNamesExcludeAsTheReasonTheReportIsEmpty(t *testing.T) {
 	t.Parallel()
 
