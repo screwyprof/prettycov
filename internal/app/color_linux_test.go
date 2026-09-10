@@ -76,11 +76,11 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 	// terminal, and closing the master below would SIGHUP the process group and kill the run with
 	// no failure to read.
 	//
-	// Every failure to get the pair is a skip, not a failure: a container without devpts has no
-	// pty to give, and a kernel before 4.7 can pair /dev/ptmx with a different devpts instance
-	// than /dev/pts, so the slave's number names a file that is missing or someone else's.
-	// Skipping says the branch went untested, where failing would blame this repository for
-	// the sandbox.
+	// Skipped, not failed, where the sandbox is what is missing: a container without devpts has no
+	// pty to give, and a kernel before 4.7 can pair /dev/ptmx with a different devpts instance than
+	// /dev/pts, so the slave's number names a file that is missing or someone else's. An ioctl
+	// failing on a master we just opened is neither, and this is the only test of the real
+	// term.IsTerminal, so it fails rather than passing quietly.
 	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR|unix.O_NOCTTY, 0)
 	if err != nil {
 		t.Skipf("no pseudo-terminal available: %v", err)
@@ -88,14 +88,10 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 
 	t.Cleanup(func() { _ = master.Close() })
 
-	if err = unix.IoctlSetPointerInt(int(master.Fd()), unix.TIOCSPTLCK, 0); err != nil {
-		t.Skipf("cannot unlock the pseudo-terminal: %v", err)
-	}
+	require.NoError(t, unix.IoctlSetPointerInt(int(master.Fd()), unix.TIOCSPTLCK, 0), "unlock the pair")
 
 	num, err := unix.IoctlGetInt(int(master.Fd()), unix.TIOCGPTN)
-	if err != nil {
-		t.Skipf("cannot ask which slave: %v", err)
-	}
+	require.NoError(t, err, "ask which slave")
 
 	slave, err = os.OpenFile("/dev/pts/"+strconv.Itoa(num), os.O_RDWR|unix.O_NOCTTY, 0)
 	if err != nil {

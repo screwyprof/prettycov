@@ -195,11 +195,12 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 		|| { echo "the tag is pushed; rerun just: make publish"; exit 1; }
 
 # Asks the proxy to fetch the version, so pkg.go.dev lists it now instead of when the first user
-# pulls it through. Optional: the proxy fetches on anyone's first request either way.
+# pulls it through. Step 6 of https://go.dev/doc/modules/publishing, verbatim.
 #
-# Step 6 of https://go.dev/doc/modules/publishing, verbatim. It answers from the module cache
-# instead if this version is already there, and then asks nobody — which is harmless, since the
-# only way it got there is a fetch that went through the proxy already.
+# Best-effort, and not worth hardening: it answers from the module cache without asking anyone if
+# the version is already there, which GOPRIVATE, GOPROXY=direct or a mirror can arrange. The green
+# run then publishes nothing and the release waits for someone else's first fetch, which is where
+# it would have been without this target at all.
 publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
