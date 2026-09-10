@@ -33,10 +33,6 @@ import (
 const (
 	propertyRuns = 300
 	propertySeed = 0x9E3779B97F4A7C15
-
-	// maxPathParts is how many components randomProfile draws for a path, before the empty one
-	// that makes it absolute.
-	maxPathParts = 3
 )
 
 // TestTreePropertiesHoldForAnyProfile checks what a report claims against what the profile said,
@@ -181,7 +177,7 @@ func randomProfile(rnd *rand.Rand) []prettycov.FileCoverage {
 	files := make([]prettycov.FileCoverage, rnd.IntN(8)+1)
 
 	for i := range files {
-		parts := make([]string, rnd.IntN(maxPathParts)+1)
+		parts := make([]string, rnd.IntN(3)+1)
 		for j := range parts {
 			parts[j] = names[rnd.IntN(len(names))]
 		}
@@ -218,7 +214,7 @@ func TestPercentagePropertiesHoldForAnyCounts(t *testing.T) {
 	rnd := rand.New(rand.NewPCG(propertySeed, 1))
 
 	for range propertyRuns {
-		stats := prettycov.CoverageStats{Covered: drawCount(rnd), Uncovered: drawCount(rnd)}
+		stats := drawStats(rnd)
 
 		pct, ok := stats.Percentage()
 		if !ok {
@@ -256,6 +252,25 @@ func TestPercentagePropertiesHoldForAnyCounts(t *testing.T) {
 			assert.Zerof(t, stats.Uncovered, "%q with statements left uncovered", text)
 		}
 	}
+}
+
+// drawStats draws a pair of counts. Half of them independently, which covers the whole range and
+// the counts no profile holds; half of them correlated, because two independent draws leave the
+// one region that matters empty.
+//
+// That region is the last hundredth below 100%, where the cap lives. Independent draws put values
+// there only by accident: over the seeded three hundred they rendered 100.00 forty times and 99.99
+// ten times, and every one of those ten was the cap firing — so the band checking every other
+// value was never asked about one anywhere near it.
+func drawStats(rnd *rand.Rand) prettycov.CoverageStats {
+	if rnd.IntN(2) == 0 {
+		return prettycov.CoverageStats{Covered: drawCount(rnd), Uncovered: drawCount(rnd)}
+	}
+
+	// A handful of statements out of tens of thousands lands densely either side of the cap:
+	// 1 of 74000 uncovered rounds to 100.00 and is capped to 99.99, while 1 of 10000 is a genuine
+	// 99.99 and 2 of 11000 a genuine 99.98 — the values a too-eager cap would swallow.
+	return prettycov.CoverageStats{Covered: rnd.IntN(90000) + 10000, Uncovered: rnd.IntN(6)}
 }
 
 // drawCount draws a statement count, including the counts no profile holds: negative, and large
