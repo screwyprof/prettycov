@@ -67,29 +67,36 @@ type rowBuilder struct {
 	rows []Row
 }
 
-// visible is the children to draw, sorted — map order is randomised and this output gets diffed
-// between runs. Files are dropped rather than skipped later, so they cost no level and no glyph
-// when they are not being shown: without this the last package under a directory would draw the
-// branch glyph of a middle one whenever a file sorted after it.
-//
-// Only a file with nothing beneath it is dropped. One name can be both — a profile naming
-// "m/a.go" and "m/a.go/b.go" describes a file and a directory called the same thing, which no
-// filesystem allows but merging two profiles, or an -old/-new rewrite, can produce. Dropping it
-// took its whole subtree with it while every ancestor went on counting the statements.
-func (b *rowBuilder) visible(tree *PathTree) []string {
-	names := make([]string, 0, len(tree.Children))
+// entry is one node to draw and the name it is drawn under. A name can belong to a file and a
+// directory at once, so the two cannot be told apart by name alone.
+type entry struct {
+	name string
+	node *PathTree
+}
 
-	for name, child := range tree.Children {
-		if child.IsFile() && !b.opts.Files {
-			continue
-		}
+// visible is what to draw below tree, sorted — map order is randomised and this output gets diffed
+// between runs. Files are simply not enumerated when they are not being shown, so they cost no
+// level and no glyph rather than being filtered out later: without that the last package under a
+// directory would draw the branch glyph of a middle one whenever a file sorted after it.
+func (b *rowBuilder) visible(tree *PathTree) []entry {
+	entries := make([]entry, 0, len(tree.Children)+len(tree.Files))
 
-		names = append(names, name)
+	for name, node := range tree.Children {
+		entries = append(entries, entry{name: name, node: node})
 	}
 
-	slices.Sort(names)
+	if b.opts.Files {
+		for name, node := range tree.Files {
+			entries = append(entries, entry{name: name, node: node})
+		}
+	}
 
-	return names
+	// Stable, because a name can appear in both maps and comparing names alone leaves those two
+	// tied: an unstable sort would order them differently between runs, and this output gets
+	// diffed. Directories are appended first, so a tie puts the directory above the file.
+	slices.SortStableFunc(entries, func(a, b entry) int { return strings.Compare(a.name, b.name) })
+
+	return entries
 }
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
@@ -99,14 +106,14 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 		return
 	}
 
-	names := b.visible(tree)
+	entries := b.visible(tree)
 
-	for i, name := range names {
-		// A package's own file is merged into it only where that file has a row of its own to
+	for i, e := range entries {
+		// A directory's own file is merged into it only where that file has a row of its own to
 		// merge with: below the depth being drawn there is no second row, so merging would show a
 		// filename the depth was asked to leave out, and put one branch at file granularity while
 		// its siblings stayed at package granularity.
-		label, node := collapse(name, tree.Children[name], b.opts.Files && level < b.opts.Depth)
+		label, node := collapse(e.name, e.node, b.opts.Files && level < b.opts.Depth)
 		root := level == 0
 
 		// The filesystem root is the one node with no name of its own: an absolute path splits to
@@ -118,14 +125,14 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 		}
 
 		b.rows = append(b.rows, Row{
-			Prefix: padding + symbol(root, getBoxType(i, len(names))),
+			Prefix: padding + symbol(root, getBoxType(i, len(entries))),
 			// Sanitised here rather than at the writer, so no consumer of a Row has to remember to.
 			Label:    sanitize(label),
 			Level:    int(level),
 			Coverage: node.Coverage,
 		})
 
-		b.walk(node, level+1, padding+symbol(root, childSymbol(i, len(names))))
+		b.walk(node, level+1, padding+symbol(root, childSymbol(i, len(entries))))
 	}
 }
 
@@ -133,24 +140,32 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 // module path does not spend three levels on "github.com", "owner", "repo" before reaching
 // anything worth reading.
 //
-// A directory the profile named itself stops the run, however few statements it holds — a package
-// whose files declare none still deserves its own row — unless mergeFiles. A package with exactly
-// one child holds exactly one file, since holding a file is what made it a package, so the two
-// rows carry the same number twice and the second says nothing the first does not:
-// "tzkt/client.go" names the package and the file in the row the package had anyway. A package
-// with two files, or a file beside a subpackage, has two children and is left alone.
-//
-// A file stops the run, carrying statements the row it merged into would not report: "m/a.go"
-// beside "m/a.go/sub/b.go" makes a.go a file with one child and no package of its own, and merging
-// it left m claiming twelve statements above a single row showing seven.
+// A directory holding files of its own stops the run, however few statements they declare — a
+// package whose files declare none still deserves its own row — unless mergeFiles and that one
+// file is all it holds. Then the two rows carry the same number twice and the second says nothing
+// the first does not: "tzkt/client.go" names the directory and the file in the row the directory
+// had anyway. Two files, or a file beside a subdirectory, and it is left alone.
 func collapse(label string, node *PathTree, mergeFiles bool) (string, *PathTree) {
-	for !node.isFile && len(node.Children) == 1 && (!node.isPkg || mergeFiles) {
-		for name, child := range node.Children {
-			label, node = label+"/"+name, child
+	for {
+		switch {
+		case len(node.Files) == 0 && len(node.Children) == 1:
+			label, node = descend(label, node.Children)
+		case mergeFiles && len(node.Files) == 1 && len(node.Children) == 0:
+			// A file has nothing below it, so this is where the run ends.
+			return descend(label, node.Files)
+		default:
+			return label, node
 		}
 	}
+}
 
-	return label, node
+// descend takes the sole entry of a map, which its callers have checked there is exactly one of.
+func descend(label string, nodes map[string]*PathTree) (string, *PathTree) {
+	for name, node := range nodes {
+		return label + "/" + name, node
+	}
+
+	return label, nil
 }
 
 // sanitize replaces the characters in a label that a terminal would obey rather than draw.

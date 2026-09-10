@@ -1,7 +1,9 @@
 package prettycov_test
 
 import (
+	"maps"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -288,9 +290,9 @@ func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 	}
 }
 
-// Children holds files as well as directories, so a caller enumerating packages needs to be able
-// to tell them apart. Nothing unexported can answer that from outside the package.
-func TestPathTreeReportsWhichNodesAreFiles(t *testing.T) {
+// Files and directories are separate maps, so a caller enumerating packages walks Children and is
+// never handed a file by accident. Get answers for directories; a file is reached through Files.
+func TestPathTreeKeepsFilesAndDirectoriesApart(t *testing.T) {
 	t.Parallel()
 
 	tree := prettycov.Process([]prettycov.FileCoverage{
@@ -301,14 +303,27 @@ func TestPathTreeReportsWhichNodesAreFiles(t *testing.T) {
 	pkg := tree.Get("m/x")
 	require.NotNil(t, pkg)
 
-	assert.False(t, pkg.IsFile(), "a directory")
-	assert.False(t, pkg.Children["sub"].IsFile(), "a directory holding a file")
-	assert.True(t, pkg.Children["own.go"].IsFile(), "a file")
+	assert.Equal(t, []string{"sub"}, slices.Sorted(maps.Keys(pkg.Children)), "directories only")
+	assert.Equal(t, []string{"own.go"}, slices.Sorted(maps.Keys(pkg.Files)), "and the files it holds")
+	assert.Nil(t, tree.Get("m/x/own.go"), "a file is not a directory, so Get does not find one")
+}
 
-	// Both ways of reaching a node hand back nil for one the profile does not hold, and IsFile is
-	// how the CHANGELOG tells a caller to read a tree, so it answers rather than panicking.
-	assert.False(t, tree.Get("m/x/nope").IsFile(), "a path the profile does not hold")
-	assert.False(t, pkg.Children["nope.go"].IsFile(), "a name Children does not have")
+// A name that is both is two nodes, one in each map, and neither has to answer for the other. That
+// is what makes every row the sum of what is drawn beneath it with no exception.
+func TestPathTreeSplitsANameThatIsBothAFileAndADirectory(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/a.go", 5, 0),
+		file("m/a.go/b.go", 0, 7),
+	}, "", "")
+
+	m := tree.Get("m")
+	require.NotNil(t, m)
+
+	assert.Equal(t, 5, m.Files["a.go"].Coverage.Total(), "the file")
+	assert.Equal(t, 7, m.Children["a.go"].Coverage.Total(), "the directory of the same name")
+	assert.Equal(t, 12, m.Coverage.Total(), "and m is exactly the two of them")
 }
 
 // Process must not write through the slice it is handed.
@@ -337,13 +352,16 @@ func TestProcessMakesEveryParentTheSumOfItsChildren(t *testing.T) {
 	var walk func(path string, node *prettycov.PathTree) int
 
 	walk = func(path string, node *prettycov.PathTree) int {
-		if len(node.Children) == 0 {
+		if len(node.Children) == 0 && len(node.Files) == 0 {
 			return node.Coverage.Total()
 		}
 
 		sum := 0
-		for name, child := range node.Children {
-			sum += walk(path+"/"+name, child)
+
+		for _, below := range []map[string]*prettycov.PathTree{node.Files, node.Children} {
+			for name, child := range below {
+				sum += walk(path+"/"+name, child)
+			}
 		}
 
 		assert.Equal(t, sum, node.Coverage.Total(),

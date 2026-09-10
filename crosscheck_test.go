@@ -54,7 +54,7 @@ func TestRowsReconcileAgainstTheProfile(t *testing.T) {
 // than from the tree, and checks that what is printed carries that row's own numbers — so a row
 // cannot be right while the line describing it is wrong.
 func assertRowsMatchTheProfile(
-	t *testing.T, tree *prettycov.PathTree, totals map[string]prettycov.CoverageStats, opts prettycov.Options,
+	t *testing.T, tree *prettycov.PathTree, totals map[string][]prettycov.CoverageStats, opts prettycov.Options,
 ) {
 	t.Helper()
 
@@ -64,12 +64,15 @@ func assertRowsMatchTheProfile(
 	require.Lenf(t, lines, len(rows), "one line per row, depth=%v files=%v", opts.Depth, opts.Files)
 
 	for i, r := range rowInfos(rows) {
+		// Candidates, not one total: a name can be a file and a directory at once, and then the
+		// path names two nodes with different numbers. Every other path names exactly one, so this
+		// is the same assertion there.
 		want, ok := totals[r.path]
 		require.Truef(t, ok, "row %q is not a path the profile names", r.path)
-		assert.Equalf(t, want, rows[i].Coverage, "row %q at depth %v", r.path, opts.Depth)
+		assert.Containsf(t, want, rows[i].Coverage, "row %q at depth %v", r.path, opts.Depth)
 
 		if r.total > 0 {
-			assert.Containsf(t, lines[i], fmt.Sprintf("%d/%d uncovered", want.Uncovered, want.Total()),
+			assert.Containsf(t, lines[i], fmt.Sprintf("%d/%d uncovered", rows[i].Coverage.Uncovered, r.total),
 				"the printed line for %q", r.path)
 		}
 	}
@@ -106,11 +109,17 @@ func assertRowsHoldEveryStatement(
 		drawn[r.path] = true
 	}
 
-	kept := keptBack(files, drawn)
+	kept := keptBack(files, drawn, withFiles)
 
+	// Summed per path rather than per row, because a name that is both a file and a directory is
+	// drawn twice and the files charged to it are charged to the path, not to one of the two.
+	held := map[string]int{}
 	for i, r := range infos {
-		assert.Equalf(t, kept[r.path], r.total-below[i],
-			"row %q reports %d statements and the rows below it show %d", r.path, r.total, below[i])
+		held[r.path] += r.total - below[i]
+	}
+
+	for path, n := range held {
+		assert.Equalf(t, kept[path], n, "the rows for %q keep back %d statements", path, n)
 	}
 
 	// Arithmetic alone is too weak: a row that quietly keeps back a file no deeper row shows still
@@ -159,24 +168,34 @@ func rowInfos(rows []prettycov.Row) []row {
 }
 
 // nodeTotals charges every file to itself and to each directory above it, from the parsed files
-// rather than from anything the tree did. A path that is both a file and a directory collects
-// both, which is the one row such a name gets.
-func nodeTotals(files []prettycov.FileCoverage) map[string]prettycov.CoverageStats {
-	totals := map[string]prettycov.CoverageStats{}
+// rather than from anything the tree did, and reports the candidates at each path. A name that is
+// both a file and a directory has two, and the row drawn for either is one of them.
+func nodeTotals(files []prettycov.FileCoverage) map[string][]prettycov.CoverageStats {
+	asFile := map[string]prettycov.CoverageStats{}
+	asDir := map[string]prettycov.CoverageStats{}
 
-	add := func(key string, c prettycov.CoverageStats) {
-		stat := totals[key]
+	add := func(into map[string]prettycov.CoverageStats, key string, c prettycov.CoverageStats) {
+		stat := into[key]
 		stat.Covered += c.Covered
 		stat.Uncovered += c.Uncovered
-		totals[key] = stat
+		into[key] = stat
 	}
 
 	for _, f := range files {
-		add(f.File, f.Coverage)
+		add(asFile, f.File, f.Coverage)
 
 		for _, dir := range dirsOf(f.File) {
-			add(dir, f.Coverage)
+			add(asDir, dir, f.Coverage)
 		}
+	}
+
+	totals := map[string][]prettycov.CoverageStats{}
+	for path, stat := range asFile {
+		totals[path] = append(totals[path], stat)
+	}
+
+	for path, stat := range asDir {
+		totals[path] = append(totals[path], stat)
 	}
 
 	return totals
@@ -203,13 +222,22 @@ func dirsOf(file string) []string {
 // row where it has one, the single row standing for a name it shares with a directory, or the
 // closest drawn directory above. Walking beats scanning the rows for the deepest match, which is
 // quadratic in the size of the profile.
-func keptBack(files []prettycov.FileCoverage, drawn map[string]bool) map[string]int {
+func keptBack(files []prettycov.FileCoverage, drawn map[string]bool, withFiles bool) map[string]int {
 	kept := map[string]int{}
 
 	for _, f := range files {
 		// The file's own row first, then the directories above it. A collapsed run leaves the
 		// levels between undrawn, so this keeps walking rather than giving up at the first miss.
-		for _, candidate := range append([]string{f.File}, dirsOf(f.File)...) {
+		//
+		// Only when files are drawn does a row at the file's own path stand for the file: with
+		// them hidden, a row there is a directory that happens to share the name, and the file is
+		// accounted for by the closest directory above it.
+		candidates := dirsOf(f.File)
+		if withFiles {
+			candidates = append([]string{f.File}, candidates...)
+		}
+
+		for _, candidate := range candidates {
 			if drawn[candidate] {
 				kept[candidate] += f.Coverage.Total()
 

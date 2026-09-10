@@ -19,6 +19,16 @@ tags.
   twice. Only where that file is being drawn: at a `-depth` that stops above it the package keeps
   its own name. On delegator this is 37 rows down to 28. Without `-files`, unchanged.
 
+- Every row is now the sum of what is drawn beneath it with no exception. 0.8.0 had one: a file
+  and a directory sharing a name were a single node carrying both. They are two nodes now, so the
+  report adds up whatever the profile holds.
+
+### Go API
+
+- **Breaking:** `PathTree.Files` holds what the profile named in a directory; `Children` is the
+  directories below it and nothing else, as it was before 0.8.0. `IsFile` is **removed** — a file
+  and a directory of the same name are separate nodes, so nothing has to ask which a node is.
+
 ## [0.8.0] — 2026-09-10
 
 ### Added

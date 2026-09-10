@@ -109,12 +109,6 @@ rather than `tzkt` above an identical `client.go`. Only where that file is being
 at a `-depth` that stops above it there is no second row to merge with, and the package keeps its
 own name.
 
-One profile can break that, and only one: if a file and a directory share a name — `m/a.go` beside
-`m/a.go/b.go` — the single row standing for both carries its own statements as well as its subtree,
-so it reads higher than the rows under it. No filesystem allows the two to share a name, so no
-`go test` run produces it; merging two profiles, or an `-old`/`-new` rewrite that collides two
-paths, can.
-
 ## Just the number
 
 `-total` prints the total percentage and nothing else, so a Makefile or a badge can read it. It

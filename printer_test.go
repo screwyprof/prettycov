@@ -247,27 +247,21 @@ func TestDisplayTreeKeepsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	}, "", "")
 
 	assert.Equal(t, []string{"m", "a.go"}, nodeNames(t, tree, prettycov.DepthAll),
-		"the subtree survives with the files hidden")
+		"with the files hidden only the directory is drawn, and it keeps its subtree")
 
-	// One row for the two things sharing the name, carrying both: 5 covered in the file and 7
-	// uncovered in the package. The file's own statements therefore get no row of their own even
-	// with -files, which is the one place a parent is more than what is drawn beneath it — a name
-	// cannot be two rows, and no profile a single `go test` run produces asks it to be.
+	// Two nodes, so two rows, and m is exactly the sum of them: the file's 5 and the directory's
+	// 7. The directory holds one file and nothing else, so it merges into it and the two rows end
+	// up telling apart by more than the number.
 	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true, Files: true})
 
-	assert.Contains(t, out, "a.go - 41.67  7/12 uncovered\n")
-	assert.Contains(t, out, "b.go - 0.00  7/7 uncovered\n")
-
-	// Get is how a library caller reaches it, and skipping IsFile nodes to enumerate packages must
-	// not drop the packages underneath.
-	assert.False(t, tree.Get("m/a.go").IsFile(), "it is also a directory")
+	assert.Contains(t, out, "m - 41.67  7/12 uncovered\n")
+	assert.Contains(t, out, "a.go - 100.00  0/5 uncovered\n", "the file")
+	assert.Contains(t, out, "a.go/b.go - 0.00  7/7 uncovered\n", "the directory of the same name")
 }
 
-// The same collision one level deeper, where the shared name holds a package rather than a file.
-// Only the immediate parent of a file is marked as a package, so a.go here is a file with a child
-// and no package of its own — which collapse used to fold away, leaving m claiming twelve
-// statements above a single row reporting seven.
-func TestDisplayTreeDoesNotCollapseAwayAFileWithASubtree(t *testing.T) {
+// The same collision one level deeper. The directory called a.go is a pass-through holding only
+// sub, so it merges into it; the file called a.go is a separate node and keeps its own row.
+func TestDisplayTreeKeepsAFileBesideADirectoryOfTheSameNameWithASubtree(t *testing.T) {
 	t.Parallel()
 
 	tree := prettycov.Process([]prettycov.FileCoverage{
@@ -275,13 +269,14 @@ func TestDisplayTreeDoesNotCollapseAwayAFileWithASubtree(t *testing.T) {
 		file("m/a.go/sub/b.go", 0, 7),
 	}, "", "")
 
-	assert.Equal(t, []string{"m", "a.go", "sub"}, nodeNames(t, tree, prettycov.DepthAll))
+	assert.Equal(t, []string{"m", "a.go/sub"}, nodeNames(t, tree, prettycov.DepthAll),
+		"the directory merges through to sub; the file is not drawn without -files")
 
-	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true})
+	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true, Files: true})
 
 	assert.Contains(t, out, "m - 41.67  7/12 uncovered\n")
-	assert.Contains(t, out, "a.go - 41.67  7/12 uncovered\n")
-	assert.Contains(t, out, "sub - 0.00  7/7 uncovered\n")
+	assert.Contains(t, out, "a.go - 100.00  0/5 uncovered\n", "the file")
+	assert.Contains(t, out, "a.go/sub/b.go - 0.00  7/7 uncovered\n", "and the directory it shares a name with")
 }
 
 // A file is one level below the package holding it, exactly as a subdirectory is — -depth counts
@@ -332,25 +327,6 @@ func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
 
 	// Without -files there is no file row to merge with, so the package keeps its own name.
 	assert.Equal(t, []string{"m", "one", "two"}, nodeNames(t, tree, prettycov.DepthAll))
-}
-
-// A package holding one file is a package holding one file whatever else that file turns out to
-// be. Where the name is also a directory — "m/x/own.go" beside "m/x/own.go/sub/b.go" — x and
-// own.go still report the same twelve statements, so they still merge; only the file's own row
-// stops the run, since it carries statements the row above would not report.
-func TestDisplayTreeMergesAPackageWhoseOneFileIsAlsoADirectory(t *testing.T) {
-	t.Parallel()
-
-	tree := prettycov.Process([]prettycov.FileCoverage{
-		file("m/x/own.go", 5, 0),
-		file("m/x/own.go/sub/b.go", 0, 7),
-	}, "", "")
-
-	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true, Files: true})
-
-	assert.Contains(t, out, "m/x/own.go - 41.67  7/12 uncovered\n")
-	assert.Contains(t, out, "sub/b.go - 0.00  7/7 uncovered\n")
-	assert.NotContains(t, out, " m/x - ", "x reported the same twelve statements and is gone")
 }
 
 // -depth counts levels below the root row, exactly as `tree -L` does: `tree -L 1` prints the root
