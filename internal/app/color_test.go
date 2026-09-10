@@ -22,10 +22,7 @@ import (
 //
 //nolint:paralleltest // t.Setenv and the isTerminal swap are both process-wide.
 func TestPalette(t *testing.T) {
-	// Registers the restore, then clears it: NO_COLOR set to anything, empty included, means no.
-	t.Setenv("NO_COLOR", "")
-	require.NoError(t, os.Unsetenv("NO_COLOR"))
-	t.Setenv("TERM", "xterm")
+	ClearColorEnv(t)
 
 	// The heuristic itself, before it is stubbed: /dev/null is a character device, which is what
 	// the old Stat-based check mistook for a terminal and coloured.

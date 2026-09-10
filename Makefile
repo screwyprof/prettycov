@@ -81,11 +81,6 @@ GOLANGCI_MISSING := golangci-lint not found. Enter the nix devShell, or install 
 require-golangci:
 	@command -v golangci-lint >/dev/null 2>&1 || { echo "$(GOLANGCI_MISSING)"; exit 1; }
 
-# Checked before `release` pushes anything: a missing curl found afterwards leaves a public tag
-# that every rerun of `make release` refuses and `make publish` cannot use.
-require-curl:
-	@command -v curl >/dev/null 2>&1 || { echo "curl not found; publishing asks the module proxy over HTTPS"; exit 1; }
-
 # golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
 # which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
 # standalone pair never applied at all, so a 128-column line survived `make fmt` unchanged.
@@ -186,11 +181,19 @@ nix-hash: ## recompute flake.nix vendorHash (run after go.mod/go.sum change)
 
 # ./VERSION holds the last released version — bump it, then run this.
 #
-# The local tag is dropped when the push fails, so a rerun tags again instead of hitting the guard
-# below and being told to bump ./VERSION for a release that never left the machine — unless origin
-# has it after all, since a push can land and still report failure, and re-tagging would then mint
-# an object origin rejects on every rerun.
-release: require-curl ## tag a release from ./VERSION and publish it to the module proxy
+# The push is the point of no return, so a failed one is sorted out rather than reported. Origin
+# has nothing: the local tag goes, so a rerun tags again instead of hitting the guard below and
+# being told to bump ./VERSION for a release that never left the machine. Origin has this very
+# tag: the push landed and said otherwise, so the tag stays and only publishing is left. Origin
+# has that name on another commit: this release did not happen, and the local tag would trip the
+# guard on every rerun, so it goes and ./VERSION needs bumping. Origin cannot be reached: none of
+# those is known, and deleting a tag that may well have landed is what mints a second object
+# origin rejects for good, so it stays.
+#
+# `git tag -a` ends in `;` rather than `&&`: .SHELLFLAGS carries -e, so a failed tag stops the
+# recipe right there, where `&&` would hand the failure to the `||` below and roll back a tag that
+# was never made.
+release: ## tag a release from ./VERSION and publish it to the module proxy
 	@v="v$$(cat VERSION)"; \
 	if ! git diff --quiet || ! git diff --cached --quiet; then \
 		echo "working tree is dirty; commit first"; exit 1; \
@@ -201,48 +204,53 @@ release: require-curl ## tag a release from ./VERSION and publish it to the modu
 	echo -e "$(OK_COLOR)==> Tagging $$v$(NO_COLOR)"; \
 	git tag -a "$$v" -m "$$v"; \
 	git push origin "$$v" || { \
-		if git ls-remote --exit-code --tags origin "$$v" >/dev/null 2>&1; then \
-			echo "origin has $$v; rerun just: make publish"; \
+		probe=0; git ls-remote --exit-code --tags origin "$$v" >/dev/null 2>&1 || probe=$$?; \
+		if [ $$probe = 2 ]; then \
+			git tag -d "$$v"; \
+		elif [ $$probe != 0 ]; then \
+			echo "cannot reach origin to see whether $$v landed, so the local tag stays"; \
+			echo "delete it yourself if it did not: git tag -d $$v"; \
+		elif [ "$$(git ls-remote --tags origin "$$v^{}" | cut -f1)" = "$$(git rev-parse "$$v^{}")" ]; then \
+			echo "origin already has $$v, at this commit; rerun just: make publish"; \
 		else \
 			git tag -d "$$v"; \
-		fi; exit 1; }
+			echo "origin already has $$v, at another commit — this release did not happen; bump ./VERSION"; \
+		fi; \
+		exit 1; }
 	@$(MAKE) --no-print-directory publish \
 		|| { echo "the tag is pushed; rerun just: make publish"; exit 1; }
 
-# Step 6 of https://go.dev/doc/modules/publishing, taken the second of the three ways listed at
-# https://pkg.go.dev/about#adding-a-package: a request to the proxy. proxy.golang.org caches a
-# version the first time anyone asks for it, index.golang.org lists what the proxy has learned, and
-# pkg.go.dev builds from that — so a release nobody asks for stays unpublished. Its own target
-# because the tag is already pushed by the time it runs: if this fails, `make publish` retries it,
-# where `make release` would stop at the tag that now exists.
+# Step 6 of https://go.dev/doc/modules/publishing: ask the proxy for the version. proxy.golang.org
+# caches a version the first time anyone asks for it, index.golang.org lists what the proxy has
+# learned, and pkg.go.dev builds from that — so a release nobody asks for stays unpublished. Its
+# own target because the tag is already pushed by the time it runs: if this fails, `make publish`
+# retries it, where `make release` would stop at the tag that now exists.
 #
-# Not the publishing guide's `GOPROXY=... go list -m`, which answers from $GOMODCACHE without
-# asking any proxy once the version is local — so anyone who smoke-tested the release first gets a
-# green run and nothing published. A request to the proxy cannot be served from a cache, and -f
-# makes a 404 an error rather than a silent success. The marker-then-tr encoding is the proxy's own
-# rule for uppercase in a module path, done without sed's \l, which is a GNU extension BSD sed
-# emits literally. [[:upper:]] rather than [A-Z]: on glibc before 2.28 a UTF-8 locale collates
-# that range across lowercase letters too, and the whole path came out marked.
+# Into a throwaway GOMODCACHE, which is what makes this a request at all: the go command answers
+# from the cache once a version is local, so anyone who smoke-tested the release first would get a
+# green run and nothing published. GOPRIVATE and GONOPROXY are cleared for the same reason, either
+# one matching this module sends the go command straight past the proxy to the origin.
 #
-# One request, not a retry loop. `git push` returns once the origin has the tag, so a 404 here is
-# never the push still landing: it is the proxy fetching the module for the first time, which the
-# timeout covers, or its negative cache from someone asking for this version before the tag
-# existed, which lasts up to half an hour and no loop of seconds outwaits. The 404 body is shown,
-# because it also names the faults that no waiting fixes — a v2 without a /v2 module path, a
-# go.mod the proxy cannot read — and --fail alone would throw it away. Anything but a 404 (curl
-# exits 22 for one) is a different problem and says so instead of that advice.
-publish: require-curl ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
+# The go tool rather than a hand-made HTTP request: it escapes the uppercase in a module path
+# itself, needs nothing on PATH that building this repo does not already need, and phrases a
+# failure in the proxy's own words — a v2 without a /v2 module path, a go.mod it cannot read, or
+# the plain 404 that means it has not fetched the tag yet. Not -json, which reports a failure as a
+# field and can still exit 0, where this target's whole job is to fail when nothing was published.
+publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
-	path=$$(go list -m) || exit $$?; \
-	mod=$$(printf '%s' "$$path" | sed 's/[[:upper:]]/!&/g' | tr '[:upper:]' '[:lower:]'); \
-	rc=0; body=$$(curl -sS --fail-with-body --max-time 60 "https://proxy.golang.org/$$mod/@v/$$v.info") || rc=$$?; \
-	case $$rc in \
-		0) echo "  proxy has it; index.golang.org and pkg.go.dev follow"; exit 0;; \
-		22) echo "  proxy: $$body"; \
-			echo "  if that names no fault, the proxy was asked for $$v before the tag existed and is remembering"; \
-			echo "  the miss, for up to 30 minutes; wait that out and rerun: make publish";; \
-		*) echo "  the request did not complete (curl exit $$rc); rerun: make publish";; \
+	cache=$$(mktemp -d); rc=0; \
+	out=$$(GOMODCACHE=$$cache GOPROXY=https://proxy.golang.org GOPRIVATE= GONOPROXY= GOFLAGS= \
+		go mod download "$$(go list -m)@$$v" 2>&1) || rc=$$?; \
+	GOMODCACHE=$$cache go clean -modcache || true; rm -rf "$$cache" || true; \
+	if [ $$rc = 0 ]; then \
+		echo "  proxy has it; index.golang.org and pkg.go.dev follow"; exit 0; \
+	fi; \
+	printf '%s\n' "$$out" | sed 's/^/  /'; \
+	case "$$out" in \
+	*"404 Not Found"*) \
+		echo "  a 404 naming no fault is the proxy remembering a miss from before the tag existed;"; \
+		echo "  it holds that for up to 30 minutes — wait it out and rerun: make publish";; \
 	esac; \
 	exit 1
 
@@ -264,6 +272,6 @@ help: ## show this help
 # To avoid unintended conflicts with file names, always add to .PHONY
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
-.PHONY: all build fmt require-golangci require-curl
+.PHONY: all build fmt require-golangci
 .PHONY: test cover-branches test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all install hooks nix-hash release publish clean help

@@ -609,6 +609,24 @@ func TestRunOnAProfileWithNothingToCover(t *testing.T) {
 	}
 }
 
+// Which message an empty report gets is settled by whether -exclude took the statements out, not
+// by whether any file came through it: a zero-statement file left behind would otherwise send the
+// reader off to check `go test -coverprofile` for a report a pattern emptied.
+func TestRunNamesExcludeAsTheReasonTheReportIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	path := writeProfile(t, "mode: set\n"+
+		"m/a.go:1.1,2.2 10 1\n"+
+		"m/doc.go:1.1,2.2 0 0\n")
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	args := []string{"-exclude", `a\.go`, "-profile", path, "-color", "never"}
+
+	assert.Equal(t, codeFailed, app.Run(args, stdout, stderr))
+	assert.Contains(t, stderr.String(), "-exclude left nothing to report")
+	assert.Empty(t, stdout.String())
+}
+
 // Rows walks the root's children, so when a profile spans two top-level paths the root itself is
 // never drawn. -total reports that root, so its number appears in no row.
 func TestTotalOverAProfileWithNoSingleRoot(t *testing.T) {
@@ -704,17 +722,6 @@ func TestRunRejectsABadDepth(t *testing.T) {
 	}
 }
 
-// clearColorEnv puts the environment in the state where only the destination decides. Its callers
-// cannot be parallel: t.Setenv panics if the test or any parent has called t.Parallel.
-func clearColorEnv(t *testing.T) {
-	t.Helper()
-
-	// Registers the restore, then clears it: NO_COLOR set to anything, empty included, means no.
-	t.Setenv("NO_COLOR", "")
-	require.NoError(t, os.Unsetenv("NO_COLOR"))
-	t.Setenv("TERM", "xterm")
-}
-
 // A regular file is not a terminal, and a closed one answers no rather than panicking — its
 // descriptor is -1 by then. Both are branches a bytes.Buffer never reaches, since it is not an
 // *os.File at all. The closed one also pins the exit code: the printer discards write errors, so a
@@ -724,9 +731,9 @@ func clearColorEnv(t *testing.T) {
 // NO_COLOR and TERM before it looks at the descriptor, so a runner with NO_COLOR exported would
 // pass these at the first guard and never test what they are named for.
 //
-//nolint:paralleltest // t.Setenv, through clearColorEnv, panics under t.Parallel.
+//nolint:paralleltest // t.Setenv, through app.ClearColorEnv, panics under t.Parallel.
 func TestRunAutoColorAgainstRealFiles(t *testing.T) {
-	clearColorEnv(t)
+	app.ClearColorEnv(t)
 
 	path := writeProfile(t, profile)
 

@@ -17,14 +17,17 @@ tags.
 - **Breaking:** a profile with no statements to cover exits 2 on every path, with
   `no statements to cover`, where the tree used to print a lone `n/a` and exit 0 — which is what
   a `go test -coverprofile` that matched no packages produces, and a coverage step would call
-  green. `-total` already refused it. When `-exclude` patterns are what emptied it, the message
-  says so: `-exclude left nothing to report`. The empty pattern was already refused for this
-  reason; `.*`, or `.go` typed for `\.pb\.go$`, empty the report just as well and were not. With
-  `-fail-under` the gate reports it instead, as before.
-- `make release` drops the local tag when the push fails, so a rerun tags again instead of being
-  told to bump `./VERSION`; it checks for `curl` before tagging rather than after; and `make
-  publish` asks the proxy once with a timeout instead of retrying a 404 the proxy will keep
-  returning for up to half an hour.
+  green. `-total` already refused it. When `-exclude` patterns are what took the statements out,
+  the message says so: `-exclude left nothing to report`. The empty pattern was already refused
+  for this reason; `.*`, or `.go` typed for `\.pb\.go$`, empty the report just as well and were
+  not. With `-fail-under` the gate still reports it and exits 1, and no longer draws the `n/a`
+  row above the message — an empty report reads the same now whichever flags asked for it.
+- `make release` sorts out a failed push instead of reporting it: the local tag is dropped when
+  origin has nothing, so a rerun tags again rather than being told to bump `./VERSION`, and kept
+  when origin has the tag or cannot be reached, since re-tagging then mints an object origin
+  rejects for good. `make publish` asks the proxy through `go mod download` into a throwaway
+  module cache, which drops the `curl` requirement and reports a failure in the proxy's own
+  words, instead of retrying a 404 the proxy will keep returning for up to half an hour.
 
 ### Go API
 
