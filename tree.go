@@ -33,8 +33,12 @@ func (n *PathTree) add(file string, stats CoverageStats) {
 	//
 	// path.Dir cleans on the way, which the walk below relies on: splitting a path is not the same
 	// as walking one, and "m//a/b.go" would otherwise give an empty component and read "m//a".
+	// The trailing separator goes first, because splitting a string that is only the separator
+	// yields two empty components where the filesystem root is one node: "/a.go" gave the root a
+	// child of the same nameless kind, and both drew as a blank label. Every other directory
+	// path.Dir returns has no trailing slash, so this touches nothing else.
 	dir := n
-	for part := range strings.SplitSeq(path.Dir(file), "/") {
+	for part := range strings.SplitSeq(strings.TrimSuffix(path.Dir(file), "/"), "/") {
 		dir = dir.child(part)
 	}
 

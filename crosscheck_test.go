@@ -255,6 +255,12 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 			file("/home/ci/repo/pkg/a.go", 3, 1),
 			file("/home/ci/repo/main.go", 2, 0),
 		},
+		// And the root can hold a file directly, which is the one node with no name of its own.
+		// `-new=/` reaches this from an ordinary profile.
+		"files at the filesystem root": {
+			file("/a.go", 3, 1),
+			file("/b/c.go", 2, 0),
+		},
 	}
 
 	profiles, err := filepath.Glob(filepath.Join("testdata", "*.out"))

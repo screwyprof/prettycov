@@ -105,6 +105,14 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 		label, node := collapse(name, tree.Children[name])
 		root := level == 0
 
+		// The filesystem root is the one node with no name of its own: an absolute path splits to
+		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
+		// there is something below to fold. When there is not — a profile holding "/a.go" — the
+		// label is left empty, and a blank row says nothing.
+		if label == "" {
+			label = "/"
+		}
+
 		b.rows = append(b.rows, Row{
 			Prefix: padding + symbol(root, getBoxType(i, len(names))),
 			// Sanitised here rather than at the writer, so no consumer of a Row has to remember to.
