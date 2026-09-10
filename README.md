@@ -98,8 +98,8 @@ the untested code is — so treat `-fail-under` as a floor, not a goal.
 would spend three levels on `github.com`, `owner`, `repo` before reaching anything worth reading.
 
 **The profile's files are the tree's leaves**, so every row is the sum of what is drawn beneath it —
-`scraper`'s 150 statements are `config`'s 1, `service.go`'s 65, `store`'s 51 and `subscriber.go`'s
-33. That is what makes a report with `-counts` addable. Without `-files` those leaves simply are not
+`scraper`'s 150 statements are `config/config.go`'s 1, `service.go`'s 65, `store`'s 51 and
+`subscriber.go`'s 33. That is what makes a report with `-counts` addable. Without `-files` those leaves simply are not
 drawn, so a package holding both files and subpackages shows a total larger than its visible
 children; `du` behaves the same way, and `du -a` is its `-files`. A file costs a `-depth` level
 exactly as a subpackage does, being one of a directory's entries.

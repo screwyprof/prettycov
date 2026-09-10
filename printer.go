@@ -67,11 +67,12 @@ type rowBuilder struct {
 	rows []Row
 }
 
-// entry is one node to draw and the name it is drawn under. A name can belong to a file and a
-// directory at once, so the two cannot be told apart by name alone.
+// entry is one row to draw: the node, and the label it will carry once any run below it has been
+// merged in. A name can belong to a file and a directory at once, so the two cannot be told apart
+// by name alone.
 type entry struct {
-	name string
-	node *PathTree
+	label string
+	node  *PathTree
 }
 
 // visible is what to draw below tree, sorted — map order is randomised and this output gets diffed
@@ -87,19 +88,25 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 	entries := make([]entry, 0, size)
 
 	for name, node := range tree.Children {
-		entries = append(entries, entry{name: name, node: node})
+		label, merged := collapse(name, node, b.opts.Files)
+		entries = append(entries, entry{label: label, node: merged})
 	}
 
 	if b.opts.Files {
 		for name, node := range tree.Files {
-			entries = append(entries, entry{name: name, node: node})
+			entries = append(entries, entry{label: name, node: node})
 		}
 	}
 
-	// Stable, because a name can appear in both maps and comparing names alone leaves those two
-	// tied: an unstable sort would order them differently between runs, and this output gets
-	// diffed. Directories are appended first, so a tie puts the directory above the file.
-	slices.SortStableFunc(entries, func(a, b entry) int { return strings.Compare(a.name, b.name) })
+	// Sorted by the label the reader sees rather than by the name it started as, or a merged row
+	// lands where its first component would have put it: "api/errors.go" before "api.go", which
+	// reads out of order because "/" sorts after ".".
+	//
+	// Stable, because a name can appear in both maps and a directory that merges away nothing
+	// keeps it, leaving the two tied: an unstable sort would order them differently between runs,
+	// and this output gets diffed. Directories are gathered first, so a tie puts the directory
+	// above the file.
+	slices.SortStableFunc(entries, func(a, b entry) int { return strings.Compare(a.label, b.label) })
 
 	return entries
 }
@@ -114,7 +121,7 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 	entries := b.visible(tree)
 
 	for i, e := range entries {
-		label, node := collapse(e.name, e.node, b.opts.Files)
+		label, node := e.label, e.node
 		root := level == 0
 
 		// The filesystem root is the one node with no name of its own: an absolute path splits to

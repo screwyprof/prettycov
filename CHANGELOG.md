@@ -16,8 +16,9 @@ tags.
 
 - With `-files`, a package whose whole content is one file is drawn as one row named for both —
   `tzkt/client.go`, not `tzkt` above an identical `client.go`. The two rows carried the same number
-  twice. Only where that file is being drawn: at a `-depth` that stops above it the package keeps
-  its own name. On delegator this is 37 rows down to 28. Without `-files`, unchanged.
+  twice. A row's label is a property of its node, so raising `-depth` adds rows below rather than
+  renaming the ones already drawn. On delegator this is 37 rows down to 28. Without `-files`,
+  unchanged.
 
 - Every row is now the sum of what is drawn beneath it with no exception. 0.8.0 had one: a file
   and a directory sharing a name were a single node carrying both. They are two nodes now, so the

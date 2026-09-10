@@ -253,10 +253,23 @@ func TestDisplayTreeKeepsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	assert.Equal(t, []string{"m", "a.go"}, nodeNames(t, tree, prettycov.DepthAll),
 		"with the files hidden only the directory is drawn, and it keeps its subtree")
 
-	// Both entries are named "a.go", so the sort cannot separate them and only the order they are
-	// gathered in does. Directories before files, and stably, or the report differs between runs.
-	assert.Equal(t, []string{"m", "a.go/b.go", "a.go"},
+	// Sorted by the label each row ends up with, so the file comes first: "a.go" < "a.go/b.go".
+	// Sorting by the name they started as would put the directory first, since both begin as
+	// "a.go" and directories are gathered before files.
+	assert.Equal(t, []string{"m", "a.go", "a.go/b.go"},
 		namesWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}))
+
+	// Where the directory holds two files it does not merge, so both rows really are labelled
+	// "a.go" and only the order they are gathered in separates them: directories first, stably.
+	both := prettycov.Process([]prettycov.FileCoverage{
+		file("m/a.go", 5, 0),
+		file("m/a.go/b.go", 0, 4),
+		file("m/a.go/c.go", 0, 3),
+	}, "", "")
+
+	assert.Equal(t, []string{"m", "a.go", "b.go", "c.go", "a.go"},
+		namesWith(t, both, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
+		"the directory and its files first, then the file of the same name")
 
 	// Two nodes, so two rows, and m is exactly the sum of them: the file's 5 and the directory's
 	// 7. The directory holds one file and nothing else, so it merges into it and the two rows end
@@ -312,6 +325,20 @@ func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
 
 	// Without -files there is no file row to merge with, so the package keeps its own name.
 	assert.Equal(t, []string{"m", "one", "two"}, nodeNames(t, tree, prettycov.DepthAll))
+}
+
+// The top row merges too, so a repository that is one package of one file reports a file path and
+// no row names the package. Deliberate: -files asked for the files, the label still carries the
+// whole package path, and refusing to merge at the top would be a rule about where a row sits
+// rather than about what it holds. The default view is untouched, and -total reads the tree.
+func TestDisplayTreeMergesTheTopRowToo(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("github.com/o/tool/main.go", 8, 1)}, "", "")
+
+	assert.Equal(t, []string{"github.com/o/tool/main.go"},
+		namesWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}))
+	assert.Equal(t, []string{"github.com/o/tool"}, nodeNames(t, tree, prettycov.DepthAll))
 }
 
 // -depth counts levels below the root row, exactly as `tree -L` does: `tree -L 1` prints the root
