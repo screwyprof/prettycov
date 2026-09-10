@@ -82,8 +82,9 @@ distinct, so a CI step can tell a missing profile from a failed gate.
 
 A percentage hides size, and that changes which package you should open first. In the tree above
 `pgxdb/pgxdb.go` reads 75.00 and `handler` reads 87.23 — and `handler` holds **more** untested code
-than `pgxdb/pgxdb.go`, six statements against four. Sorting by the percentage points at the smaller package
-with the louder number; the uncovered count is the one to act on. That is what `-counts` is for.
+than `pgxdb/pgxdb.go`, six statements against four. Sorting by the percentage points at whichever
+row is smallest, not at the one worth opening; the uncovered count is what to act on. That is what
+`-counts` is for.
 
 It is worth knowing this before gating on a percentage at all. The studies that looked
 ([Inozemtseva & Holmes, ICSE 2014](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf))
