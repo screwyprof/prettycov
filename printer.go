@@ -20,11 +20,12 @@ type Options struct {
 	// Counts writes uncovered/total statements after each percentage, which hides size on its own.
 	Counts bool
 
-	// Files draws the profile's files as well as its packages. They sit one level below the
-	// package that holds them, the way tree -L counts a directory's entries, so a package's own
-	// files and its subpackages appear side by side and every parent is the sum of what is drawn
-	// beneath it. Off by default: the report is about packages, and a file row per source file
-	// buries that.
+	// Files draws the profile's files as well as its packages, as entries of the package holding
+	// them the way tree -L counts a directory's, so a package's own files and its subpackages
+	// appear side by side and every parent is the sum of what is drawn beneath it. A file costs a
+	// level like any other entry, unless it is all its package holds and the two merge into one
+	// row. Off by default: the report is about packages, and a file row per source file buries
+	// that.
 	Files bool
 }
 
@@ -153,18 +154,34 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 func collapse(label string, node *PathTree, mergeFiles bool) (string, *PathTree) {
 	for len(node.Files) == 0 && len(node.Children) == 1 {
 		for name, child := range node.Children {
-			label, node = label+"/"+name, child
+			label, node = join(label, name), child
 		}
 	}
 
 	// A file has nothing below it, so this is where the run ends either way.
 	if mergeFiles && len(node.Files) == 1 && len(node.Children) == 0 {
 		for name, file := range node.Files {
-			return label + "/" + name, file
+			return join(label, name), file
 		}
 	}
 
 	return label, node
+}
+
+// join names something inside label. Two labels are not directories and take a separator between
+// them, with two exceptions the profile's paths do not have and this tree's do:
+//
+//   - ".", which is where a file the profile named with no directory of its own lands, and merging
+//     it printed "./printer.go" — a path no profile contained, beside siblings written plainly;
+//   - "", which is the filesystem root, and there the separator is the whole name: "/a.go".
+//
+// path.Join is the first rule and the wrong half of the second, cleaning the root away entirely.
+func join(label, name string) string {
+	if label == "." {
+		return name
+	}
+
+	return label + "/" + name
 }
 
 // sanitize replaces the characters in a label that a terminal would obey rather than draw.

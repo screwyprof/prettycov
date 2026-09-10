@@ -2,6 +2,7 @@ package prettycov_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -287,6 +288,17 @@ func TestDisplayTreeOrdersATieBetweenAFileAndADirectory(t *testing.T) {
 	assert.Equal(t, []string{"m", "a.go", "b.go", "c.go", "a.go"},
 		namesWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
 		"the directory and its files first, then the file of the same name")
+
+	// Which row carries which number, in order. The reconciliation in crosscheck_test.go sums the
+	// two by path, so it balances just as well if they trade: give the file the directory's 7 and
+	// the directory the file's 5 and the path still holds 12. Here they are pinned apart.
+	assert.Equal(t, []string{
+		"m - 41.67  7/12 uncovered",
+		"a.go - 0.00  7/7 uncovered",
+		"b.go - 0.00  4/4 uncovered",
+		"c.go - 0.00  3/3 uncovered",
+		"a.go - 100.00  0/5 uncovered",
+	}, renderedLines(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true, Counts: true}))
 }
 
 // A file is one level below the package holding it, exactly as a subdirectory is — -depth counts
@@ -333,6 +345,28 @@ func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
 
 	// Without -files there is no file row to merge with, so the package keeps its own name.
 	assert.Equal(t, []string{"m", "one", "two"}, nodeNames(t, tree, prettycov.DepthAll))
+}
+
+// A profile can name a file with no directory of its own — `prettycov -new=.` writes every path
+// that way — and such a file lands under ".", the row the report draws it beside. Merging the two
+// must not write that "." into the label: the profile has no path spelled "./printer.go", and its
+// siblings are written plainly. The filesystem root is the opposite case and keeps its separator,
+// because there the separator is the whole name.
+func TestDisplayTreeMergesAFileThatHasNoDirectory(t *testing.T) {
+	t.Parallel()
+
+	withFiles := prettycov.Options{Depth: prettycov.DepthAll, Files: true}
+
+	bare := prettycov.Process([]prettycov.FileCoverage{
+		file("printer.go", 3, 1),
+		file("internal/app/a.go", 2, 0),
+	}, "", "")
+
+	assert.Equal(t, []string{"internal/app/a.go", "printer.go"}, namesWith(t, bare, withFiles))
+
+	atRoot := prettycov.Process([]prettycov.FileCoverage{file("/main.go", 8, 1)}, "", "")
+
+	assert.Equal(t, []string{"/main.go"}, namesWith(t, atRoot, withFiles))
 }
 
 // The top row merges too, so a repository that is one package of one file reports a file path and
@@ -458,6 +492,19 @@ func renderOpts(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) 
 	prettycov.DisplayTree(&buf, tree, opts)
 
 	return buf.String()
+}
+
+// renderedLines is the report without the box-drawing prefix, so a test can pin what every row
+// says and in what order without pinning the glyphs a separate test already covers.
+func renderedLines(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) []string {
+	t.Helper()
+
+	var lines []string
+	for line := range strings.SplitSeq(strings.TrimSuffix(renderOpts(t, tree, opts), "\n"), "\n") {
+		lines = append(lines, strings.TrimLeft(line, "├└│ "))
+	}
+
+	return lines
 }
 
 // nodeNames is the labels a tree renders to, in order. Read off Rows rather than scraped back
