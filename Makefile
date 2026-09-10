@@ -140,11 +140,23 @@ test-cover-total: $(COVERAGE) ## show total coverage
 # runs, whichever way it evaluates. gobco instruments the conditions themselves and says which
 # were never true or never false. Pinned and run with `go run pkg@version`, which leaves go.mod
 # and go.sum untouched, so this stays a tool you reach for rather than a dependency.
+#
+# Run against a copy holding only what git tracks. gobco copies the whole module root into its
+# own temporary tree, with filepath.Walk and no exclusions (main.go:153), so anything sitting
+# beside the source comes too: a gitignored _reference/ of cloned repositories made that 2.6GB,
+# which filled /tmp and killed the run on ENOSPC. Same shape as the one that made `make fmt` walk
+# 74,469 files — a tool reading the filesystem where the Go package graph was meant.
+#
+# The copy is $(GIT_LS), the list `fmt` already uses, so uncommitted work is measured. A worktree
+# would be shorter and would silently report on HEAD instead.
 cover-branches: ## report conditions never evaluated both ways
 	@echo -e "$(OK_COLOR)==> Condition coverage$(NO_COLOR)"
-	@for pkg in . ./internal/app; do \
-		go run github.com/rillig/gobco@$(GOBCO_VERSION) $$pkg | grep -v "^ok\b" || true; \
-	done
+	@test -n "$(GO_FILES)" || { echo "no Go files; this needs a git checkout"; exit 1; }
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT; \
+	 $(GIT_LS) | tar -cf - -T - | (cd "$$tmp" && tar -xf -); \
+	 for pkg in . ./internal/app; do \
+		(cd "$$tmp" && go run github.com/rillig/gobco@$(GOBCO_VERSION) $$pkg) | grep -v "^ok\b" || true; \
+	 done
 
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
