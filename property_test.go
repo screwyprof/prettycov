@@ -22,10 +22,21 @@ import (
 // because the shape it needs — a file with no directory of its own, named for a directory beside
 // it — is one no `go test` run produces. Three hundred made-up profiles find it in seconds.
 //
-// Seeded, so a failure reproduces: the subtest name is the seed, and the profile is logged.
+// The seed is fixed, so this is a generated corpus rather than a search: from this commit on the
+// three hundred profiles are as settled as the hand-written table, and no rerun will turn up a
+// shape the seed does not already produce. "Shapes nobody thought of" is true once, at the moment
+// they are written. That buys the same thing pinning a golden does — a failure is the code
+// changing, never the test — and costs the same thing.
+//
+// A failing subtest logs the profile that broke it. It is named for its run, not for a seed of its
+// own: reproducing means running the loop, since each profile is drawn from the one before.
 const (
 	propertyRuns = 300
 	propertySeed = 0x9E3779B97F4A7C15
+
+	// maxPathParts is how many components randomProfile draws for a path, before the empty one
+	// that makes it absolute.
+	maxPathParts = 3
 )
 
 // TestTreePropertiesHoldForAnyProfile checks what a report claims against what the profile said,
@@ -55,11 +66,38 @@ func TestTreePropertiesHoldForAnyProfile(t *testing.T) {
 				}
 
 				assertRowsHoldEveryStatement(t, tree, files, withFiles)
+				assertRowsAreInOrder(t, tree, withFiles)
 				assertDepthOnlyAddsRows(t, tree, withFiles)
 				assertTopRowsSumToTheTotal(t, tree, withFiles)
 				assertRenderIsDeterministic(t, tree, withFiles)
 			}
 		})
+	}
+}
+
+// assertRowsAreInOrder checks that each row's label sorts at or after the one above it at the same
+// level under the same parent. Every other property here is order-independent by construction —
+// coverage is looked up per path, sums are commutative, and a wrong order that is stable is still
+// deterministic — so sorting rows by the name they started as instead of the label they end up
+// with passes all of them, which is precisely the bug printer.go's sort comment is about.
+//
+// Ties are allowed: a file and a directory of one name have the same label, and the name each
+// started as is what puts the directory first.
+func assertRowsAreInOrder(t *testing.T, tree *prettycov.PathTree, withFiles bool) {
+	t.Helper()
+
+	// The label at each level, as rowInfos rebuilds a path: appending at the row's own level drops
+	// everything deeper, so descending into a new parent forgets the last parent's children rather
+	// than comparing across the two.
+	var above []string
+
+	for _, row := range prettycov.Rows(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: withFiles}) {
+		if len(above) > row.Level {
+			assert.LessOrEqualf(t, above[row.Level], row.Label,
+				"%q is drawn after %q at level %d", row.Label, above[row.Level], row.Level)
+		}
+
+		above = append(above[:row.Level], row.Label)
 	}
 }
 
@@ -73,8 +111,15 @@ func TestTreePropertiesHoldForAnyProfile(t *testing.T) {
 func assertDepthOnlyAddsRows(t *testing.T, tree *prettycov.PathTree, withFiles bool) {
 	t.Helper()
 
-	// Past the deepest shape randomProfile makes, so the last cut is always the whole tree.
-	for cut := range prettycov.Depth(6) {
+	// Measured rather than assumed. A constant past today's deepest shape would stop reaching the
+	// top the day randomProfile grew a level, with nothing failing to say so.
+	var deepest int
+	for _, row := range prettycov.Rows(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: withFiles}) {
+		deepest = max(deepest, row.Level)
+	}
+
+	// One cut past the deepest row, so the last comparison is against the whole tree.
+	for cut := range prettycov.Depth(deepest + 1) {
 		shallow := prettycov.Rows(tree, prettycov.Options{Depth: cut, Files: withFiles})
 		deeper := prettycov.Rows(tree, prettycov.Options{Depth: cut + 1, Files: withFiles})
 
@@ -123,10 +168,10 @@ func assertRenderIsDeterministic(t *testing.T, tree *prettycov.PathTree, withFil
 }
 
 // randomProfile makes up a profile. Every component is drawn from four names, two of which look
-// like files, so the collisions live in almost every profile rather than in the one case someone
-// remembered: a name used as both a file and a directory, a file with no directory of its own, a
-// package whose whole content is one file. Real profiles reach these through a merge of two runs
-// or an -old/-new rewrite.
+// like files, so that the shapes which have gone wrong are ordinary rather than exceptional. Over
+// the seeded three hundred: a package whose whole content is one file in 97% of profiles, an
+// absolute path in 47%, a name used as both a file and a directory in 46%, and a filename repeated
+// in 23%. Real profiles reach the last two through a merge of two runs or an -old/-new rewrite.
 //
 // Duplicates are left in. x/tools merges a repeated filename before we see it, so only a caller
 // assembling its own slice gets one — which is the case PathTree.add accumulates for.
@@ -136,7 +181,7 @@ func randomProfile(rnd *rand.Rand) []prettycov.FileCoverage {
 	files := make([]prettycov.FileCoverage, rnd.IntN(8)+1)
 
 	for i := range files {
-		parts := make([]string, rnd.IntN(3)+1)
+		parts := make([]string, rnd.IntN(maxPathParts)+1)
 		for j := range parts {
 			parts[j] = names[rnd.IntN(len(names))]
 		}
@@ -192,16 +237,20 @@ func TestPercentagePropertiesHoldForAnyCounts(t *testing.T) {
 		value, err := strconv.ParseFloat(text, 64)
 		require.NoErrorf(t, err, "%d covered of %d rendered as %q", stats.Covered, stats.Total(), text)
 
-		// Two decimals, so the text is within half a place of the number it stands for — except at
-		// the very top, where the cap spends a whole one. It is a round down, not a round to
-		// nearest: 73999 of 74000 statements is 99.9986%, which renders "99.99" rather than the
-		// "100.00" that stops someone writing another test.
-		tolerance := 0.005
-		if stats.Uncovered > 0 && text == "99.99" {
-			tolerance = 0.01 + 1e-9 // the whole place, and float64's own error at these magnitudes
+		// The cap is the one place the text is deliberately not the nearest two decimals: 73999 of
+		// 74000 statements is 99.9986%, and rounding to nearest would print the 100.00 that stops
+		// someone writing another test. Checked as the exact string it must be, rather than by
+		// widening the band below — a band wide enough for the round down is also wide enough for a
+		// genuine hundredth of error at 99.99.
+		if stats.Uncovered > 0 && strconv.FormatFloat(pct.Float(), 'f', 2, 64) == "100.00" {
+			assert.Equalf(t, "99.99", text, "%v%% with %d statements uncovered",
+				pct.Float(), stats.Uncovered)
+
+			continue
 		}
 
-		assert.InDeltaf(t, pct.Float(), value, tolerance, "%q against %v", text, pct.Float())
+		// Everywhere else it is two decimals, so within half a place of the number it stands for.
+		assert.InDeltaf(t, pct.Float(), value, 0.005+1e-9, "%q against %v", text, pct.Float())
 
 		if text == "100.00" {
 			assert.Zerof(t, stats.Uncovered, "%q with statements left uncovered", text)
