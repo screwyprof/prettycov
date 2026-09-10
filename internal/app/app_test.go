@@ -418,6 +418,7 @@ func TestRunExcludesPackages(t *testing.T) {
 		args     []string
 		wantCode int
 		want     string
+		wantErr  string
 	}{
 		{
 			name: "without it, the uncovered package counts",
@@ -432,6 +433,13 @@ func TestRunExcludesPackages(t *testing.T) {
 			// checkThreshold already refuses rather than passing silently.
 			name: "excluding everything cannot pass a gate",
 			args: []string{"-exclude", "example.com", "-fail-under", "0"}, wantCode: codeBelow,
+		},
+		{
+			// Without a gate nothing refuses it downstream, and an empty report exiting 0 is
+			// the green no-op the empty-pattern guard exists to stop, by another spelling.
+			name: "excluding everything without a gate is an error, not an empty report",
+			args: []string{"-exclude", "example.com"}, wantCode: codeFailed,
+			wantErr: "-exclude left nothing to report",
 		},
 		{
 			name: "a pattern that does not compile is a flag error",
@@ -460,6 +468,10 @@ func TestRunExcludesPackages(t *testing.T) {
 
 			if tc.want != "" {
 				assert.Contains(t, stdout.String(), tc.want)
+			}
+
+			if tc.wantErr != "" {
+				assert.Contains(t, stderr.String(), tc.wantErr)
 			}
 		})
 	}
@@ -552,11 +564,9 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	}
 }
 
-// A profile with nothing to cover has no total. The tree renders that as "n/a", but a caller
-// reading `COVERAGE := $(shell prettycov -total)` would carry "n/a" into a comparison, and 0.00
-// would be worse still: it reads as a real and terrible number. With -fail-under, that reports
-// instead, so a CI step is not told the tool broke when the truth is coverage was too low.
-func TestRunOnATotalItCannotCompute(t *testing.T) {
+// A `go test -coverprofile` that matched no packages produces this, and an empty report exiting 0
+// would call it green. -fail-under grades it rather than reporting a tool that could not run.
+func TestRunOnAProfileWithNothingToCover(t *testing.T) {
 	t.Parallel()
 
 	path := writeProfile(t, "mode: set\nm/doc.go:1.1,2.2 0 0\n")
@@ -567,9 +577,15 @@ func TestRunOnATotalItCannotCompute(t *testing.T) {
 		wantCode int
 		wantErr  string
 	}{
-		{name: "refused outright", wantCode: codeFailed, wantErr: "no statements to cover"},
 		{
-			name: "-fail-under reports it instead", args: []string{"-fail-under", "50"},
+			name:     "-total is refused outright",
+			args:     []string{"-total"},
+			wantCode: codeFailed,
+			wantErr:  "no statements to cover",
+		},
+		{name: "the tree is refused too", wantCode: codeFailed, wantErr: "no statements to cover"},
+		{
+			name: "-fail-under reports it instead", args: []string{"-total", "-fail-under", "50"},
 			wantCode: codeBelow, wantErr: "no statements to cover, wanted at least 50.00%",
 		},
 	}
@@ -578,7 +594,7 @@ func TestRunOnATotalItCannotCompute(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			args := append([]string{"-total", "-profile", path, "-color", "never"}, tc.args...)
+			args := append([]string{"-profile", path, "-color", "never"}, tc.args...)
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
@@ -587,6 +603,22 @@ func TestRunOnATotalItCannotCompute(t *testing.T) {
 			assert.Contains(t, stderr.String(), tc.wantErr)
 		})
 	}
+}
+
+// Settled by whether -exclude took the statements out, not by whether any file came through it.
+func TestRunNamesExcludeAsTheReasonTheReportIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	path := writeProfile(t, "mode: set\n"+
+		"m/a.go:1.1,2.2 10 1\n"+
+		"m/doc.go:1.1,2.2 0 0\n")
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	args := []string{"-exclude", `a\.go`, "-profile", path, "-color", "never"}
+
+	assert.Equal(t, codeFailed, app.Run(args, stdout, stderr))
+	assert.Contains(t, stderr.String(), "-exclude left nothing to report")
+	assert.Empty(t, stdout.String())
 }
 
 // Rows walks the root's children, so when a profile spans two top-level paths the root itself is
@@ -697,7 +729,8 @@ func clearColorEnv(t *testing.T) {
 
 // A regular file is not a terminal, and a closed one answers no rather than panicking — its
 // descriptor is -1 by then. Both are branches a bytes.Buffer never reaches, since it is not an
-// *os.File at all.
+// *os.File at all. The closed one also pins the exit code: the printer discards write errors, so a
+// report nobody could read is still exit 0. Deliberate for now, and this is where it is decided.
 //
 // The environment is cleared first, and nothing here is parallel because of it: palette asks about
 // NO_COLOR and TERM before it looks at the descriptor, so a runner with NO_COLOR exported would

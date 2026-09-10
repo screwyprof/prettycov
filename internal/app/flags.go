@@ -85,7 +85,9 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	cfg.Depth = defaultDepth
 
 	set.Func("depth",
-		fmt.Sprintf("`levels` below the top row, like tree -L, or \"max\" (default %d)", defaultDepth),
+		// Rendered by Depth, so the help cannot advertise a word ParseDepth does not read.
+		fmt.Sprintf("`levels` below the top row, like tree -L, or %q (default %s)",
+			prettycov.DepthAll, defaultDepth),
 		func(s string) error {
 			var err error
 
@@ -95,8 +97,8 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 			// which prefixes the flag name and the offending value.
 			return err
 		})
-	// Resolved here rather than handed back as a mode for the caller to combine with something:
-	// "auto" is not an answer until the destination is known, and it is known by now.
+	// Kept as a mode, not resolved: "auto" is not an answer until the destination is known, and
+	// it is not known here. showReport settles it against stdout, where it is.
 	set.Func("color", "when to colour: \"auto\" (default), \"never\" or \"always\"", func(s string) (err error) {
 		//nolint:wrapcheck // parseColorMode's error is already phrased for the flag package.
 		cfg.Color, err = parseColorMode(s)

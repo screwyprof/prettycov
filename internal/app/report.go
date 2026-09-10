@@ -32,6 +32,20 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 
 	tree := prettycov.Process(kept, cfg.CurrentRoot, cfg.NewRoot)
 
+	// Settled once here, so the tree and -total cannot answer it differently. Refused rather than
+	// drawn, because an empty report exits 0 and turns a coverage gate into a green no-op. With
+	// -fail-under it is a failed gate instead: exit 2 would read as "prettycov could not run"
+	// when the truth is that coverage was too low.
+	if _, ok := tree.Coverage.Percentage(); !ok {
+		if cfg.FailUnder != nil {
+			return checkThreshold(cfg.FailUnder, tree, stderr)
+		}
+
+		_, _ = fmt.Fprintln(stderr, emptyReason(excluded))
+
+		return exitFailed
+	}
+
 	if cfg.Total {
 		return showTotal(cfg, tree, stdout, stderr)
 	}
@@ -46,27 +60,26 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	return checkThreshold(cfg.FailUnder, tree, stderr)
 }
 
+// emptyReason blames -exclude when it is what took the statements out, and the profile otherwise.
+// Statements rather than surviving files: a leftover file declaring none would otherwise send the
+// reader to check `go test -coverprofile` for a report a pattern emptied.
+func emptyReason(excluded []prettycov.Exclusion) string {
+	for _, ex := range excluded {
+		if ex.Statements > 0 {
+			return "-exclude left nothing to report"
+		}
+	}
+
+	return "no statements to cover"
+}
+
 // showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
-// -fail-under still checks it, exactly as it checks the report.
+// There is always a number by here: showReport has already refused a profile with nothing to
+// cover, so `COVERAGE := $(shell prettycov -total)` never picks up an "n/a" or a bare 0.00.
 func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
-	pct, ok := tree.Coverage.Percentage()
+	pct, _ := tree.Coverage.Percentage()
 
-	// Nothing to cover: print nothing at all. The tree shows "n/a" here, but a caller reading
-	// `COVERAGE := $(shell prettycov -total)` would carry that into a comparison, and 0.00 reads as
-	// a real and terrible number.
-	//
-	// Unless -fail-under was given, in which case checkThreshold below already refuses it and says
-	// what the threshold was. Exiting 2 here instead would mean "prettycov could not run", so a CI
-	// step would report a broken build where the truth is that coverage was too low.
-	if !ok && cfg.FailUnder == nil {
-		_, _ = fmt.Fprintln(stderr, "no statements to cover")
-
-		return exitFailed
-	}
-
-	if ok {
-		_, _ = fmt.Fprintln(stdout, pct)
-	}
+	_, _ = fmt.Fprintln(stdout, pct)
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
 }

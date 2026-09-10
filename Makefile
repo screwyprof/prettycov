@@ -185,42 +185,23 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 	if ! git diff --quiet || ! git diff --cached --quiet; then \
 		echo "working tree is dirty; commit first"; exit 1; \
 	fi; \
-	if git rev-parse "$$v" >/dev/null 2>&1; then \
-		echo "$$v already exists — bump ./VERSION first"; exit 1; \
-	fi; \
 	echo -e "$(OK_COLOR)==> Tagging $$v$(NO_COLOR)"; \
-	git tag -a "$$v" -m "$$v" && git push origin "$$v"
+	git tag -a "$$v" -m "$$v"; \
+	git push origin "$$v"
 	@$(MAKE) --no-print-directory publish \
 		|| { echo "the tag is pushed; rerun just: make publish"; exit 1; }
 
-# Step 6 of https://go.dev/doc/modules/publishing, taken the second of the three ways listed at
-# https://pkg.go.dev/about#adding-a-package: a request to the proxy. proxy.golang.org caches a
-# version the first time anyone asks for it, index.golang.org lists what the proxy has learned, and
-# pkg.go.dev builds from that — so a release nobody asks for stays unpublished. Its own target
-# because the tag is already pushed by the time it runs: if this fails, `make publish` retries it,
-# where `make release` would stop at the tag that now exists.
+# Asks the proxy to fetch the version, so pkg.go.dev lists it now instead of when the first user
+# pulls it through. Step 6 of https://go.dev/doc/modules/publishing, verbatim.
 #
-# Not the publishing guide's `GOPROXY=... go list -m`, which answers from $GOMODCACHE without
-# asking any proxy once the version is local — so anyone who smoke-tested the release first gets a
-# green run and nothing published. A request to the proxy cannot be served from a cache, and -f
-# makes a 404 an error rather than a silent success. The marker-then-tr encoding is the proxy's own
-# rule for uppercase in a module path, done without sed's \l, which is a GNU extension BSD sed
-# emits literally.
+# Best-effort, and not worth hardening: it answers from the module cache without asking anyone if
+# the version is already there, which GOPRIVATE, GOPROXY=direct or a mirror can arrange. The green
+# run then publishes nothing and the release waits for someone else's first fetch, which is where
+# it would have been without this target at all.
 publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
-	path=$$(go list -m) || exit $$?; \
-	mod=$$(printf '%s' "$$path" | sed 's/[A-Z]/!&/g' | tr 'A-Z' 'a-z'); \
-	command -v curl >/dev/null 2>&1 || { echo "curl not found"; exit 1; }; \
-	for try in 1 2 3; do \
-		if curl -fsS "https://proxy.golang.org/$$mod/@v/$$v.info" >/dev/null; then \
-			echo "  proxy has it; index.golang.org and pkg.go.dev follow"; exit 0; \
-		fi; \
-		[ $$try = 3 ] && break; \
-		echo "  not there yet, waiting for the tag to reach the origin"; sleep 5; \
-	done; \
-	echo "  the proxy still cannot see $$v — it fetches from the origin, so leave it a minute and rerun: make publish"; \
-	exit 1
+	GOPROXY=https://proxy.golang.org go list -m "$$(go list -m)@$$v"
 
 # The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit
 # on PATH (pip install pre-commit / brew install pre-commit).

@@ -131,7 +131,7 @@ The printed figure is rounded to two decimals while `-fail-under` compares the e
 One deliberate exception, and it differs from `go tool cover`: **`100.00` is never rounded up to.** 73999 of 74000 statements reads as `99.99` here, where `go tool cover -func` rounds at one decimal and reports `100.0%` from 99.95% upwards. 100% is what a badge shows and what stops someone writing another test, so it is only printed when every statement is covered. Everything else rounds to nearest, as before.
 
 ### Stop counting code you never meant to test
-`-exclude` drops files whose path matches a regexp, before anything is totalled. Patterns are unanchored and match the full path, so a short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out — including nothing, which is how you spot a typo:
+`-exclude` drops files whose path matches a regexp, before anything is totalled. Patterns are unanchored and match the full path, so a short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out — including nothing, which is how you spot a typo. Patterns that between them take every file are an error rather than a green run: exit 2 with `-exclude left nothing to report`, or, under `-fail-under`, the failed gate any profile with nothing to cover gets.
 
 ```shell
 ❯ prettycov

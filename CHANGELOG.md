@@ -10,6 +10,27 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** a profile with no statements to cover exits 2 on every path, with
+  `no statements to cover`, where the tree used to print a lone `n/a` and exit 0 — which is what
+  a `go test -coverprofile` that matched no packages produces, and a coverage step would call
+  green. `-total` already refused it. When `-exclude` patterns are what took the statements out,
+  the message says so: `-exclude left nothing to report`. The empty pattern was already refused
+  for this reason; `.*`, or `.go` typed for `\.pb\.go$`, empty the report just as well and were
+  not. With `-fail-under` the gate still reports it and exits 1, and no longer draws the `n/a`
+  row above the message — an empty report reads the same now whichever flags asked for it.
+- `make publish` is the one `go list -m` the Go publishing guide prescribes, dropping the `curl`
+  requirement and the retry loop around it. `make release` no longer tries to undo a failed push:
+  a pushed tag cannot be unpublished, so deleting one is the worse outcome.
+
+### Go API
+
+- `Depth.String` writes `DepthAll` back as `"max"`, the way `ParseDepth` reads it, instead of the
+  sentinel `18446744073709551615`.
+
 ## [0.7.0] — 2026-09-08
 
 ### Added
@@ -60,7 +81,9 @@ carry those rules, and the environment-reading moved out to the CLI:
   `ParseDepth`'s clamp.
 - `Percentage` replaces `CoverageStats.Ratio` and the `Percentage(CoverageStats)` function.
   `CoverageStats.Percentage() (Percentage, bool)` builds one — `ok` is false when there is nothing
-  to cover — and it is the only way to, so a percentage that exists always has a number to show.
+  to cover — so a percentage from there always has a number to show. The zero value is still a
+  `Percentage`, and it renders `0.00`, so declare one and the report says the code is uncovered
+  rather than that something is wrong.
   `String` rounds and never reads 100.00 for code that is not fully covered; `Float` does not
   round, so `-fail-under` compares the exact ratio.
 
