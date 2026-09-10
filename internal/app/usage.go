@@ -22,6 +22,10 @@ Fail when total coverage is below a threshold, for CI:
 	prettycov -fail-under=80
 Stop counting code you never meant to test, one pattern per flag:
 	prettycov -exclude='/cmd/' -exclude='\.pb\.go$'
+Show the statement counts behind each percentage:
+	prettycov -counts
+Show the files too, not only the packages:
+	prettycov -files -depth=max
 Print just the number, for a Makefile or a badge:
 	prettycov -total
 `

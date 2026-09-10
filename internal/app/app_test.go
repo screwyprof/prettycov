@@ -399,6 +399,38 @@ func TestRunAcceptsBothVersionSpellings(t *testing.T) {
 	}
 }
 
+func TestRunCountsFlag(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	code := app.Run([]string{"-profile", writeProfile(t, profile), "-color", "never", "-counts"}, stdout, io.Discard)
+
+	assert.Equal(t, codeOK, code)
+	assert.Contains(t, stdout.String(), "60.00  4/10 uncovered\n")
+}
+
+// -files draws the profile's files as well as its packages, one level below the package holding
+// them. The fixture is m/a/a.go and m/b/b.go, so each package gains its file as a leaf.
+func TestRunFilesFlag(t *testing.T) {
+	t.Parallel()
+
+	path := writeProfile(t, profile)
+
+	stdout := &bytes.Buffer{}
+	code := app.Run([]string{"-profile", path, "-color", "never", "-files", "-depth", "max"}, stdout, io.Discard)
+
+	require.Equal(t, codeOK, code)
+	assert.Contains(t, stdout.String(), "a.go - 100.00")
+	assert.Contains(t, stdout.String(), "b.go - 0.00")
+
+	// Without it, the same tree stops at the packages.
+	stdout.Reset()
+	code = app.Run([]string{"-profile", path, "-color", "never", "-depth", "max"}, stdout, io.Discard)
+
+	require.Equal(t, codeOK, code)
+	assert.NotContains(t, stdout.String(), ".go")
+}
+
 func writeProfile(t *testing.T, content string) string {
 	t.Helper()
 
@@ -545,6 +577,11 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 		{
 			name: "it still gates", args: []string{"-fail-under", "90"},
 			wantCode: codeBelow, want: "60.00\n",
+		},
+		{
+			// A suffix here would break every `$(shell prettycov -total)` there is.
+			name: "it ignores -counts", args: []string{"-counts"},
+			wantCode: codeOK, want: "60.00\n",
 		},
 	}
 

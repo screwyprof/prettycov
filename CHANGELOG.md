@@ -10,6 +10,41 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Added
+
+- `-counts` writes the statement counts after each percentage, as uncovered over total:
+  `scraper - 90.00  18/180 uncovered`. A percentage hides size, and ranking by it alone points at
+  the smallest package with the loudest number — in delegator's profile `pkg/logger` at 96.88 and
+  `web/handler/bind` at 85.71 hold the same three untested statements. Off by default, so the tree
+  stays as it was; `-total` ignores it, since that output is read into variables.
+
+- `-files` draws the profile's files as well as its packages, one level below the package holding
+  them, so a package's own files sit beside its subpackages the way `ls`, `tree` and `du -a` list a
+  directory's entries.
+
+  This is what makes a report addable. The files are now the tree's leaves, so every node's total
+  is exactly the sum of what hangs below it. Before, a package holding both files and subpackages
+  kept its own statements on its own row with nothing below accounting for them: prettycov's own
+  root is 315 statements, 166 of them in the root package, and the tree showed two children summing
+  to 149. With `-files` those 166 appear as the file rows they came from; without it they are
+  simply not drawn — which is what `du` does, and `du -a` is its `-files`.
+
+  A file costs a `-depth` level exactly as a subpackage does, being one of a directory's entries.
+  Off by default: the report is about packages.
+
+### Go API
+
+- **Breaking:** `Rows` takes `Options` in place of a bare `Depth`, since which rows exist is now
+  two questions rather than one. It reads `Depth` and `Files` and ignores the rest. Callers pass
+  `prettycov.Options{Depth: d}` for what used to be `Rows(tree, d)`.
+
+- **Breaking:** `PathTree.Children` now holds the profile's files as well as its directories, so
+  anything walking the tree to enumerate packages sees `service.go` beside `config` and `store`.
+  This one does not announce itself — it still compiles and returns different data. `IsFile`
+  reports which a node is; `Rows` filters them out unless `Options.Files` is set.
+
 ## [0.7.1] — 2026-09-10
 
 ### Changed
@@ -254,6 +289,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[Unreleased]: https://github.com/screwyprof/prettycov/compare/v0.7.1...HEAD
 [0.7.1]: https://github.com/screwyprof/prettycov/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/screwyprof/prettycov/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/screwyprof/prettycov/compare/v0.5.0...v0.6.0

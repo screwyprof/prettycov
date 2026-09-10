@@ -53,8 +53,10 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	// The destination is asked about here and nowhere earlier: parsing argv is too early to know
 	// where the report goes, and no other flag needs to.
 	prettycov.DisplayTree(stdout, tree, prettycov.Options{
-		Depth: cfg.Depth,
-		Color: cfg.Color.palette(stdout),
+		Depth:  cfg.Depth,
+		Color:  cfg.Color.palette(stdout),
+		Counts: cfg.Counts,
+		Files:  cfg.Files,
 	})
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)

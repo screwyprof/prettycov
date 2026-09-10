@@ -3,7 +3,6 @@ package prettycov
 import (
 	"fmt"
 	"io"
-	"maps"
 	"slices"
 	"strings"
 	"unicode"
@@ -17,6 +16,16 @@ type Options struct {
 	// Color is how percentages are written. Resolving -color=auto against a destination is the
 	// caller's, since that is a question about the world rather than about coverage.
 	Color Palette
+
+	// Counts writes uncovered/total statements after each percentage, which hides size on its own.
+	Counts bool
+
+	// Files draws the profile's files as well as its packages. They sit one level below the
+	// package that holds them, the way tree -L counts a directory's entries, so a package's own
+	// files and its subpackages appear side by side and every parent is the sum of what is drawn
+	// beneath it. Off by default: the report is about packages, and a file row per source file
+	// buries that.
+	Files bool
 }
 
 // Row is one line of the report: the indent and glyph that place it in the tree, the label of the
@@ -28,10 +37,11 @@ type Row struct {
 	Coverage CoverageStats
 }
 
-// Rows flattens tree into the lines a report prints, in order, to the given depth. Pure: no
-// writer, no colour, no terminal. DisplayTree is the one that decides how a Row looks.
-func Rows(tree *PathTree, depth Depth) []Row {
-	b := rowBuilder{depth: depth}
+// Rows flattens tree into the lines a report prints, in order. It reads the options that decide
+// which rows there are — Depth and Files — and ignores the rest. Pure: no writer, no colour, no
+// terminal. DisplayTree is the one that decides how a Row looks.
+func Rows(tree *PathTree, opts Options) []Row {
+	b := rowBuilder{depth: opts.Depth, files: opts.Files}
 	b.walk(tree, 0, " ")
 
 	return b.rows
@@ -40,8 +50,8 @@ func Rows(tree *PathTree, depth Depth) []Row {
 // DisplayTree writes tree as an indented report. A collapsed run of directories is the one row it
 // renders as.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
-	for _, row := range Rows(tree, opts.Depth) {
-		_, _ = fmt.Fprintf(w, "%s%s - %s\n", row.Prefix, row.Label, formatRatio(row.Coverage, opts.Color))
+	for _, row := range Rows(tree, opts) {
+		_, _ = fmt.Fprintf(w, "%s%s - %s\n", row.Prefix, row.Label, formatCoverage(row.Coverage, opts))
 	}
 }
 
@@ -49,7 +59,33 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
 // what actually varies: the node, how deep it is, and the indent it sits behind.
 type rowBuilder struct {
 	depth Depth
+	files bool
 	rows  []Row
+}
+
+// visible is the children to draw, sorted — map order is randomised and this output gets diffed
+// between runs. Files are dropped rather than skipped later, so they cost no level and no glyph
+// when they are not being shown: without this the last package under a directory would draw the
+// branch glyph of a middle one whenever a file sorted after it.
+//
+// Only a file with nothing beneath it is dropped. One name can be both — a profile naming
+// "m/a.go" and "m/a.go/b.go" describes a file and a directory called the same thing, which no
+// filesystem allows but merging two profiles, or an -old/-new rewrite, can produce. Dropping it
+// took its whole subtree with it while every ancestor went on counting the statements.
+func (b *rowBuilder) visible(tree *PathTree) []string {
+	names := make([]string, 0, len(tree.Children))
+
+	for name, child := range tree.Children {
+		if child.IsFile() && !b.files {
+			continue
+		}
+
+		names = append(names, name)
+	}
+
+	slices.Sort(names)
+
+	return names
 }
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
@@ -59,8 +95,7 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 		return
 	}
 
-	// Sorted, because this output gets diffed between runs and map order is randomised.
-	names := slices.Sorted(maps.Keys(tree.Children))
+	names := b.visible(tree)
 
 	for i, name := range names {
 		label, node := collapse(name, tree.Children[name])
@@ -81,8 +116,12 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 // so a module path does not spend three levels on "github.com", "owner", "repo" before reaching
 // anything worth reading. A directory the profile named itself is never folded away, however few
 // statements it holds — a package whose files declare none still deserves its own row.
+//
+// Nor is a file, which carries statements of its own that the row it folded into would not report:
+// "m/a.go" beside "m/a.go/sub/b.go" makes a.go a file with one child and no package of its own, and
+// folding it left m claiming twelve statements above a single row showing seven.
 func collapse(label string, node *PathTree) (string, *PathTree) {
-	for !node.isPkg && len(node.Children) == 1 {
+	for !node.isPkg && !node.isFile && len(node.Children) == 1 {
 		for name, child := range node.Children {
 			label, node = label+"/"+name, child
 		}
@@ -105,22 +144,33 @@ func sanitize(label string) string {
 	}, label)
 }
 
-// formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to
-// print "NaN", which is what 0/0 produces in float division.
-func formatRatio(stats CoverageStats, palette Palette) string {
+// formatCoverage renders a package with no statements as "n/a" rather than a percentage — it used
+// to print "NaN", which is what 0/0 produces in float division — and with no grade and no counts,
+// since there is nothing to grade or count. Percentage also refuses overflowed counts, so a wrapped
+// negative total never reaches the row either.
+//
+// Counts go as uncovered over total: the uncovered count is the one a reader acts on. The word
+// stays because codecov prints the same fraction the other way round — 162/180 there is hits —
+// and a row gets pasted into places where no flag name travels with it.
+func formatCoverage(stats CoverageStats, opts Options) string {
 	pct, ok := stats.Percentage()
 	if !ok {
-		// Nothing to cover is not a grade, so it is not coloured either.
 		return "n/a"
 	}
 
+	text := pct.String()
+
 	// Colour only for the one value that asks for it: Palette is an exported int, so a caller can
 	// hand over any number, and escapes into a file are worse than a missing colour.
-	if palette == ANSI {
-		return grade(pct.Float()) + pct.String() + reset
+	if opts.Color == ANSI {
+		text = grade(pct.Float()) + text + reset
 	}
 
-	return pct.String()
+	if opts.Counts {
+		text += fmt.Sprintf("  %d/%d uncovered", stats.Uncovered, stats.Covered+stats.Uncovered)
+	}
+
+	return text
 }
 
 type boxType int

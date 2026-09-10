@@ -72,7 +72,7 @@ func TestDisplayTreeKeepsPrintableUnicode(t *testing.T) {
 func TestRowsHandlesANilTree(t *testing.T) {
 	t.Parallel()
 
-	assert.Empty(t, prettycov.Rows(nil, 3))
+	assert.Empty(t, prettycov.Rows(nil, prettycov.Options{Depth: 3}))
 	assert.Empty(t, render(t, nil, 3))
 }
 
@@ -149,6 +149,127 @@ func TestDisplayTreeKeepsDirsThatAreAlsoPackages(t *testing.T) {
 	}
 }
 
+// The files are the leaves, so a package's own files sit beside its subpackages and every parent
+// is the sum of what is drawn below it. That is the property the report can be checked by, and it
+// is why the files are real rows rather than one row standing in for them.
+func TestDisplayTreeFilesAreLeavesThatSumToTheirPackage(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/x/own.go", 4, 0),
+		file("m/x/more.go", 2, 0),
+		file("m/x/sub/s.go", 0, 4),
+	}, "", "")
+
+	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true, Files: true})
+
+	// 2 + 4 + 4 = 10, and the three rows below m/x are every statement it holds.
+	assert.Contains(t, out, "m/x - 60.00  4/10 uncovered\n")
+	assert.Contains(t, out, "more.go - 100.00  0/2 uncovered\n")
+	assert.Contains(t, out, "own.go - 100.00  0/4 uncovered\n")
+	assert.Contains(t, out, "s.go - 0.00  4/4 uncovered\n")
+}
+
+// Files sort among the packages beside them rather than before or after them, as ls, tree and
+// du -a list a directory's entries. The extension is what tells them apart.
+func TestDisplayTreeFilesSortAmongPackages(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/x/service.go", 1, 1),
+		file("m/x/subscriber.go", 1, 1),
+		file("m/x/config/c.go", 1, 1),
+		file("m/x/store/s.go", 1, 1),
+	}, "", "")
+
+	assert.Equal(t, []string{"m/x", "config", "service.go", "store", "subscriber.go"},
+		namesWith(t, tree, prettycov.Options{Depth: 1, Files: true}))
+}
+
+// Without -files the tree is exactly what it was: packages only, and a package holding nothing but
+// files is a leaf. The file nodes are still there, so this is the check that they cost no row and
+// no level when they are not asked for.
+func TestDisplayTreeHidesFilesUnlessAsked(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/x/own.go", 4, 0),
+		file("m/x/sub/s.go", 0, 4),
+	}, "", "")
+
+	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll})
+
+	assert.NotContains(t, out, ".go")
+	assert.Equal(t, []string{"m/x", "sub"}, namesWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll}))
+}
+
+// One name can be both a file and a directory: "m/a.go" beside "m/a.go/b.go" names a file and a
+// package called the same thing. No filesystem allows it, so no single `go test` run produces it,
+// but merging two profiles or rewriting a root with -old/-new can. Such a node is drawn as the
+// directory it also is — hiding it as a file took its whole subtree with it while every ancestor
+// went on counting the statements.
+func TestDisplayTreeKeepsANameThatIsBothAFileAndADirectory(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/a.go", 5, 0),
+		file("m/a.go/b.go", 0, 7),
+	}, "", "")
+
+	assert.Equal(t, []string{"m", "a.go"}, nodeNames(t, tree, prettycov.DepthAll),
+		"the subtree survives with the files hidden")
+
+	// One row for the two things sharing the name, carrying both: 5 covered in the file and 7
+	// uncovered in the package. The file's own statements therefore get no row of their own even
+	// with -files, which is the one place a parent is more than what is drawn beneath it — a name
+	// cannot be two rows, and no profile a single `go test` run produces asks it to be.
+	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true, Files: true})
+
+	assert.Contains(t, out, "a.go - 41.67  7/12 uncovered\n")
+	assert.Contains(t, out, "b.go - 0.00  7/7 uncovered\n")
+
+	// Get is how a library caller reaches it, and skipping IsFile nodes to enumerate packages must
+	// not drop the packages underneath.
+	assert.False(t, tree.Get("m/a.go").IsFile(), "it is also a directory")
+}
+
+// The same collision one level deeper, where the shared name holds a package rather than a file.
+// Only the immediate parent of a file is marked as a package, so a.go here is a file with a child
+// and no package of its own — which collapse used to fold away, leaving m claiming twelve
+// statements above a single row reporting seven.
+func TestDisplayTreeDoesNotCollapseAwayAFileWithASubtree(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/a.go", 5, 0),
+		file("m/a.go/sub/b.go", 0, 7),
+	}, "", "")
+
+	assert.Equal(t, []string{"m", "a.go", "sub"}, nodeNames(t, tree, prettycov.DepthAll))
+
+	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true})
+
+	assert.Contains(t, out, "m - 41.67  7/12 uncovered\n")
+	assert.Contains(t, out, "a.go - 41.67  7/12 uncovered\n")
+	assert.Contains(t, out, "sub - 0.00  7/7 uncovered\n")
+}
+
+// A file is one level below the package holding it, exactly as a subdirectory is — -depth counts
+// levels the way tree -L does, and a file is one of a directory's entries like any other.
+func TestDisplayTreeFilesCountAsALevel(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/x/own.go", 1, 1),
+		file("m/x/sub/s.go", 1, 1),
+	}, "", "")
+
+	assert.Equal(t, []string{"m/x"}, namesWith(t, tree, prettycov.Options{Depth: 0, Files: true}))
+	assert.Equal(t, []string{"m/x", "own.go", "sub"}, namesWith(t, tree, prettycov.Options{Depth: 1, Files: true}))
+	assert.Equal(t, []string{"m/x", "own.go", "sub", "s.go"},
+		namesWith(t, tree, prettycov.Options{Depth: 2, Files: true}))
+}
+
 // -depth counts levels below the root row, exactly as `tree -L` does: `tree -L 1` prints the root
 // and one level under it. A collapsed run counts as the single row it renders as.
 func TestDisplayTreeDepthCountsLevels(t *testing.T) {
@@ -201,6 +322,28 @@ func TestDisplayTreeGradesByThreshold(t *testing.T) {
 	assert.NotContains(t, out, "\x1b[4", "no background colours")
 }
 
+// Uncovered over total: the percentage hides size, and uncovered is the number acted on.
+func TestDisplayTreeCountsShowUncoveredOverTotal(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/big/a.go", 115, 5),
+		file("m/small/b.go", 18, 3),
+		file("m/none/doc.go", 0, 0),
+	}, "", "")
+
+	out := renderOpts(t, tree, prettycov.Options{Depth: 1, Counts: true})
+
+	assert.Contains(t, out, "big - 95.83  5/120 uncovered\n")
+	assert.Contains(t, out, "small - 85.71  3/21 uncovered\n")
+	assert.Contains(t, out, "none - n/a\n", "nothing to cover is nothing to count")
+	assert.NotContains(t, render(t, tree, 1), "uncovered", "off unless asked for")
+
+	// The counts are not part of the grade, so they land after the reset.
+	colored := renderOpts(t, tree, prettycov.Options{Depth: 1, Color: prettycov.ANSI, Counts: true})
+	assert.Contains(t, colored, "\x1b[0m  5/120 uncovered\n")
+}
+
 // m/
 //
 //	├ alpha/deep/   (alpha holds only deep, so the two collapse into one row)
@@ -219,21 +362,21 @@ func printerFiles() []prettycov.FileCoverage {
 func render(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth) string {
 	t.Helper()
 
-	return renderWith(t, tree, depth, prettycov.Plain)
+	return renderOpts(t, tree, prettycov.Options{Depth: depth})
 }
 
 func renderColor(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth) string {
 	t.Helper()
 
-	return renderWith(t, tree, depth, prettycov.ANSI)
+	return renderOpts(t, tree, prettycov.Options{Depth: depth, Color: prettycov.ANSI})
 }
 
-func renderWith(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth, palette prettycov.Palette) string {
+func renderOpts(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) string {
 	t.Helper()
 
 	var buf bytes.Buffer
 
-	prettycov.DisplayTree(&buf, tree, prettycov.Options{Depth: depth, Color: palette})
+	prettycov.DisplayTree(&buf, tree, opts)
 
 	return buf.String()
 }
@@ -243,7 +386,13 @@ func renderWith(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth, p
 func nodeNames(t *testing.T, tree *prettycov.PathTree, depth prettycov.Depth) []string {
 	t.Helper()
 
-	rows := prettycov.Rows(tree, depth)
+	return namesWith(t, tree, prettycov.Options{Depth: depth})
+}
+
+func namesWith(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) []string {
+	t.Helper()
+
+	rows := prettycov.Rows(tree, opts)
 
 	names := make([]string, 0, len(rows))
 	for _, row := range rows {

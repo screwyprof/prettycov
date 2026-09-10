@@ -2,7 +2,6 @@ package prettycov
 
 import (
 	"fmt"
-	"path"
 	"strings"
 )
 
@@ -69,10 +68,14 @@ type FileCoverage struct {
 
 // Process turns per-file coverage into a tree in which every node reports its own statements plus
 // those of everything beneath it. The files argument is not modified.
+//
+// The profile's files are the leaves, so a directory's total is exactly the sum of what hangs
+// below it and a report can be checked by adding it up. Whether the file rows are drawn is
+// Options.Files; whether they exist is not a rendering question.
 func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
 	tree := &PathTree{}
-	for pkg, stats := range mergePackages(shortenPaths(files, curRoot, newRoot)) {
-		tree.put(pkg, stats)
+	for _, f := range shortenPaths(files, curRoot, newRoot) {
+		tree.add(f.File, f.Coverage)
 	}
 
 	return rollUp(tree)
@@ -106,6 +109,7 @@ func rollUp(node *PathTree) *PathTree {
 		},
 		Children: children,
 		isPkg:    node.isPkg,
+		isFile:   node.isFile,
 	}
 }
 
@@ -132,22 +136,4 @@ func shortenPaths(items []FileCoverage, oldRoot, newRoot string) []FileCoverage 
 	}
 
 	return shortened
-}
-
-// mergePackages totals each file's statements against the directory that holds it. Totalling by
-// filename first would change nothing: addition is associative, so grouping by name and then by
-// directory gives the same per-directory totals as grouping by directory alone.
-func mergePackages(files []FileCoverage) map[string]CoverageStats {
-	packages := make(map[string]CoverageStats, len(files))
-
-	for _, f := range files {
-		pkg := path.Dir(f.File)
-
-		stats := packages[pkg]
-		stats.Covered += f.Coverage.Covered
-		stats.Uncovered += f.Coverage.Uncovered
-		packages[pkg] = stats
-	}
-
-	return packages
 }
