@@ -10,6 +10,15 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Changed
+
+- With `-files`, a package whose whole content is one file is drawn as one row named for both —
+  `tzkt/client.go`, not `tzkt` above an identical `client.go`. The two rows carried the same number
+  twice. Only where that file is being drawn: at a `-depth` that stops above it the package keeps
+  its own name. On delegator this is 37 rows down to 28. Without `-files`, unchanged.
+
 ## [0.8.0] — 2026-09-10
 
 ### Added
@@ -296,6 +305,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[Unreleased]: https://github.com/screwyprof/prettycov/compare/v0.8.0...HEAD
 [0.8.0]: https://github.com/screwyprof/prettycov/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/screwyprof/prettycov/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/screwyprof/prettycov/compare/v0.6.0...v0.7.0

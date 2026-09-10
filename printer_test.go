@@ -289,15 +289,68 @@ func TestDisplayTreeDoesNotCollapseAwayAFileWithASubtree(t *testing.T) {
 func TestDisplayTreeFilesCountAsALevel(t *testing.T) {
 	t.Parallel()
 
+	// Two files under sub, so it is never merged into one of them and the levels stay the subject.
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/x/own.go", 1, 1),
 		file("m/x/sub/s.go", 1, 1),
+		file("m/x/sub/t.go", 1, 1),
 	}, "", "")
 
 	assert.Equal(t, []string{"m/x"}, namesWith(t, tree, prettycov.Options{Depth: 0, Files: true}))
 	assert.Equal(t, []string{"m/x", "own.go", "sub"}, namesWith(t, tree, prettycov.Options{Depth: 1, Files: true}))
-	assert.Equal(t, []string{"m/x", "own.go", "sub", "s.go"},
+	assert.Equal(t, []string{"m/x", "own.go", "sub", "s.go", "t.go"},
 		namesWith(t, tree, prettycov.Options{Depth: 2, Files: true}))
+}
+
+// A package whose whole content is one file says the same number twice, so the two rows become one
+// and the label names both. Only where the file has a row to merge with: at a depth that stops
+// above it there is nothing to deduplicate, and merging would show a filename the depth was asked
+// to leave out — putting one branch at file granularity while its siblings stayed at package
+// granularity.
+func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/one/only.go", 3, 1),
+		file("m/two/a.go", 1, 1),
+		file("m/two/b.go", 1, 1),
+	}, "", "")
+
+	files := func(d prettycov.Depth) []string {
+		return namesWith(t, tree, prettycov.Options{Depth: d, Files: true})
+	}
+
+	assert.Equal(t, []string{"m", "one", "two"}, files(1),
+		"at depth 1 neither package's files are drawn, so neither merges")
+	assert.Equal(t, []string{"m", "one/only.go", "two", "a.go", "b.go"}, files(2),
+		"at depth 2 only.go would be drawn twice over, and two has two files to keep apart")
+
+	// The numbers are what makes it a duplicate, and the merged row keeps them.
+	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true, Files: true})
+	assert.Contains(t, out, "one/only.go - 75.00  1/4 uncovered\n")
+	assert.NotContains(t, out, " one - ", "the package row it replaced is gone")
+
+	// Without -files there is no file row to merge with, so the package keeps its own name.
+	assert.Equal(t, []string{"m", "one", "two"}, nodeNames(t, tree, prettycov.DepthAll))
+}
+
+// A package holding one file is a package holding one file whatever else that file turns out to
+// be. Where the name is also a directory — "m/x/own.go" beside "m/x/own.go/sub/b.go" — x and
+// own.go still report the same twelve statements, so they still merge; only the file's own row
+// stops the run, since it carries statements the row above would not report.
+func TestDisplayTreeMergesAPackageWhoseOneFileIsAlsoADirectory(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/x/own.go", 5, 0),
+		file("m/x/own.go/sub/b.go", 0, 7),
+	}, "", "")
+
+	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true, Files: true})
+
+	assert.Contains(t, out, "m/x/own.go - 41.67  7/12 uncovered\n")
+	assert.Contains(t, out, "sub/b.go - 0.00  7/7 uncovered\n")
+	assert.NotContains(t, out, " m/x - ", "x reported the same twelve statements and is gone")
 }
 
 // -depth counts levels below the root row, exactly as `tree -L` does: `tree -L 1` prints the root

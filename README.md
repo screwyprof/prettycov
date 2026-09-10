@@ -104,6 +104,11 @@ drawn, so a package holding both files and subpackages shows a total larger than
 children; `du` behaves the same way, and `du -a` is its `-files`. A file costs a `-depth` level
 exactly as a subpackage does, being one of a directory's entries.
 
+**A package whose whole content is one file is one row**, named for both: `pkg/tzkt/client.go`
+rather than `tzkt` above an identical `client.go`. Only where that file is being drawn anyway —
+at a `-depth` that stops above it there is no second row to merge with, and the package keeps its
+own name.
+
 One profile can break that, and only one: if a file and a directory share a name — `m/a.go` beside
 `m/a.go/b.go` — the single row standing for both carries its own statements as well as its subtree,
 so it reads higher than the rows under it. No filesystem allows the two to share a name, so no

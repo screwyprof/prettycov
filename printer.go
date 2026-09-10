@@ -102,7 +102,11 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 	names := b.visible(tree)
 
 	for i, name := range names {
-		label, node := collapse(name, tree.Children[name])
+		// A package's own file is merged into it only where that file has a row of its own to
+		// merge with: below the depth being drawn there is no second row, so merging would show a
+		// filename the depth was asked to leave out, and put one branch at file granularity while
+		// its siblings stayed at package granularity.
+		label, node := collapse(name, tree.Children[name], b.opts.Files && level < b.opts.Depth)
 		root := level == 0
 
 		// The filesystem root is the one node with no name of its own: an absolute path splits to
@@ -125,16 +129,22 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 	}
 }
 
-// collapse folds a run of directories that each hold nothing but the next one into a single row,
-// so a module path does not spend three levels on "github.com", "owner", "repo" before reaching
-// anything worth reading. A directory the profile named itself is never folded away, however few
-// statements it holds — a package whose files declare none still deserves its own row.
+// collapse merges a run of nodes that each hold nothing but the next one into a single row, so a
+// module path does not spend three levels on "github.com", "owner", "repo" before reaching
+// anything worth reading.
 //
-// Nor is a file, which carries statements of its own that the row it folded into would not report:
-// "m/a.go" beside "m/a.go/sub/b.go" makes a.go a file with one child and no package of its own, and
-// folding it left m claiming twelve statements above a single row showing seven.
-func collapse(label string, node *PathTree) (string, *PathTree) {
-	for !node.isPkg && !node.isFile && len(node.Children) == 1 {
+// A directory the profile named itself stops the run, however few statements it holds — a package
+// whose files declare none still deserves its own row — unless mergeFiles. A package with exactly
+// one child holds exactly one file, since holding a file is what made it a package, so the two
+// rows carry the same number twice and the second says nothing the first does not:
+// "tzkt/client.go" names the package and the file in the row the package had anyway. A package
+// with two files, or a file beside a subpackage, has two children and is left alone.
+//
+// A file stops the run, carrying statements the row it merged into would not report: "m/a.go"
+// beside "m/a.go/sub/b.go" makes a.go a file with one child and no package of its own, and merging
+// it left m claiming twelve statements above a single row showing seven.
+func collapse(label string, node *PathTree, mergeFiles bool) (string, *PathTree) {
+	for !node.isFile && len(node.Children) == 1 && (!node.isPkg || mergeFiles) {
 		for name, child := range node.Children {
 			label, node = label+"/"+name, child
 		}
