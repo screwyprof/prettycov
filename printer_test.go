@@ -47,6 +47,12 @@ func TestDisplayTreeNeutralisesEscapesFromTheProfile(t *testing.T) {
 		// characters themselves, which is what gosec's G116 asks of Go source for this very reason.
 		{name: "right-to-left override", pkg: "m/\u202egps.go"},
 		{name: "right-to-left isolate", pkg: "m/\u2067gps.go"},
+		// Not a terminal spoof, but the report is read a line at a time and these end one for a
+		// log viewer or a JSON consumer, exactly as the carriage return above does for a terminal.
+		{name: "line separator", pkg: "m/z\u2028y.go"},
+		{name: "paragraph separator", pkg: "m/p\u2029q.go"},
+		// Draws as nothing, so two labels differing only by one look identical.
+		{name: "zero-width no-break space", pkg: "m/w\ufeffv.go"},
 	}
 
 	for _, tc := range tests {
@@ -62,6 +68,9 @@ func TestDisplayTreeNeutralisesEscapesFromTheProfile(t *testing.T) {
 			assert.NotContains(t, out, "\a")
 			assert.NotContains(t, out, "\u202e", "bidi override reached the terminal")
 			assert.NotContains(t, out, "\u2067")
+			assert.NotContains(t, out, "\u2028", "line separator reached the report")
+			assert.NotContains(t, out, "\u2029")
+			assert.NotContains(t, out, "\ufeff")
 		})
 	}
 }

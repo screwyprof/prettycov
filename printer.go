@@ -148,21 +148,34 @@ func collapse(label string, node *PathTree) (string, *PathTree) {
 // quote them too. It also stops a spoof: a package named "\x1b[1A\x1b[2Kforged" erases the row
 // above and writes over it, and above the first child is the total.
 //
-// Bidi controls go for the same reason and are not control characters: U+202E and its relatives
-// are category Cf, which unicode.IsControl does not cover, and a path holding one reverses the
-// reading order of everything after it, so a file can be drawn under a name it does not have.
-// That is the Trojan Source trick, and gosec's G116 is the same rule pointed at Go source.
-//
-// Only these two classes go, so a path may still be non-ASCII: Cf also holds the joiners U+200C
-// and U+200D, which spell ordinary words in Persian and Devanagari, and those are left alone.
+// What counts as obeyed is wider than the control characters, and obeyed reports it.
 func sanitize(label string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
+		if obeyed(r) {
 			return '�'
 		}
 
 		return r
 	}, label)
+}
+
+// obeyed reports whether whatever renders the report would act on the rune rather than draw it.
+// Not the same question as unicode.IsControl, which answers only for category Cc:
+//
+//   - the bidi overrides and isolates are Cf, and one in a path reverses the reading order of
+//     everything after it, so a file is drawn under a name it does not have — the Trojan Source
+//     trick, which gosec's G116 catches in Go source for the same reason;
+//   - U+2028 and U+2029 end a line for a log viewer or a JSON consumer as surely as the carriage
+//     return already handled here, and this report is read a line at a time;
+//   - U+FEFF draws as nothing at all, so two labels differing only by one look identical.
+//
+// Everything else stays, so a path may be non-ASCII: Cf also holds the joiners U+200C and U+200D,
+// which spell ordinary words in Persian and Devanagari.
+func obeyed(r rune) bool {
+	return unicode.IsControl(r) ||
+		unicode.Is(unicode.Bidi_Control, r) ||
+		unicode.In(r, unicode.Zl, unicode.Zp) ||
+		r == '\ufeff'
 }
 
 // formatCoverage renders a package with no statements as "n/a" rather than a percentage — it used
