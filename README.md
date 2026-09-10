@@ -171,6 +171,8 @@ By default the report is about packages. `-files` draws the profile's files as w
 
 Files are leaves, so **every row is the sum of what is drawn beneath it** — `scraper`'s 180 statements are `config`'s 1, `service.go`'s 87, `store`'s 59 and `subscriber.go`'s 33. That is what makes a report with `-counts` addable.
 
+One profile can break that, and only one: if a file and a directory share a name — `m/a.go` beside `m/a.go/b.go` — the single row standing for both carries its own statements as well as its subtree, so it reads higher than the rows under it. No filesystem allows the two to share a name, so no `go test` run produces it; merging two profiles, or an `-old`/`-new` rewrite that collides two paths, can.
+
 Without `-files` those file rows are simply not drawn, and a package that holds both files and subpackages shows a total larger than its visible children — `du` behaves the same way, and `du -a` is its `-files`. Since a file is one of a directory's entries, it costs a `-depth` level exactly as a subpackage does.
 
 ### Stop counting code you never meant to test

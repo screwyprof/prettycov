@@ -34,6 +34,11 @@ tags.
   A file costs a `-depth` level exactly as a subpackage does, being one of a directory's entries.
   Off by default: the report is about packages.
 
+  One profile shape is exempt, and only one: where a file and a directory share a name — `m/a.go`
+  beside `m/a.go/b.go` — a single row stands for both and carries its own statements as well as its
+  subtree, so it reads higher than the rows below it. No filesystem lets the two share a name, so
+  no `go test` run produces it; merging two profiles can.
+
 ### Go API
 
 - **Breaking:** `Rows` takes `Options` in place of a bare `Depth`, since which rows exist is now

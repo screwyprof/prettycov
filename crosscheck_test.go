@@ -173,16 +173,28 @@ func nodeTotals(files []prettycov.FileCoverage) map[string]prettycov.CoverageSta
 	for _, f := range files {
 		add(f.File, f.Coverage)
 
-		for dir := path.Dir(f.File); ; dir = path.Dir(dir) {
+		for _, dir := range dirsOf(f.File) {
 			add(dir, f.Coverage)
-
-			if !strings.Contains(dir, "/") {
-				break
-			}
 		}
 	}
 
 	return totals
+}
+
+// dirsOf is the directories a file is counted in, nearest first, ending at "." for a file with no
+// directory of its own. The stop is on "/" as well as on a name with no separator in it, because
+// path.Dir("/") is "/": a walk that only looks for a separator never ends on an absolute path, and
+// a profile holding one would hang the suite rather than fail it.
+func dirsOf(file string) []string {
+	var dirs []string
+
+	for dir := path.Dir(file); ; dir = path.Dir(dir) {
+		dirs = append(dirs, dir)
+
+		if dir == "/" || !strings.Contains(dir, "/") {
+			return dirs
+		}
+	}
 }
 
 // keptBack is what each row has to account for by itself: the files no row below it shows. Walking
@@ -204,14 +216,10 @@ func keptBack(files []prettycov.FileCoverage, drawn map[string]bool) map[string]
 
 		// A collapsed run leaves the levels between undrawn, so this keeps walking rather than
 		// giving up at the first miss.
-		for dir := path.Dir(f.File); ; dir = path.Dir(dir) {
+		for _, dir := range dirsOf(f.File) {
 			if drawn[dir] {
 				kept[dir] += n
 
-				break
-			}
-
-			if !strings.Contains(dir, "/") {
 				break
 			}
 		}
@@ -247,6 +255,12 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 		"a bare file beside a package": {
 			file("printer.go", 3, 1),
 			file("internal/app/a.go", 2, 1),
+		},
+		// A CI checkout can put absolute paths in a profile, and walking up one ends at "/" rather
+		// than at a bare name. The walk has to stop there itself: path.Dir("/") is "/".
+		"absolute paths": {
+			file("/home/ci/repo/pkg/a.go", 3, 1),
+			file("/home/ci/repo/main.go", 2, 0),
 		},
 	}
 
