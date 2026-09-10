@@ -15,9 +15,9 @@ tags.
 ### Added
 
 - `-counts` writes the statement counts after each percentage, as uncovered over total:
-  `scraper - 90.00  18/180 uncovered`. A percentage hides size, and ranking by it alone points at
-  the smallest package with the loudest number — in delegator's profile `pkg/logger` at 96.88 and
-  `web/handler/bind` at 85.71 hold the same three untested statements. Off by default, so the tree
+  `scraper - 88.00  18/150 uncovered`. A percentage hides size, and ranking by it alone points at
+  the smallest package with the loudest number — in delegator's profile `pkg/logger` at 92.50 and
+  `web/handler/bind` at 83.33 hold the same three untested statements. Off by default, so the tree
   stays as it was; `-total` ignores it, since that output is read into variables.
 
 - `-files` draws the profile's files as well as its packages, one level below the package holding

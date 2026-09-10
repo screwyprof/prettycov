@@ -28,7 +28,10 @@ var update = flag.Bool("update", false, "rewrite the golden files")
 func TestDisplayTreeMatchesGolden(t *testing.T) {
 	t.Parallel()
 
-	files, err := prettycov.ParseProfile(filepath.Join("testdata", "delegator.coverage.out"))
+	// The profile the README documents, so the numbers in one cannot drift from the other. It is
+	// also the one measured without golang/go#80974, and the one whose blocks arrive six times
+	// over from -coverpkg, so the golden pins deduplication as well as the drawing.
+	files, err := prettycov.ParseProfile(filepath.Join("testdata", "delegator-go126.out"))
 	require.NoError(t, err)
 
 	tree := prettycov.Process(files, "github.com/screwyprof/delegator", "delegator")

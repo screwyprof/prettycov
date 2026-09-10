@@ -1,18 +1,18 @@
- delegator - [32m94.01[0m
- ├ pkg - [32m96.41[0m
+ delegator - [32m91.54[0m
+ ├ pkg - [32m93.33[0m
  │ ├ clock - [32m100.00[0m
- │ ├ httpkit - [32m97.50[0m
- │ ├ logger - [32m96.88[0m
- │ ├ pgxdb - [32m90.00[0m
+ │ ├ httpkit - [32m96.30[0m
+ │ ├ logger - [32m92.50[0m
+ │ ├ pgxdb - [33m75.00[0m
  │ └ tzkt - [32m100.00[0m
- ├ scraper - [32m90.00[0m
+ ├ scraper - [32m88.00[0m
  │ ├ config - [32m100.00[0m
- │ └ store - [33m77.97[0m
+ │ └ store - [33m74.51[0m
  │   ├ dbrow - [32m100.00[0m
- │   └ pgxstore - [33m75.47[0m
- └ web - [32m95.15[0m
+ │   └ pgxstore - [33m72.34[0m
+ └ web - [32m93.94[0m
    ├ api - [32m100.00[0m
-   ├ handler - [32m89.66[0m
-   │ └ bind - [32m85.71[0m
-   ├ store/pgxstore - [32m96.49[0m
+   ├ handler - [32m87.23[0m
+   │ └ bind - [32m83.33[0m
+   ├ store/pgxstore - [32m95.12[0m
    └ tezos - [32m100.00[0m

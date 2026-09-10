@@ -19,184 +19,156 @@ go install github.com/screwyprof/prettycov/cmd/prettycov@latest
 ```
 
 ## How to use
-### Getting built-in help
-Run `prettycov help`, `prettycov -help` or `prettycov -h` for the built-in usage info. Bare `prettycov` reads `./coverage.out` and prints the report.
 
-### Run your tests with coverage
-`prettycov` works by parsing coverage profile, so the first thing to do is to run tests with coverage:
-
-`go test -cover -coverprofile=coverage.out` ./...
-
-### Show coverage summary up to the given depth
-The profile defaults to `./coverage.out`. Name another one positionally (`prettycov path/to/cov.out`) or with `-profile`.
-
-You may also specify `-depth` to set how many levels to show below the top row, the way `tree -L` counts them. `-depth=max` goes all the way down, which beats guessing a number: too small truncates the tree without saying so.
+Run your tests with coverage, then point prettycov at the profile. With no arguments it reads
+`./coverage.out`, which is what `go test -coverprofile` is conventionally pointed at:
 
 ```shell
-❯ prettycov -depth=max
- github.com/screwyprof/delegator - 94.01
- ├ pkg - 96.41
- │ ├ clock - 100.00
- │ ├ httpkit - 97.50
- │ ├ logger - 96.88
- │ ├ pgxdb - 90.00
- │ └ tzkt - 100.00
- ├ scraper - 90.00
- │ ├ config - 100.00
- │ └ store - 77.97
- │   ├ dbrow - 100.00
- │   └ pgxstore - 75.47
- └ web - 95.15
-   ├ api - 100.00
-   ├ handler - 89.66
-   │ └ bind - 85.71
-   ├ store/pgxstore - 96.49
-   └ tezos - 100.00
-```
-
-### Show coverage summary with replaced paths
-Sometimes the project may have a long project path (package path to be more precise) which clutters the output. 
-In this case you may want to replace it with a shorter name:
-
-```shell
-❯ prettycov -depth=2 -old github.com/screwyprof/delegator -new delegator
- delegator - 94.01
- ├ pkg - 96.41
- │ ├ clock - 100.00
- │ ├ httpkit - 97.50
- │ ├ logger - 96.88
- │ ├ pgxdb - 90.00
- │ └ tzkt - 100.00
- ├ scraper - 90.00
- │ ├ config - 100.00
- │ └ store - 77.97
- └ web - 95.15
-   ├ api - 100.00
-   ├ handler - 89.66
-   ├ store/pgxstore - 96.49
-   └ tezos - 100.00
-```
-
-### Getting top-level coverage info
-This is what I created this tool for. You may get a nice top-level package coverage:
-
-```shell
+❯ go test -covermode=atomic -coverprofile=coverage.out ./...
 ❯ prettycov
- github.com/screwyprof/delegator - 94.01
- ├ pkg - 96.41
- ├ scraper - 90.00
- └ web - 95.15
+ github.com/screwyprof/delegator - 91.54
+ ├ pkg - 93.33
+ ├ scraper - 88.00
+ └ web - 93.94
 ```
 
-### Fail below a threshold
-`-fail-under` exits 1 when total coverage is under the given percentage, so `prettycov` can gate CI. It stays distinct from exit 2, which means prettycov could not run at all:
+That top row is the reason this exists: `go tool cover` cannot give you a total across packages
+([golang/go#66506](https://github.com/golang/go/issues/66506)), let alone one per branch of the
+tree.
+
+Turn on the two flags that say more, and go a level deeper:
 
 ```shell
-❯ prettycov -fail-under=99
- github.com/screwyprof/delegator - 94.01
- ├ pkg - 96.41
- ├ scraper - 90.00
- └ web - 95.15
-total coverage 94.01% is below 99.00%
-❯ echo $?
-1
+❯ prettycov -counts -files -depth=2
+ github.com/screwyprof/delegator - 91.54  34/402 uncovered
+ ├ pkg - 93.33  8/120 uncovered
+ │ ├ clock - 100.00  0/2 uncovered
+ │ ├ httpkit - 96.30  1/27 uncovered
+ │ ├ logger - 92.50  3/40 uncovered
+ │ ├ pgxdb - 75.00  4/16 uncovered
+ │ └ tzkt - 100.00  0/35 uncovered
+ ├ scraper - 88.00  18/150 uncovered
+ │ ├ config - 100.00  0/1 uncovered
+ │ ├ service.go - 92.31  5/65 uncovered
+ │ ├ store - 74.51  13/51 uncovered
+ │ └ subscriber.go - 100.00  0/33 uncovered
+ └ web - 93.94  8/132 uncovered
+   ├ api - 100.00  0/14 uncovered
+   ├ handler - 87.23  6/47 uncovered
+   ├ store/pgxstore - 95.12  2/41 uncovered
+   └ tezos - 100.00  0/30 uncovered
 ```
 
-### Just the number
-`-total` prints the total percentage and nothing else, so a Makefile or a badge can read it.
+`prettycov help` prints the same flags, with an example apiece.
 
-It changes how the report is printed, not what gets measured. The number is the tree's top row with the label and the glyphs stripped off, so every flag that changes the measurement still applies: `-exclude` changes it just as it changes the tree, and `-fail-under` still grades it. Flags that only decorate the tree, like `-counts`, go with the glyphs.
+## Flags
 
-```shell
-❯ prettycov -total
-94.01
-❯ prettycov -total -exclude='/store/'
--exclude "/store/" left out 116 statements in 4 files
-95.80
-```
+| flag | |
+| --- | --- |
+| `-depth=N` \| `max` | how many levels to show below the top row, the way `tree -L` counts them. Default 1; `max` goes all the way down, which beats guessing a number that is wrong in both directions |
+| `-files` | draw the profile's files as well as its packages |
+| `-counts` | show `uncovered/total` statements beside each percentage |
+| `-total` | print only the number, for a Makefile or a badge |
+| `-fail-under=N` | exit 1 when total coverage is below N, so prettycov can gate CI |
+| `-exclude=REGEXP` | leave out files whose path matches, before anything is totalled. Repeatable |
+| `-old=PATH -new=PATH` | shorten a long root package path in the labels |
+| `-color=auto` \| `always` \| `never` | when to colour |
+| `-profile=PATH` | which profile to read. Also accepted as the sole positional argument |
 
-The accounting still goes to stderr, so `COVERAGE := $(shell prettycov -total)` stays clean. It replaces the recipe every project ends up writing:
+Exit codes are `0`, `1` when `-fail-under` was not met, and `2` when prettycov could not run at all —
+distinct, so a CI step can tell a missing profile from a failed gate.
+
+## What a percentage will not tell you
+
+A percentage hides size, and that changes which package you should open first. In the tree above
+`pkg/pgxdb` reads 75.00 and `web/handler` reads 87.23 — and `handler` holds **more** untested code
+than `pgxdb`, six statements against four. Sorting by the percentage points at the smaller package
+with the louder number; the uncovered count is the one to act on. That is what `-counts` is for.
+
+It is worth knowing this before gating on a percentage at all. The studies that looked
+([Inozemtseva & Holmes, ICSE 2014](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf))
+found coverage a weak predictor of whether a suite catches bugs once test-suite size is controlled
+for; what predicts it is how much the tests *assert*, which no coverage profile can see. Teams that
+mandate a figure tend to land exactly on it and stop. Coverage is good at one thing — showing where
+the untested code is — so treat `-fail-under` as a floor, not a goal.
+
+## Reading the report
+
+**A run of directories that each hold nothing but the next one is one row.** Otherwise every report
+would spend three levels on `github.com`, `owner`, `repo` before reaching anything worth reading.
+
+**The profile's files are the tree's leaves**, so every row is the sum of what is drawn beneath it —
+`scraper`'s 150 statements are `config`'s 1, `service.go`'s 65, `store`'s 51 and `subscriber.go`'s
+33. That is what makes a report with `-counts` addable. Without `-files` those leaves simply are not
+drawn, so a package holding both files and subpackages shows a total larger than its visible
+children; `du` behaves the same way, and `du -a` is its `-files`. A file costs a `-depth` level
+exactly as a subpackage does, being one of a directory's entries.
+
+One profile can break that, and only one: if a file and a directory share a name — `m/a.go` beside
+`m/a.go/b.go` — the single row standing for both carries its own statements as well as its subtree,
+so it reads higher than the rows under it. No filesystem allows the two to share a name, so no
+`go test` run produces it; merging two profiles, or an `-old`/`-new` rewrite that collides two
+paths, can.
+
+## Just the number
+
+`-total` prints the total percentage and nothing else, so a Makefile or a badge can read it. It
+replaces the recipe every project ends up writing:
 
 ```make
-COVERAGE := $(shell go tool cover -func coverage.out | awk 'END{print $$NF}')   # 94.0%
-COVERAGE := $(shell prettycov -total)                                           # 94.01
+COVERAGE := $(shell go tool cover -func coverage.out | awk 'END{print $$NF}')   # 91.5%
+COVERAGE := $(shell prettycov -total)                                           # 91.54
 ```
 
-Two decimals, rendered by the same code as the tree, so a summary line and the report it summarises cannot round differently. (The figure is the whole profile's total, which is the root of the tree — with a profile spanning two top-level paths it is the union of both, and so appears in no single row.)
+It changes how the report is printed, not what gets measured, so every flag that changes the
+measurement still applies — `-exclude` moves it just as it moves the tree, and `-fail-under` still
+grades it. Flags that only decorate the tree, like `-counts`, go with the glyphs. Filter accounting
+goes to stderr, so `$(shell prettycov -total)` stays clean.
 
-A profile with no statements to cover has no total, so it exits 2 with a message rather than printing `n/a` or `0.00` into your variable — unless `-fail-under` was given, in which case that reports the shortfall and exits 1 instead.
+Two decimals, rendered by the same code as the tree, so a summary line and the report it summarises
+cannot round differently. (The figure is the whole profile's total, which is the tree's root — with
+a profile spanning two top-level paths it is the union of both, and so appears in no single row.)
 
-The printed figure is rounded to two decimals while `-fail-under` compares the exact ratio, so don't build a second gate by comparing this number to a threshold. It goes wrong both ways: 79.999% prints as `80.00` on a run `-fail-under=80` fails, and 99.9996% prints as `99.99` on one `-fail-under=99.995` passes. Use `-fail-under`.
+The printed figure is rounded while `-fail-under` compares the exact ratio, so do not build a second
+gate by comparing this number to a threshold. It goes wrong both ways: 79.999% prints as `80.00` on
+a run `-fail-under=80` fails, and 99.9996% prints as `99.99` on one `-fail-under=99.995` passes. Use
+`-fail-under`.
 
-One deliberate exception, and it differs from `go tool cover`: **`100.00` is never rounded up to.** 73999 of 74000 statements reads as `99.99` here, where `go tool cover -func` rounds at one decimal and reports `100.0%` from 99.95% upwards. 100% is what a badge shows and what stops someone writing another test, so it is only printed when every statement is covered. Everything else rounds to nearest, as before.
+One deliberate difference from `go tool cover`: **`100.00` is never rounded up to.** 73999 of 74000
+statements reads as `99.99` here, where `go tool cover -func` rounds at one decimal and reports
+`100.0%` from 99.95% upwards. 100% is what a badge shows and what stops someone writing another
+test, so it is only printed when every statement is covered. Everything else rounds to nearest.
 
-### See how much work a percentage stands for
-A percentage hides size. `-counts` puts the fraction beside it, as uncovered over total:
+A profile with nothing to cover has no total, so it exits 2 with a message rather than printing
+`n/a` or `0.00` into your variable — unless `-fail-under` was given, in which case that reports the
+shortfall and exits 1 instead.
 
-```shell
-❯ prettycov -counts
- github.com/screwyprof/delegator - 94.01  34/568 uncovered
- ├ pkg - 96.41  8/223 uncovered
- ├ scraper - 90.00  18/180 uncovered
- └ web - 95.15  8/165 uncovered
-```
+## Stop counting code you never meant to test
 
-The uncovered count is the number to act on, and it ranks packages differently from the percentage: at `-depth=max` this profile shows `pkg/logger` at 96.88 and `web/handler/bind` at 85.71 holding exactly the same three untested statements. Ranking by the percentage alone points at the smaller package with the louder number.
-
-That is the general problem with the percentage, and it is worth knowing before gating on one. The studies that looked ([Inozemtseva & Holmes, ICSE 2014](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf)) found coverage a weak predictor of whether a suite catches bugs — what predicts it is how much the tests *assert*, which no coverage profile can see — and teams that mandate a figure tend to land exactly on it and stop. Coverage is good at one thing: showing where the untested code is. `-counts` is for that; `-fail-under` is a floor, not a goal.
-
-### Go down to the files
-By default the report is about packages. `-files` draws the profile's files as well, one level below the package holding them — so a package's own files sit beside its subpackages, the way `ls`, `tree` and `du -a` list a directory's entries:
-
-```shell
-❯ prettycov -files -counts -depth=2
- github.com/screwyprof/delegator - 94.01  34/568 uncovered
- ├ pkg - 96.41  8/223 uncovered
- │ ├ clock - 100.00  0/2 uncovered
- │ ├ httpkit - 97.50  1/40 uncovered
- │ ├ logger - 96.88  3/96 uncovered
- │ ├ pgxdb - 90.00  4/40 uncovered
- │ └ tzkt - 100.00  0/45 uncovered
- ├ scraper - 90.00  18/180 uncovered
- │ ├ config - 100.00  0/1 uncovered
- │ ├ service.go - 94.25  5/87 uncovered
- │ ├ store - 77.97  13/59 uncovered
- │ └ subscriber.go - 100.00  0/33 uncovered
- └ web - 95.15  8/165 uncovered
-   ├ api - 100.00  0/14 uncovered
-   ├ handler - 89.66  6/58 uncovered
-   ├ store/pgxstore - 96.49  2/57 uncovered
-   └ tezos - 100.00  0/36 uncovered
-```
-
-Files are leaves, so **every row is the sum of what is drawn beneath it** — `scraper`'s 180 statements are `config`'s 1, `service.go`'s 87, `store`'s 59 and `subscriber.go`'s 33. That is what makes a report with `-counts` addable.
-
-One profile can break that, and only one: if a file and a directory share a name — `m/a.go` beside `m/a.go/b.go` — the single row standing for both carries its own statements as well as its subtree, so it reads higher than the rows under it. No filesystem allows the two to share a name, so no `go test` run produces it; merging two profiles, or an `-old`/`-new` rewrite that collides two paths, can.
-
-Without `-files` those file rows are simply not drawn, and a package that holds both files and subpackages shows a total larger than its visible children — `du` behaves the same way, and `du -a` is its `-files`. Since a file is one of a directory's entries, it costs a `-depth` level exactly as a subpackage does.
-
-### Stop counting code you never meant to test
-`-exclude` drops files whose path matches a regexp, before anything is totalled. Patterns are unanchored and match the full path, so a short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out — including nothing, which is how you spot a typo. Patterns that between them take every file are an error rather than a green run: exit 2 with `-exclude left nothing to report`, or, under `-fail-under`, the failed gate any profile with nothing to cover gets.
+`-exclude` drops files whose path matches a regexp, before anything is totalled — generated code,
+mocks, a migrator you never intended to cover. Patterns are unanchored and match the full path, so a
+short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out,
+including nothing, which is how you spot a typo:
 
 ```shell
-❯ prettycov
- github.com/screwyprof/delegator - 94.01
- ├ pkg - 96.41
- ├ scraper - 90.00
- └ web - 95.15
-
 ❯ prettycov -exclude='/store/' -exclude='\.pb\.go$'
--exclude "/store/" left out 116 statements in 4 files
+-exclude "/store/" left out 92 statements in 4 files
 -exclude "\\.pb\\.go$" matched nothing
- github.com/screwyprof/delegator - 95.80
- ├ pkg - 96.41
- ├ scraper - 95.87
- └ web - 94.44
+ github.com/screwyprof/delegator - 93.87
+ ├ pkg - 93.33
+ ├ scraper - 94.95
+ └ web - 93.41
 ```
 
-The accounting goes to stderr, so the report itself stays pipeable. It filters the report, not the profile on disk: `go tool cover -html` and anything else reading the file still sees everything in it.
+The accounting goes to stderr, so the report itself stays pipeable. It filters the report, not the
+profile on disk: `go tool cover -html` and anything else reading the file still sees everything in
+it, and changing your mind costs a re-render rather than a re-run.
 
-This is what lets `-coverpkg` stay a single pattern. One package's coverage never enters another's ratio, so excluding it here gives the same total as leaving it out of `-coverpkg` — without a package list computed by a `go list | grep -v` that can disagree with the build it feeds:
+That is the difference from narrowing `-coverpkg`, which is the other place a project can draw this
+line. Excluding a package there means it is never instrumented, so the decision is baked into the
+run and usually arrives as a `go list | grep -v` package list that can disagree with the build it
+feeds. Doing it here gives the same total — one package's coverage never enters another's ratio —
+and leaves `-coverpkg` a single pattern:
 
 ```make
 COVERAGE_EXCLUDE := migrator|testcfg|cmd|web/config
@@ -206,13 +178,22 @@ coverage:
 	prettycov -exclude='$(COVERAGE_EXCLUDE)' coverage.out
 ```
 
-### Colour
-Percentages are graded red, yellow and green using only the base ANSI colours, so your own terminal theme decides the shades. Colour is on when writing to a terminal and off when piped, honouring [`NO_COLOR`](https://no-color.org) and `TERM=dumb`. Override with `-color=always` or `-color=never`.
+## Colour
+
+Percentages are graded red, yellow and green using only the base ANSI colours, so your own terminal
+theme decides the shades. Colour is on when writing to a terminal and off when piped, honouring
+[`NO_COLOR`](https://no-color.org) and `TERM=dumb`. Override with `-color=always` or `-color=never`.
 
 ## How it works
-It parses the coverage profile to populate a prefix tree of paths and coverages.
-Then it traverses the tree from the furthermost leaves to top merging the coverage info. 
-Then it draws the top row plus `-depth` levels beneath it. A run of directories that each hold nothing but the next one renders as a single row. The profile's files are the tree's leaves, so every node's total is the sum of what hangs below it; `-files` decides whether those leaves are drawn.
+
+It parses the coverage profile into a prefix tree of paths and coverages, with the profile's files
+as the leaves, then rolls each node up from the leaves so every node reports its own statements plus
+everything below it. It then draws the top row plus `-depth` levels beneath it, collapsing a run of
+directories that each hold nothing but the next one into a single row, and drawing the file leaves
+only when `-files` asks for them.
+
+It reads the profile and nothing else — no source tree, no `go.mod`, no git — so it works on a CI
+artefact, a colleague's file, or a repository you do not have checked out.
 
 ## Contributors ✨
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
