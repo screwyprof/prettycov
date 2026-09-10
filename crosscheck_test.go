@@ -54,7 +54,7 @@ func TestRowsReconcileAgainstTheProfile(t *testing.T) {
 // than from the tree, and checks that what is printed carries that row's own numbers — so a row
 // cannot be right while the line describing it is wrong.
 func assertRowsMatchTheProfile(
-	t *testing.T, tree *prettycov.PathTree, totals map[string]prettycov.CoverageStats, opts prettycov.Options,
+	t *testing.T, tree *prettycov.PathTree, totals map[string][]prettycov.CoverageStats, opts prettycov.Options,
 ) {
 	t.Helper()
 
@@ -64,12 +64,15 @@ func assertRowsMatchTheProfile(
 	require.Lenf(t, lines, len(rows), "one line per row, depth=%v files=%v", opts.Depth, opts.Files)
 
 	for i, r := range rowInfos(rows) {
+		// Candidates, not one total: a name can be a file and a directory at once, and then the
+		// path names two nodes with different numbers. Every other path names exactly one, so this
+		// is the same assertion there.
 		want, ok := totals[r.path]
 		require.Truef(t, ok, "row %q is not a path the profile names", r.path)
-		assert.Equalf(t, want, rows[i].Coverage, "row %q at depth %v", r.path, opts.Depth)
+		assert.Containsf(t, want, rows[i].Coverage, "row %q at depth %v", r.path, opts.Depth)
 
 		if r.total > 0 {
-			assert.Containsf(t, lines[i], fmt.Sprintf("%d/%d uncovered", want.Uncovered, want.Total()),
+			assert.Containsf(t, lines[i], fmt.Sprintf("%d/%d uncovered", rows[i].Coverage.Uncovered, r.total),
 				"the printed line for %q", r.path)
 		}
 	}
@@ -101,16 +104,27 @@ func assertRowsHoldEveryStatement(
 		ancestry = append(ancestry[:r.level], i)
 	}
 
+	// Summed per path rather than per row, because a name that is both a file and a directory is
+	// drawn twice and the files charged to it are charged to the path, not to one of the two.
+	// Per path also lets one row of a pair borrow from the other — swap them and the sum still
+	// balances — so each row is checked to hold back at least nothing, which borrowing is not.
 	drawn := make(map[string]bool, len(infos))
-	for _, r := range infos {
-		drawn[r.path] = true
-	}
-
-	kept := keptBack(files, drawn)
+	held := map[string]int{}
 
 	for i, r := range infos {
-		assert.Equalf(t, kept[r.path], r.total-below[i],
+		keep := r.total - below[i]
+
+		assert.GreaterOrEqualf(t, keep, 0,
 			"row %q reports %d statements and the rows below it show %d", r.path, r.total, below[i])
+
+		drawn[r.path] = true
+		held[r.path] += keep
+	}
+
+	kept := keptBack(files, drawn, withFiles)
+
+	for path, n := range held {
+		assert.Equalf(t, kept[path], n, "the rows for %q keep back %d statements", path, n)
 	}
 
 	// Arithmetic alone is too weak: a row that quietly keeps back a file no deeper row shows still
@@ -159,23 +173,32 @@ func rowInfos(rows []prettycov.Row) []row {
 }
 
 // nodeTotals charges every file to itself and to each directory above it, from the parsed files
-// rather than from anything the tree did. A path that is both a file and a directory collects
-// both, which is the one row such a name gets.
-func nodeTotals(files []prettycov.FileCoverage) map[string]prettycov.CoverageStats {
-	totals := map[string]prettycov.CoverageStats{}
+// rather than from anything the tree did, and reports the candidates at each path. A name that is
+// both a file and a directory has two, and the row drawn for either is one of them.
+func nodeTotals(files []prettycov.FileCoverage) map[string][]prettycov.CoverageStats {
+	asFile := map[string]prettycov.CoverageStats{}
+	asDir := map[string]prettycov.CoverageStats{}
 
-	add := func(key string, c prettycov.CoverageStats) {
-		stat := totals[key]
+	add := func(into map[string]prettycov.CoverageStats, key string, c prettycov.CoverageStats) {
+		stat := into[key]
 		stat.Covered += c.Covered
 		stat.Uncovered += c.Uncovered
-		totals[key] = stat
+		into[key] = stat
 	}
 
 	for _, f := range files {
-		add(f.File, f.Coverage)
+		add(asFile, f.File, f.Coverage)
 
 		for _, dir := range dirsOf(f.File) {
-			add(dir, f.Coverage)
+			add(asDir, dir, f.Coverage)
+		}
+	}
+
+	totals := map[string][]prettycov.CoverageStats{}
+
+	for _, in := range []map[string]prettycov.CoverageStats{asFile, asDir} {
+		for path, stat := range in {
+			totals[path] = append(totals[path], stat)
 		}
 	}
 
@@ -203,13 +226,22 @@ func dirsOf(file string) []string {
 // row where it has one, the single row standing for a name it shares with a directory, or the
 // closest drawn directory above. Walking beats scanning the rows for the deepest match, which is
 // quadratic in the size of the profile.
-func keptBack(files []prettycov.FileCoverage, drawn map[string]bool) map[string]int {
+func keptBack(files []prettycov.FileCoverage, drawn map[string]bool, withFiles bool) map[string]int {
 	kept := map[string]int{}
 
 	for _, f := range files {
 		// The file's own row first, then the directories above it. A collapsed run leaves the
 		// levels between undrawn, so this keeps walking rather than giving up at the first miss.
-		for _, candidate := range append([]string{f.File}, dirsOf(f.File)...) {
+		//
+		// Only when files are drawn does a row at the file's own path stand for the file: with
+		// them hidden, a row there is a directory that happens to share the name, and the file is
+		// accounted for by the closest directory above it.
+		candidates := dirsOf(f.File)
+		if withFiles {
+			candidates = append([]string{f.File}, candidates...)
+		}
+
+		for _, candidate := range candidates {
 			if drawn[candidate] {
 				kept[candidate] += f.Coverage.Total()
 
@@ -254,6 +286,22 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 		"absolute paths": {
 			file("/home/ci/repo/pkg/a.go", 3, 1),
 			file("/home/ci/repo/main.go", 2, 0),
+		},
+		// Two files under the directory, so it does not merge into one of them and the file and
+		// the directory are drawn at the same path — the shape the per-path reconciliation exists
+		// for, and the only one where a row could borrow its sibling's number.
+		"a file and a directory of one name, both drawn": {
+			file("m/a.go", 5, 0),
+			file("m/a.go/b.go", 0, 4),
+			file("m/a.go/c.go", 0, 3),
+		},
+		// The "." holding a bare file merges to that file's name, which a sibling directory can
+		// already have — two rows of one map tied on the label, where every other tie is between
+		// the two maps.
+		"a bare file taking a sibling's name": {
+			file("a.go", 3, 0),
+			file("a.go/b.go", 0, 4),
+			file("a.go/c.go", 0, 3),
 		},
 		// And the root can hold a file directly, which is the one node with no name of its own.
 		// `-new=/` reaches this from an ordinary profile.

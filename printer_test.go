@@ -2,6 +2,7 @@ package prettycov_test
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -111,11 +112,38 @@ func TestRowsHandlesANilTree(t *testing.T) {
 func TestDisplayTreeIsDeterministic(t *testing.T) {
 	t.Parallel()
 
-	tree := prettycov.Process(printerFiles(), "", "")
-	first := render(t, tree, 4)
+	tests := map[string]struct {
+		files []prettycov.FileCoverage
+		opts  prettycov.Options
+	}{
+		"packages": {files: printerFiles(), opts: prettycov.Options{Depth: 4}},
+		// Sorting on the label is not a total order by itself, because merging renames a row to
+		// something a sibling may already be called: the bare "a.go" gets a "." directory that
+		// merges to "a.go", beside the directory of that name. Both are Children, so gathering one
+		// map before the other does not separate them, and map order decided which came first.
+		"labels that tie after merging": {
+			files: []prettycov.FileCoverage{
+				file("a.go", 3, 0),
+				file("a.go/b.go", 0, 4),
+				file("a.go/c.go", 0, 3),
+			},
+			opts: prettycov.Options{Depth: prettycov.DepthAll, Files: true},
+		},
+	}
 
-	for range 50 {
-		assert.Equal(t, first, render(t, tree, 4))
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process(tc.files, "", "")
+			first := renderOpts(t, tree, tc.opts)
+
+			// Enough that a coin flip left to the map would have shown up: the tie above came out
+			// the wrong way about one render in seven.
+			for range 100 {
+				assert.Equal(t, first, renderOpts(t, tree, tc.opts))
+			}
+		})
 	}
 }
 
@@ -158,8 +186,9 @@ func TestDisplayTreeKeepsDirsThatAreAlsoPackages(t *testing.T) {
 			},
 		},
 		{
-			// A doc.go holding only a package comment has no statements, so m/x's totals equal
-			// its child's. It is still a package and still gets a row.
+			// A doc.go holding only a package comment has no statements. Both cases take the
+			// same path now that holding a file is what makes a directory a package — this one
+			// is here so that inferring it from Coverage again would have to delete a test.
 			name: "own file with no statements",
 			files: []prettycov.FileCoverage{
 				file("m/x/doc.go", 0, 0),
@@ -205,11 +234,15 @@ func TestDisplayTreeFilesAreLeavesThatSumToTheirPackage(t *testing.T) {
 func TestDisplayTreeFilesSortAmongPackages(t *testing.T) {
 	t.Parallel()
 
+	// Two files in each subpackage, so neither merges into one of them and the order stays the
+	// subject.
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/x/service.go", 1, 1),
 		file("m/x/subscriber.go", 1, 1),
 		file("m/x/config/c.go", 1, 1),
+		file("m/x/config/d.go", 1, 1),
 		file("m/x/store/s.go", 1, 1),
+		file("m/x/store/t.go", 1, 1),
 	}, "", "")
 
 	assert.Equal(t, []string{"m/x", "config", "service.go", "store", "subscriber.go"},
@@ -247,41 +280,44 @@ func TestDisplayTreeKeepsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	}, "", "")
 
 	assert.Equal(t, []string{"m", "a.go"}, nodeNames(t, tree, prettycov.DepthAll),
-		"the subtree survives with the files hidden")
+		"with the files hidden only the directory is drawn, and it keeps its subtree")
 
-	// One row for the two things sharing the name, carrying both: 5 covered in the file and 7
-	// uncovered in the package. The file's own statements therefore get no row of their own even
-	// with -files, which is the one place a parent is more than what is drawn beneath it — a name
-	// cannot be two rows, and no profile a single `go test` run produces asks it to be.
+	// Sorted by the label each row ends up with, so the file comes first: "a.go" < "a.go/b.go".
+	// Sorting by the name they started as would put the directory first, since both begin as
+	// "a.go" and directories are gathered before files.
+	assert.Equal(t, []string{"m", "a.go", "a.go/b.go"},
+		namesWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}))
+
+	// Two nodes, so two rows, and m is exactly the sum of them: the file's 5 and the directory's
+	// 7. The directory holds one file and nothing else, so it merges into it and the two rows end
+	// up telling apart by more than the number.
 	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true, Files: true})
 
-	assert.Contains(t, out, "a.go - 41.67  7/12 uncovered\n")
-	assert.Contains(t, out, "b.go - 0.00  7/7 uncovered\n")
-
-	// Get is how a library caller reaches it, and skipping IsFile nodes to enumerate packages must
-	// not drop the packages underneath.
-	assert.False(t, tree.Get("m/a.go").IsFile(), "it is also a directory")
+	assert.Contains(t, out, "m - 41.67  7/12 uncovered\n")
+	assert.Contains(t, out, "a.go - 100.00  0/5 uncovered\n", "the file")
+	assert.Contains(t, out, "a.go/b.go - 0.00  7/7 uncovered\n", "the directory of the same name")
 }
 
-// The same collision one level deeper, where the shared name holds a package rather than a file.
-// Only the immediate parent of a file is marked as a package, so a.go here is a file with a child
-// and no package of its own — which collapse used to fold away, leaving m claiming twelve
-// statements above a single row reporting seven.
-func TestDisplayTreeDoesNotCollapseAwayAFileWithASubtree(t *testing.T) {
+// Sorting by label separates a merged package from a file beside it, but a directory holding two
+// files does not merge and keeps a name a file can also have. Nothing about the report requires one
+// order over the other; it requires the same one every run, which the stable sort gives only
+// because directories are gathered before files. Reversing those two loops is a plausible tidy-up
+// and would change every report holding such a pair.
+func TestDisplayTreeOrdersATieBetweenAFileAndADirectory(t *testing.T) {
 	t.Parallel()
 
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/a.go", 5, 0),
-		file("m/a.go/sub/b.go", 0, 7),
+		file("m/a.go/b.go", 0, 4),
+		file("m/a.go/c.go", 0, 3),
 	}, "", "")
 
-	assert.Equal(t, []string{"m", "a.go", "sub"}, nodeNames(t, tree, prettycov.DepthAll))
-
-	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true})
-
-	assert.Contains(t, out, "m - 41.67  7/12 uncovered\n")
-	assert.Contains(t, out, "a.go - 41.67  7/12 uncovered\n")
-	assert.Contains(t, out, "sub - 0.00  7/7 uncovered\n")
+	// The order, and which of the two rows carries which number. The reconciliation in
+	// crosscheck_test.go sums them by path, so it balances just as well if they trade: give the
+	// file the directory's 7 and the directory the file's 5 and the path still holds 12.
+	assert.Equal(t, []string{"m 7/12", "a.go 7/7", "b.go 4/4", "c.go 3/3", "a.go 0/5"},
+		countsWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
+		"the directory and its files first, then the file of the same name")
 }
 
 // A file is one level below the package holding it, exactly as a subdirectory is — -depth counts
@@ -289,15 +325,81 @@ func TestDisplayTreeDoesNotCollapseAwayAFileWithASubtree(t *testing.T) {
 func TestDisplayTreeFilesCountAsALevel(t *testing.T) {
 	t.Parallel()
 
+	// Two files under sub, so it is never merged into one of them and the levels stay the subject.
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/x/own.go", 1, 1),
 		file("m/x/sub/s.go", 1, 1),
+		file("m/x/sub/t.go", 1, 1),
 	}, "", "")
 
 	assert.Equal(t, []string{"m/x"}, namesWith(t, tree, prettycov.Options{Depth: 0, Files: true}))
 	assert.Equal(t, []string{"m/x", "own.go", "sub"}, namesWith(t, tree, prettycov.Options{Depth: 1, Files: true}))
-	assert.Equal(t, []string{"m/x", "own.go", "sub", "s.go"},
+	assert.Equal(t, []string{"m/x", "own.go", "sub", "s.go", "t.go"},
 		namesWith(t, tree, prettycov.Options{Depth: 2, Files: true}))
+}
+
+// A package whose whole content is one file says the same number twice, so the two rows become
+// one and the label names both. A row's label is a property of the node, not of where the depth
+// cut falls: raising -depth adds rows below, it does not rename the ones already drawn.
+func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/one/only.go", 3, 1),
+		file("m/two/a.go", 1, 1),
+		file("m/two/b.go", 1, 1),
+	}, "", "")
+
+	assert.Equal(t, []string{"m", "one/only.go", "two"},
+		namesWith(t, tree, prettycov.Options{Depth: 1, Files: true}),
+		"two has two files to keep apart, so only one merges")
+	assert.Equal(t, []string{"m", "one/only.go", "two", "a.go", "b.go"},
+		namesWith(t, tree, prettycov.Options{Depth: 2, Files: true}),
+		"and a deeper cut adds rows without renaming one/only.go")
+
+	// The numbers are what makes it a duplicate, and the merged row keeps them.
+	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true, Files: true})
+	assert.Contains(t, out, "one/only.go - 75.00  1/4 uncovered\n")
+	assert.NotContains(t, out, " one - ", "the package row it replaced is gone")
+
+	// Without -files there is no file row to merge with, so the package keeps its own name.
+	assert.Equal(t, []string{"m", "one", "two"}, nodeNames(t, tree, prettycov.DepthAll))
+}
+
+// A profile can name a file with no directory of its own — `prettycov -new=.` writes every path
+// that way — and such a file lands under ".", the row the report draws it beside. Merging the two
+// must not write that "." into the label: the profile has no path spelled "./printer.go", and its
+// siblings are written plainly. The filesystem root is the opposite case and keeps its separator,
+// because there the separator is the whole name.
+func TestDisplayTreeMergesAFileThatHasNoDirectory(t *testing.T) {
+	t.Parallel()
+
+	withFiles := prettycov.Options{Depth: prettycov.DepthAll, Files: true}
+
+	bare := prettycov.Process([]prettycov.FileCoverage{
+		file("printer.go", 3, 1),
+		file("internal/app/a.go", 2, 0),
+	}, "", "")
+
+	assert.Equal(t, []string{"internal/app/a.go", "printer.go"}, namesWith(t, bare, withFiles))
+
+	atRoot := prettycov.Process([]prettycov.FileCoverage{file("/main.go", 8, 1)}, "", "")
+
+	assert.Equal(t, []string{"/main.go"}, namesWith(t, atRoot, withFiles))
+}
+
+// The top row merges too, so a repository that is one package of one file reports a file path and
+// no row names the package. Deliberate: -files asked for the files, the label still carries the
+// whole package path, and refusing to merge at the top would be a rule about where a row sits
+// rather than about what it holds. The default view is untouched, and -total reads the tree.
+func TestDisplayTreeMergesTheTopRowToo(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("github.com/o/tool/main.go", 8, 1)}, "", "")
+
+	assert.Equal(t, []string{"github.com/o/tool/main.go"},
+		namesWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}))
+	assert.Equal(t, []string{"github.com/o/tool"}, nodeNames(t, tree, prettycov.DepthAll))
 }
 
 // -depth counts levels below the root row, exactly as `tree -L` does: `tree -L 1` prints the root
@@ -409,6 +511,23 @@ func renderOpts(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) 
 	prettycov.DisplayTree(&buf, tree, opts)
 
 	return buf.String()
+}
+
+// countsWith is namesWith with each row's numbers, for a test that has to say which of two rows
+// carrying the same label holds which. Read off Rows for the same reason nodeNames is: scraping
+// them back out of the rendered text means stripping box-drawing glyphs, and a label may contain
+// one.
+func countsWith(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) []string {
+	t.Helper()
+
+	rows := prettycov.Rows(tree, opts)
+
+	counts := make([]string, 0, len(rows))
+	for _, row := range rows {
+		counts = append(counts, fmt.Sprintf("%s %d/%d", row.Label, row.Coverage.Uncovered, row.Coverage.Total()))
+	}
+
+	return counts
 }
 
 // nodeNames is the labels a tree renders to, in order. Read off Rows rather than scraped back
