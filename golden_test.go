@@ -28,7 +28,10 @@ var update = flag.Bool("update", false, "rewrite the golden files")
 func TestDisplayTreeMatchesGolden(t *testing.T) {
 	t.Parallel()
 
-	files, err := prettycov.ParseProfile(filepath.Join("testdata", "delegator.coverage.out"))
+	// The profile the README documents, so the numbers in one cannot drift from the other. It is
+	// also the one measured without golang/go#80974, which inflated statement counts by splitting
+	// a block and giving each part the whole NumStmt.
+	files, err := prettycov.ParseProfile(filepath.Join("testdata", "delegator-go126.out"))
 	require.NoError(t, err)
 
 	tree := prettycov.Process(files, "github.com/screwyprof/delegator", "delegator")
@@ -40,9 +43,19 @@ func TestDisplayTreeMatchesGolden(t *testing.T) {
 			// Colour on, so the escapes are part of what is pinned. A golden file that stops at
 			// the text would miss a grade landing in the wrong band.
 			assertGolden(t, fmt.Sprintf("delegator-depth-%d.golden", depth),
-				renderWith(t, tree, depth, prettycov.ANSI))
+				renderColor(t, tree, depth))
 		})
 	}
+
+	// The whole point of -files is that a parent equals what is drawn beneath it, and that only
+	// shows on a real tree with real filenames. Counts on, since the sums are the claim.
+	t.Run("files", func(t *testing.T) {
+		t.Parallel()
+
+		assertGolden(t, "delegator-files.golden", renderOpts(t, tree, prettycov.Options{
+			Depth: prettycov.DepthAll, Color: prettycov.ANSI, Counts: true, Files: true,
+		}))
+	})
 }
 
 func assertGolden(t *testing.T, name, got string) {

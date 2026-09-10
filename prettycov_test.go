@@ -1,6 +1,7 @@
 package prettycov_test
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -199,6 +200,117 @@ func TestProcessShortensTheRootPath(t *testing.T) {
 	}
 }
 
+// Splitting a path is not the same as walking one. Totalling per directory used to go through
+// path.Dir, which cleans on the way, so a doubled separator never reached a label; building the
+// tree from the file path directly has to clean it itself. -new with a trailing slash is how a
+// caller produces one without meaning to.
+func TestProcessCleansPaths(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		files   []prettycov.FileCoverage
+		newRoot string
+		want    string
+	}{
+		{
+			name:  "doubled separator in the profile",
+			files: []prettycov.FileCoverage{file("m//a/x.go", 1, 1)},
+			want:  "m/a",
+		},
+		{
+			name:    "trailing slash on -new",
+			files:   []prettycov.FileCoverage{file("zz/a/x.go", 1, 1), file("zz/b/y.go", 1, 1)},
+			newRoot: "dg/",
+			want:    "dg",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process(tc.files, "zz", tc.newRoot)
+
+			assert.Equal(t, tc.want, prettycov.Rows(tree, prettycov.Options{})[0].Label)
+		})
+	}
+}
+
+// A file with no directory component belongs to ".", which is a row like any other. Reading the
+// package off the second-to-last path component instead left such a file hanging under the tree
+// root, which nothing draws: the statements stayed in the total and appeared beside no row, and a
+// profile of nothing but bare filenames printed an empty report and exited 0.
+func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		files   []prettycov.FileCoverage
+		newRoot string
+		want    []string
+	}{
+		{
+			name:  "every file is bare",
+			files: []prettycov.FileCoverage{file("a.go", 3, 1), file("b.go", 2, 0)},
+			want:  []string{"."},
+		},
+		{
+			// -new=. is a natural way to strip a module prefix, and it is how a real profile ends
+			// up with a file at the top and packages beneath it.
+			name:    "a bare file beside a package",
+			files:   []prettycov.FileCoverage{file("foo/printer.go", 3, 1), file("foo/internal/app/a.go", 2, 1)},
+			newRoot: ".",
+			want:    []string{".", "internal/app"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process(tc.files, "foo", tc.newRoot)
+			rows := prettycov.Rows(tree, prettycov.Options{})
+
+			labels := make([]string, 0, len(rows))
+
+			total := 0
+
+			for _, row := range rows {
+				labels = append(labels, row.Label)
+				total += row.Coverage.Total()
+			}
+
+			assert.Equal(t, tc.want, labels)
+			assert.Equal(t, tree.Coverage.Total(), total,
+				"every statement in the profile is drawn beside some row")
+		})
+	}
+}
+
+// Children holds files as well as directories, so a caller enumerating packages needs to be able
+// to tell them apart. Nothing unexported can answer that from outside the package.
+func TestPathTreeReportsWhichNodesAreFiles(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/x/own.go", 1, 1),
+		file("m/x/sub/s.go", 1, 1),
+	}, "", "")
+
+	pkg := tree.Get("m/x")
+	require.NotNil(t, pkg)
+
+	assert.False(t, pkg.IsFile(), "a directory")
+	assert.False(t, pkg.Children["sub"].IsFile(), "a directory holding a file")
+	assert.True(t, pkg.Children["own.go"].IsFile(), "a file")
+
+	// Both ways of reaching a node hand back nil for one the profile does not hold, and IsFile is
+	// how the CHANGELOG tells a caller to read a tree, so it answers rather than panicking.
+	assert.False(t, tree.Get("m/x/nope").IsFile(), "a path the profile does not hold")
+	assert.False(t, pkg.Children["nope.go"].IsFile(), "a name Children does not have")
+}
+
 // Process must not write through the slice it is handed.
 func TestProcessDoesNotModifyItsInput(t *testing.T) {
 	t.Parallel()
@@ -209,6 +321,40 @@ func TestProcessDoesNotModifyItsInput(t *testing.T) {
 	prettycov.Process(files, "example.com/m", "m")
 
 	assert.Equal(t, before, files[0].File, "Process rewrote the caller's slice")
+}
+
+// Every statement in the profile hangs off exactly one leaf, so a node with children holds no
+// statements of its own and its total is precisely their sum. That is what makes a rendered report
+// addable, and it is the reason the profile's files are nodes rather than one row standing in for
+// them: a directory that both held statements and had children would leave a share on the parent
+// that no row below it accounts for.
+func TestProcessMakesEveryParentTheSumOfItsChildren(t *testing.T) {
+	t.Parallel()
+
+	files, err := prettycov.ParseProfile(filepath.Join("testdata", "delegator.coverage.out"))
+	require.NoError(t, err)
+
+	var walk func(path string, node *prettycov.PathTree) int
+
+	walk = func(path string, node *prettycov.PathTree) int {
+		if len(node.Children) == 0 {
+			return node.Coverage.Total()
+		}
+
+		sum := 0
+		for name, child := range node.Children {
+			sum += walk(path+"/"+name, child)
+		}
+
+		assert.Equal(t, sum, node.Coverage.Total(),
+			"%s does not equal the sum of its children", path)
+
+		return sum
+	}
+
+	tree := prettycov.Process(files, "", "")
+
+	assert.Equal(t, 568, walk("", tree), "the profile's own total")
 }
 
 func file(name string, covered, uncovered int) prettycov.FileCoverage {

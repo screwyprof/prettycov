@@ -10,6 +10,47 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Added
+
+- `-counts` writes the statement counts after each percentage, as uncovered over total:
+  `scraper - 88.00  18/150 uncovered`. Off by default; `-total` ignores it.
+
+- `-files` draws the profile's files as well as its packages, one level below the package holding
+  them, so a file costs a `-depth` level as a subpackage does. Every row is then the sum of what is
+  drawn beneath it. Off by default.
+
+  One shape is exempt: a file and a directory sharing a name — `m/a.go` beside `m/a.go/b.go` — get
+  a single row carrying both, which therefore reads higher than the rows below it. No `go test` run
+  produces such a profile; merging two can.
+
+### Fixed
+
+- Labels lose bidi controls (`U+202E` and its relatives), line and paragraph separators (`U+2028`,
+  `U+2029`) and `U+FEFF`, not only control characters — a path holding one could draw a file under
+  a name it does not have. The joiners `U+200C` and `U+200D` still render.
+
+- An empty report gives the same reason whichever flags asked for it. With `-fail-under` it read
+  `no statements to cover` even when `-exclude` had emptied it, and now reads
+  `-exclude left nothing to report, wanted at least 80.00%`.
+
+- A file directly at the filesystem root draws under `/` rather than under a blank label, and gets
+  one row rather than two. `-new=/` reaches this from an ordinary profile.
+
+### Go API
+
+- **Breaking:** `Rows` takes `Options` in place of a bare `Depth`, and reads `Depth` and `Files`
+  from it. Callers pass `prettycov.Options{Depth: d}` for what used to be `Rows(tree, d)`.
+
+- **Breaking:** `PathTree.Children` holds the profile's files as well as its directories. This one
+  still compiles and returns different data; `IsFile` tells them apart.
+
+- `CoverageStats.Total` is the statements a node holds, covered or not.
+
+- `Row.Level` is how far a row sits below the top one, which `Prefix` says in box-drawing
+  characters.
+
 ## [0.7.1] — 2026-09-10
 
 ### Changed
@@ -23,8 +64,9 @@ tags.
   not. With `-fail-under` the gate still reports it and exits 1, and no longer draws the `n/a`
   row above the message — an empty report reads the same now whichever flags asked for it.
 - `make publish` is the one `go list -m` the Go publishing guide prescribes, dropping the `curl`
-  requirement and the retry loop around it. `make release` no longer tries to undo a failed push:
-  a pushed tag cannot be unpublished, so deleting one is the worse outcome.
+  requirement and the retry loop around it. `make release` no longer refuses a version ./VERSION
+  has already been tagged at: `git tag` says so itself, and `.SHELLFLAGS` carries `-e`, so the
+  recipe still stops before pushing.
 
 ### Go API
 
@@ -254,6 +296,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[Unreleased]: https://github.com/screwyprof/prettycov/compare/v0.7.1...HEAD
 [0.7.1]: https://github.com/screwyprof/prettycov/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/screwyprof/prettycov/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/screwyprof/prettycov/compare/v0.5.0...v0.6.0

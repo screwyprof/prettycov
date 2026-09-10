@@ -66,6 +66,8 @@ type config struct {
 	Color       colorMode
 	Exclude     []*regexp.Regexp
 	FailUnder   *float64
+	Counts      bool
+	Files       bool
 	Total       bool
 	Help        bool
 	Version     bool
@@ -136,6 +138,8 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 
 		return nil
 	})
+	set.BoolVar(&cfg.Counts, "counts", false, "show uncovered/total statements after each percentage")
+	set.BoolVar(&cfg.Files, "files", false, "show the profile's files, not only its packages")
 	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")
 	set.BoolVar(&cfg.Help, "help", false, "show help")
 	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")

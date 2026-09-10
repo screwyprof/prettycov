@@ -3,7 +3,6 @@ package prettycov
 import (
 	"fmt"
 	"io"
-	"maps"
 	"slices"
 	"strings"
 	"unicode"
@@ -17,21 +16,37 @@ type Options struct {
 	// Color is how percentages are written. Resolving -color=auto against a destination is the
 	// caller's, since that is a question about the world rather than about coverage.
 	Color Palette
+
+	// Counts writes uncovered/total statements after each percentage, which hides size on its own.
+	Counts bool
+
+	// Files draws the profile's files as well as its packages. They sit one level below the
+	// package that holds them, the way tree -L counts a directory's entries, so a package's own
+	// files and its subpackages appear side by side and every parent is the sum of what is drawn
+	// beneath it. Off by default: the report is about packages, and a file row per source file
+	// buries that.
+	Files bool
 }
 
 // Row is one line of the report: the indent and glyph that place it in the tree, the label of the
 // node, and that node's coverage. The percentage is not here — it is a rendering choice, and the
 // counts it comes from are.
 type Row struct {
-	Prefix   string
-	Label    string
+	Prefix string
+	Label  string
+	// Level is how far the row sits below the top one, which carries level 0. Prefix says the same
+	// in box-drawing characters, and reading the shape back out of it means measuring a glyph
+	// string and trusting it to stay two runes wide — which is what the reconciliation test did
+	// before this existed, and what any other consumer of Rows would otherwise have to do.
+	Level    int
 	Coverage CoverageStats
 }
 
-// Rows flattens tree into the lines a report prints, in order, to the given depth. Pure: no
-// writer, no colour, no terminal. DisplayTree is the one that decides how a Row looks.
-func Rows(tree *PathTree, depth Depth) []Row {
-	b := rowBuilder{depth: depth}
+// Rows flattens tree into the lines a report prints, in order. It reads the options that decide
+// which rows there are — Depth and Files — and ignores the rest. Pure: no writer, no colour, no
+// terminal. DisplayTree is the one that decides how a Row looks.
+func Rows(tree *PathTree, opts Options) []Row {
+	b := rowBuilder{opts: opts}
 	b.walk(tree, 0, " ")
 
 	return b.rows
@@ -40,36 +55,69 @@ func Rows(tree *PathTree, depth Depth) []Row {
 // DisplayTree writes tree as an indented report. A collapsed run of directories is the one row it
 // renders as.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
-	for _, row := range Rows(tree, opts.Depth) {
-		_, _ = fmt.Fprintf(w, "%s%s - %s\n", row.Prefix, row.Label, formatRatio(row.Coverage, opts.Color))
+	for _, row := range Rows(tree, opts) {
+		_, _ = fmt.Fprintf(w, "%s%s - %s\n", row.Prefix, row.Label, formatCoverage(row.Coverage, opts))
 	}
 }
 
 // rowBuilder holds what stays the same for the whole traversal, so the recursion carries only
 // what actually varies: the node, how deep it is, and the indent it sits behind.
 type rowBuilder struct {
-	depth Depth
-	rows  []Row
+	opts Options
+	rows []Row
+}
+
+// visible is the children to draw, sorted — map order is randomised and this output gets diffed
+// between runs. Files are dropped rather than skipped later, so they cost no level and no glyph
+// when they are not being shown: without this the last package under a directory would draw the
+// branch glyph of a middle one whenever a file sorted after it.
+//
+// Only a file with nothing beneath it is dropped. One name can be both — a profile naming
+// "m/a.go" and "m/a.go/b.go" describes a file and a directory called the same thing, which no
+// filesystem allows but merging two profiles, or an -old/-new rewrite, can produce. Dropping it
+// took its whole subtree with it while every ancestor went on counting the statements.
+func (b *rowBuilder) visible(tree *PathTree) []string {
+	names := make([]string, 0, len(tree.Children))
+
+	for name, child := range tree.Children {
+		if child.IsFile() && !b.opts.Files {
+			continue
+		}
+
+		names = append(names, name)
+	}
+
+	slices.Sort(names)
+
+	return names
 }
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
 // level 0 means — it is not tracked separately, since a second flag can only drift from it.
 func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
-	if tree == nil || level > b.depth {
+	if tree == nil || level > b.opts.Depth {
 		return
 	}
 
-	// Sorted, because this output gets diffed between runs and map order is randomised.
-	names := slices.Sorted(maps.Keys(tree.Children))
+	names := b.visible(tree)
 
 	for i, name := range names {
 		label, node := collapse(name, tree.Children[name])
 		root := level == 0
 
+		// The filesystem root is the one node with no name of its own: an absolute path splits to
+		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
+		// there is something below to fold. When there is not — a profile holding "/a.go" — the
+		// label is left empty, and a blank row says nothing.
+		if label == "" {
+			label = "/"
+		}
+
 		b.rows = append(b.rows, Row{
 			Prefix: padding + symbol(root, getBoxType(i, len(names))),
 			// Sanitised here rather than at the writer, so no consumer of a Row has to remember to.
 			Label:    sanitize(label),
+			Level:    int(level),
 			Coverage: node.Coverage,
 		})
 
@@ -81,8 +129,12 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 // so a module path does not spend three levels on "github.com", "owner", "repo" before reaching
 // anything worth reading. A directory the profile named itself is never folded away, however few
 // statements it holds — a package whose files declare none still deserves its own row.
+//
+// Nor is a file, which carries statements of its own that the row it folded into would not report:
+// "m/a.go" beside "m/a.go/sub/b.go" makes a.go a file with one child and no package of its own, and
+// folding it left m claiming twelve statements above a single row showing seven.
 func collapse(label string, node *PathTree) (string, *PathTree) {
-	for !node.isPkg && len(node.Children) == 1 {
+	for !node.isPkg && !node.isFile && len(node.Children) == 1 {
 		for name, child := range node.Children {
 			label, node = label+"/"+name, child
 		}
@@ -91,13 +143,15 @@ func collapse(label string, node *PathTree) (string, *PathTree) {
 	return label, node
 }
 
-// sanitize replaces control characters in a label. Chiefly hygiene — a stray control byte in a
-// path garbles the report, which is why ls and git quote them too. It also stops a spoof: a
-// package named "\x1b[1A\x1b[2Kforged" erases the row above and writes over it, and above the
-// first child is the total. Only control characters go; a path may be non-ASCII.
+// sanitize replaces the characters in a label that a terminal would obey rather than draw.
+// Chiefly hygiene — a stray control byte in a path garbles the report, which is why ls and git
+// quote them too. It also stops a spoof: a package named "\x1b[1A\x1b[2Kforged" erases the row
+// above and writes over it, and above the first child is the total.
+//
+// What counts as obeyed is wider than the control characters, and obeyed reports it.
 func sanitize(label string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if obeyed(r) {
 			return '�'
 		}
 
@@ -105,22 +159,51 @@ func sanitize(label string) string {
 	}, label)
 }
 
-// formatRatio renders a package with no statements as "n/a" rather than a percentage. It used to
-// print "NaN", which is what 0/0 produces in float division.
-func formatRatio(stats CoverageStats, palette Palette) string {
+// obeyed reports whether whatever renders the report would act on the rune rather than draw it.
+// Not the same question as unicode.IsControl, which answers only for category Cc:
+//
+//   - the bidi overrides and isolates are Cf, and one in a path reverses the reading order of
+//     everything after it, so a file is drawn under a name it does not have — the Trojan Source
+//     trick, which gosec's G116 catches in Go source for the same reason;
+//   - U+2028 and U+2029 end a line for a log viewer or a JSON consumer as surely as the carriage
+//     return already handled here, and this report is read a line at a time;
+//   - U+FEFF draws as nothing at all, so two labels differing only by one look identical.
+//
+// Everything else stays, so a path may be non-ASCII: Cf also holds the joiners U+200C and U+200D,
+// which spell ordinary words in Persian and Devanagari.
+func obeyed(r rune) bool {
+	return unicode.IsControl(r) ||
+		unicode.Is(unicode.Bidi_Control, r) ||
+		r == '\u2028' || r == '\u2029' || r == '\ufeff'
+}
+
+// formatCoverage renders a package with no statements as "n/a" rather than a percentage — it used
+// to print "NaN", which is what 0/0 produces in float division — and with no grade and no counts,
+// since there is nothing to grade or count. Percentage also refuses overflowed counts, so a wrapped
+// negative total never reaches the row either.
+//
+// Counts go as uncovered over total: the uncovered count is the one a reader acts on. The word
+// stays because codecov prints the same fraction the other way round — 162/180 there is hits —
+// and a row gets pasted into places where no flag name travels with it.
+func formatCoverage(stats CoverageStats, opts Options) string {
 	pct, ok := stats.Percentage()
 	if !ok {
-		// Nothing to cover is not a grade, so it is not coloured either.
 		return "n/a"
 	}
 
+	text := pct.String()
+
 	// Colour only for the one value that asks for it: Palette is an exported int, so a caller can
 	// hand over any number, and escapes into a file are worse than a missing colour.
-	if palette == ANSI {
-		return grade(pct.Float()) + pct.String() + reset
+	if opts.Color == ANSI {
+		text = grade(pct.Float()) + text + reset
 	}
 
-	return pct.String()
+	if opts.Counts {
+		text += fmt.Sprintf("  %d/%d uncovered", stats.Uncovered, stats.Total())
+	}
+
+	return text
 }
 
 type boxType int

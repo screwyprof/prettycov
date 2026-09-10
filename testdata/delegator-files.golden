@@ -1,0 +1,37 @@
+ delegator - [32m91.54[0m  34/402 uncovered
+ ├ pkg - [32m93.33[0m  8/120 uncovered
+ │ ├ clock - [32m100.00[0m  0/2 uncovered
+ │ │ └ clock.go - [32m100.00[0m  0/2 uncovered
+ │ ├ httpkit - [32m96.30[0m  1/27 uncovered
+ │ │ └ httpkit.go - [32m96.30[0m  1/27 uncovered
+ │ ├ logger - [32m92.50[0m  3/40 uncovered
+ │ │ ├ logger.go - [32m86.67[0m  2/15 uncovered
+ │ │ └ middleware.go - [32m96.00[0m  1/25 uncovered
+ │ ├ pgxdb - [33m75.00[0m  4/16 uncovered
+ │ │ └ pgxdb.go - [33m75.00[0m  4/16 uncovered
+ │ └ tzkt - [32m100.00[0m  0/35 uncovered
+ │   └ client.go - [32m100.00[0m  0/35 uncovered
+ ├ scraper - [32m88.00[0m  18/150 uncovered
+ │ ├ config - [32m100.00[0m  0/1 uncovered
+ │ │ └ config.go - [32m100.00[0m  0/1 uncovered
+ │ ├ service.go - [32m92.31[0m  5/65 uncovered
+ │ ├ store - [33m74.51[0m  13/51 uncovered
+ │ │ ├ dbrow - [32m100.00[0m  0/4 uncovered
+ │ │ │ └ delegation.go - [32m100.00[0m  0/4 uncovered
+ │ │ └ pgxstore - [33m72.34[0m  13/47 uncovered
+ │ │   └ store.go - [33m72.34[0m  13/47 uncovered
+ │ └ subscriber.go - [32m100.00[0m  0/33 uncovered
+ └ web - [32m93.94[0m  8/132 uncovered
+   ├ api - [32m100.00[0m  0/14 uncovered
+   │ └ errors.go - [32m100.00[0m  0/14 uncovered
+   ├ handler - [32m87.23[0m  6/47 uncovered
+   │ ├ bind - [32m83.33[0m  3/18 uncovered
+   │ │ └ bind.go - [32m83.33[0m  3/18 uncovered
+   │ └ tezos_get_delegations.go - [32m89.66[0m  3/29 uncovered
+   ├ store/pgxstore - [32m95.12[0m  2/41 uncovered
+   │ ├ querybuilder.go - [32m100.00[0m  0/21 uncovered
+   │ └ store.go - [32m90.00[0m  2/20 uncovered
+   └ tezos - [32m100.00[0m  0/30 uncovered
+     ├ delegation.go - [32m100.00[0m  0/10 uncovered
+     ├ pagination.go - [32m100.00[0m  0/12 uncovered
+     └ year.go - [32m100.00[0m  0/8 uncovered

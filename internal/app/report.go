@@ -37,11 +37,19 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	// -fail-under it is a failed gate instead: exit 2 would read as "prettycov could not run"
 	// when the truth is that coverage was too low.
 	if _, ok := tree.Coverage.Percentage(); !ok {
+		// The same sentence either way, so an empty report reads the same whichever flags asked
+		// for it. The gate adds what it wanted; it cannot say what emptied the report, and being
+		// told to check `go test -coverprofile` for a report your own pattern emptied is the
+		// confusion emptyReason exists to prevent.
+		reason := emptyReason(excluded)
+
 		if cfg.FailUnder != nil {
-			return checkThreshold(cfg.FailUnder, tree, stderr)
+			_, _ = fmt.Fprintf(stderr, "%s, wanted at least %.2f%%\n", reason, *cfg.FailUnder)
+
+			return exitBelow
 		}
 
-		_, _ = fmt.Fprintln(stderr, emptyReason(excluded))
+		_, _ = fmt.Fprintln(stderr, reason)
 
 		return exitFailed
 	}
@@ -53,8 +61,10 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	// The destination is asked about here and nowhere earlier: parsing argv is too early to know
 	// where the report goes, and no other flag needs to.
 	prettycov.DisplayTree(stdout, tree, prettycov.Options{
-		Depth: cfg.Depth,
-		Color: cfg.Color.palette(stdout),
+		Depth:  cfg.Depth,
+		Color:  cfg.Color.palette(stdout),
+		Counts: cfg.Counts,
+		Files:  cfg.Files,
 	})
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
@@ -120,19 +130,15 @@ func plural(n int, thing string) string {
 }
 
 // checkThreshold grades the total against want, which is nil when no gate was asked for.
+//
+// There is always a number by here: showReport refuses a profile with nothing to cover before
+// either caller reaches this, and says what emptied it, which this cannot.
 func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) int {
 	if want == nil {
 		return exitOK
 	}
 
-	// A profile with nothing to cover cannot clear a threshold, and silently passing would make
-	// the gate useless on an empty or mis-pointed profile.
-	pct, ok := tree.Coverage.Percentage()
-	if !ok {
-		_, _ = fmt.Fprintf(stderr, "no statements to cover, wanted at least %.2f%%\n", *want)
-
-		return exitBelow
-	}
+	pct, _ := tree.Coverage.Percentage()
 
 	if pct.Float() < *want {
 		// Percentage renders the coverage figure, as it does everywhere else, so this message and
