@@ -158,8 +158,9 @@ func TestDisplayTreeKeepsDirsThatAreAlsoPackages(t *testing.T) {
 			},
 		},
 		{
-			// A doc.go holding only a package comment has no statements, so m/x's totals equal
-			// its child's. It is still a package and still gets a row.
+			// A doc.go holding only a package comment has no statements. Both cases take the
+			// same path now that holding a file is what makes a directory a package — this one
+			// is here so that inferring it from Coverage again would have to delete a test.
 			name: "own file with no statements",
 			files: []prettycov.FileCoverage{
 				file("m/x/doc.go", 0, 0),
@@ -259,18 +260,6 @@ func TestDisplayTreeKeepsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	assert.Equal(t, []string{"m", "a.go", "a.go/b.go"},
 		namesWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}))
 
-	// Where the directory holds two files it does not merge, so both rows really are labelled
-	// "a.go" and only the order they are gathered in separates them: directories first, stably.
-	both := prettycov.Process([]prettycov.FileCoverage{
-		file("m/a.go", 5, 0),
-		file("m/a.go/b.go", 0, 4),
-		file("m/a.go/c.go", 0, 3),
-	}, "", "")
-
-	assert.Equal(t, []string{"m", "a.go", "b.go", "c.go", "a.go"},
-		namesWith(t, both, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
-		"the directory and its files first, then the file of the same name")
-
 	// Two nodes, so two rows, and m is exactly the sum of them: the file's 5 and the directory's
 	// 7. The directory holds one file and nothing else, so it merges into it and the two rows end
 	// up telling apart by more than the number.
@@ -279,6 +268,25 @@ func TestDisplayTreeKeepsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	assert.Contains(t, out, "m - 41.67  7/12 uncovered\n")
 	assert.Contains(t, out, "a.go - 100.00  0/5 uncovered\n", "the file")
 	assert.Contains(t, out, "a.go/b.go - 0.00  7/7 uncovered\n", "the directory of the same name")
+}
+
+// Sorting by label separates a merged package from a file beside it, but a directory holding two
+// files does not merge and keeps a name a file can also have. Nothing about the report requires one
+// order over the other; it requires the same one every run, which the stable sort gives only
+// because directories are gathered before files. Reversing those two loops is a plausible tidy-up
+// and would change every report holding such a pair.
+func TestDisplayTreeOrdersATieBetweenAFileAndADirectory(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/a.go", 5, 0),
+		file("m/a.go/b.go", 0, 4),
+		file("m/a.go/c.go", 0, 3),
+	}, "", "")
+
+	assert.Equal(t, []string{"m", "a.go", "b.go", "c.go", "a.go"},
+		namesWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
+		"the directory and its files first, then the file of the same name")
 }
 
 // A file is one level below the package holding it, exactly as a subdirectory is — -depth counts

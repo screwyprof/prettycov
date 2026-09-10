@@ -80,15 +80,21 @@ type entry struct {
 // level and no glyph rather than being filtered out later: without that the last package under a
 // directory would draw the branch glyph of a middle one whenever a file sorted after it.
 func (b *rowBuilder) visible(tree *PathTree) []entry {
-	size := len(tree.Children)
-	if b.opts.Files {
-		size += len(tree.Files)
-	}
-
-	entries := make([]entry, 0, size)
+	entries := make([]entry, 0, len(tree.Children)+len(tree.Files))
 
 	for name, node := range tree.Children {
 		label, merged := collapse(name, node, b.opts.Files)
+
+		// The filesystem root is the one node with no name of its own: an absolute path splits to
+		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
+		// there is something below to fold. When there is not — a root holding two files — the
+		// label is left empty, and a blank row says nothing. Decided here rather than at the row,
+		// so the sort below sees the label the reader will: "/" belongs after ".", and sorting on
+		// the empty string put it first.
+		if label == "" {
+			label = "/"
+		}
+
 		entries = append(entries, entry{label: label, node: merged})
 	}
 
@@ -106,7 +112,7 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 	// keeps it, leaving the two tied: an unstable sort would order them differently between runs,
 	// and this output gets diffed. Directories are gathered first, so a tie puts the directory
 	// above the file.
-	slices.SortStableFunc(entries, func(a, b entry) int { return strings.Compare(a.label, b.label) })
+	slices.SortStableFunc(entries, func(x, y entry) int { return strings.Compare(x.label, y.label) })
 
 	return entries
 }
@@ -121,26 +127,17 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 	entries := b.visible(tree)
 
 	for i, e := range entries {
-		label, node := e.label, e.node
 		root := level == 0
-
-		// The filesystem root is the one node with no name of its own: an absolute path splits to
-		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
-		// there is something below to fold. When there is not — a profile holding "/a.go" — the
-		// label is left empty, and a blank row says nothing.
-		if label == "" {
-			label = "/"
-		}
 
 		b.rows = append(b.rows, Row{
 			Prefix: padding + symbol(root, getBoxType(i, len(entries))),
 			// Sanitised here rather than at the writer, so no consumer of a Row has to remember to.
-			Label:    sanitize(label),
+			Label:    sanitize(e.label),
 			Level:    int(level),
-			Coverage: node.Coverage,
+			Coverage: e.node.Coverage,
 		})
 
-		b.walk(node, level+1, padding+symbol(root, childSymbol(i, len(entries))))
+		b.walk(e.node, level+1, padding+symbol(root, childSymbol(i, len(entries))))
 	}
 }
 
