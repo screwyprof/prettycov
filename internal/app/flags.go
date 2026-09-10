@@ -85,8 +85,7 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	cfg.Depth = defaultDepth
 
 	set.Func("depth",
-		// %q and %s over a spelled-out "max" and %d: Depth renders both, so the help cannot
-		// advertise a word ParseDepth does not read, or a default it would print differently.
+		// Rendered by Depth, so the help cannot advertise a word ParseDepth does not read.
 		fmt.Sprintf("`levels` below the top row, like tree -L, or %q (default %s)",
 			prettycov.DepthAll, defaultDepth),
 		func(s string) error {

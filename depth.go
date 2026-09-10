@@ -13,9 +13,7 @@ type Depth uint
 // DepthAll shows every level.
 const DepthAll Depth = math.MaxUint
 
-// depthMax is how DepthAll is spelled: on the way in, on the way out, and in what the CLI says
-// when it refuses one. Written once so those cannot drift apart and advertise an input that is no
-// longer read.
+// depthMax is how DepthAll is spelled, in and out and in the errors, so those cannot drift apart.
 const depthMax = "max"
 
 var (

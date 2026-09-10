@@ -8,11 +8,8 @@ import (
 )
 
 // ClearColorEnv puts the environment in the state where only the destination decides whether to
-// colour. In package app so the colour tests inside it and the app_test suite outside share one
-// definition: a variable that joins the convention is then added once, rather than to whichever
-// copy the author happened to be reading.
-//
-// Its callers cannot be parallel: t.Setenv panics under t.Parallel.
+// colour. In package app so both test packages share one definition. Callers cannot be parallel:
+// t.Setenv panics under t.Parallel.
 func ClearColorEnv(t *testing.T) {
 	t.Helper()
 

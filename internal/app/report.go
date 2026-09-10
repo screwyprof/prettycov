@@ -32,16 +32,10 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 
 	tree := prettycov.Process(kept, cfg.CurrentRoot, cfg.NewRoot)
 
-	// Nothing to cover is settled once, here, so the tree and -total cannot answer it differently.
-	// It is refused rather than drawn: the tree would be a lone "n/a" and -total nothing a script
-	// could read, and either exits 0 and turns a coverage step into a green no-op. A profile from
-	// a `go test` that matched no packages arrives like this, and so does one that -exclude
-	// emptied — ParseExclude refuses the empty pattern, but ".*", or ".go" typed for "\.pb\.go$",
-	// take every file just as well, so the question is asked of what is left.
-	//
-	// With -fail-under it is a failed gate instead, and checkThreshold says what the threshold
-	// was. Exiting 2 would mean "prettycov could not run", so a CI step would report a broken
-	// build where the truth is that coverage was too low.
+	// Settled once here, so the tree and -total cannot answer it differently. Refused rather than
+	// drawn, because an empty report exits 0 and turns a coverage gate into a green no-op. With
+	// -fail-under it is a failed gate instead: exit 2 would read as "prettycov could not run"
+	// when the truth is that coverage was too low.
 	if _, ok := tree.Coverage.Percentage(); !ok {
 		if cfg.FailUnder != nil {
 			return checkThreshold(cfg.FailUnder, tree, stderr)
@@ -66,12 +60,9 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	return checkThreshold(cfg.FailUnder, tree, stderr)
 }
 
-// emptyReason says why there is nothing to cover: the patterns, when they are what took the
-// statements out, or the profile itself.
-//
-// Statements rather than surviving files: a profile whose last remaining file declares none is
-// still empty because of the pattern, and "no statements to cover" would send the reader off to
-// check `go test -coverprofile` instead of the -exclude that emptied the report.
+// emptyReason blames -exclude when it is what took the statements out, and the profile otherwise.
+// Statements rather than surviving files: a leftover file declaring none would otherwise send the
+// reader to check `go test -coverprofile` for a report a pattern emptied.
 func emptyReason(excluded []prettycov.Exclusion) string {
 	for _, ex := range excluded {
 		if ex.Statements > 0 {
@@ -83,12 +74,8 @@ func emptyReason(excluded []prettycov.Exclusion) string {
 }
 
 // showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
-// -fail-under still checks it, exactly as it checks the report.
-//
-// There is always a number by here: showReport settles a profile with nothing to cover, so this
-// never has to decide what to print instead — and a caller reading
-// `COVERAGE := $(shell prettycov -total)` never sees "n/a" or a 0.00 that reads as a real and
-// terrible number.
+// There is always a number by here: showReport has already refused a profile with nothing to
+// cover, so `COVERAGE := $(shell prettycov -total)` never picks up an "n/a" or a bare 0.00.
 func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
 	pct, _ := tree.Coverage.Percentage()
 

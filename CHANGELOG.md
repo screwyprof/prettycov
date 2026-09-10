@@ -22,12 +22,9 @@ tags.
   for this reason; `.*`, or `.go` typed for `\.pb\.go$`, empty the report just as well and were
   not. With `-fail-under` the gate still reports it and exits 1, and no longer draws the `n/a`
   row above the message — an empty report reads the same now whichever flags asked for it.
-- `make release` sorts out a failed push instead of reporting it: the local tag is dropped when
-  origin has nothing, so a rerun tags again rather than being told to bump `./VERSION`, and kept
-  when origin has the tag or cannot be reached, since re-tagging then mints an object origin
-  rejects for good. `make publish` asks the proxy through `go mod download` into a throwaway
-  module cache, which drops the `curl` requirement and reports a failure in the proxy's own
-  words, instead of retrying a 404 the proxy will keep returning for up to half an hour.
+- `make publish` is the one `go list -m` the Go publishing guide prescribes, dropping the `curl`
+  requirement and the retry loop around it. `make release` no longer tries to undo a failed push:
+  a pushed tag cannot be unpublished, so deleting one is the worse outcome.
 
 ### Go API
 

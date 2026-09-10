@@ -180,19 +180,6 @@ nix-hash: ## recompute flake.nix vendorHash (run after go.mod/go.sum change)
 	echo "vendorHash = $$hash"
 
 # ./VERSION holds the last released version — bump it, then run this.
-#
-# The push is the point of no return, so a failed one is sorted out rather than reported. Origin
-# has nothing: the local tag goes, so a rerun tags again instead of hitting the guard below and
-# being told to bump ./VERSION for a release that never left the machine. Origin has this very
-# tag: the push landed and said otherwise, so the tag stays and only publishing is left. Origin
-# has that name on another commit: this release did not happen, and the local tag would trip the
-# guard on every rerun, so it goes and ./VERSION needs bumping. Origin cannot be reached: none of
-# those is known, and deleting a tag that may well have landed is what mints a second object
-# origin rejects for good, so it stays.
-#
-# `git tag -a` ends in `;` rather than `&&`: .SHELLFLAGS carries -e, so a failed tag stops the
-# recipe right there, where `&&` would hand the failure to the `||` below and roll back a tag that
-# was never made.
 release: ## tag a release from ./VERSION and publish it to the module proxy
 	@v="v$$(cat VERSION)"; \
 	if ! git diff --quiet || ! git diff --cached --quiet; then \
@@ -203,56 +190,20 @@ release: ## tag a release from ./VERSION and publish it to the module proxy
 	fi; \
 	echo -e "$(OK_COLOR)==> Tagging $$v$(NO_COLOR)"; \
 	git tag -a "$$v" -m "$$v"; \
-	git push origin "$$v" || { \
-		probe=0; git ls-remote --exit-code --tags origin "$$v" >/dev/null 2>&1 || probe=$$?; \
-		if [ $$probe = 2 ]; then \
-			git tag -d "$$v"; \
-		elif [ $$probe != 0 ]; then \
-			echo "cannot reach origin to see whether $$v landed, so the local tag stays"; \
-			echo "delete it yourself if it did not: git tag -d $$v"; \
-		elif [ "$$(git ls-remote --tags origin "$$v^{}" | cut -f1)" = "$$(git rev-parse "$$v^{}")" ]; then \
-			echo "origin already has $$v, at this commit; rerun just: make publish"; \
-		else \
-			git tag -d "$$v"; \
-			echo "origin already has $$v, at another commit — this release did not happen; bump ./VERSION"; \
-		fi; \
-		exit 1; }
+	git push origin "$$v"
 	@$(MAKE) --no-print-directory publish \
 		|| { echo "the tag is pushed; rerun just: make publish"; exit 1; }
 
-# Step 6 of https://go.dev/doc/modules/publishing: ask the proxy for the version. proxy.golang.org
-# caches a version the first time anyone asks for it, index.golang.org lists what the proxy has
-# learned, and pkg.go.dev builds from that — so a release nobody asks for stays unpublished. Its
-# own target because the tag is already pushed by the time it runs: if this fails, `make publish`
-# retries it, where `make release` would stop at the tag that now exists.
+# Asks the proxy to fetch the version, so pkg.go.dev lists it now instead of when the first user
+# pulls it through. Optional: the proxy fetches on anyone's first request either way.
 #
-# Into a throwaway GOMODCACHE, which is what makes this a request at all: the go command answers
-# from the cache once a version is local, so anyone who smoke-tested the release first would get a
-# green run and nothing published. GOPRIVATE and GONOPROXY are cleared for the same reason, either
-# one matching this module sends the go command straight past the proxy to the origin.
-#
-# The go tool rather than a hand-made HTTP request: it escapes the uppercase in a module path
-# itself, needs nothing on PATH that building this repo does not already need, and phrases a
-# failure in the proxy's own words — a v2 without a /v2 module path, a go.mod it cannot read, or
-# the plain 404 that means it has not fetched the tag yet. Not -json, which reports a failure as a
-# field and can still exit 0, where this target's whole job is to fail when nothing was published.
+# Step 6 of https://go.dev/doc/modules/publishing, verbatim. It answers from the module cache
+# instead if this version is already there, and then asks nobody — which is harmless, since the
+# only way it got there is a fetch that went through the proxy already.
 publish: ## request ./VERSION from the module proxy, so pkg.go.dev indexes it
 	@v="v$$(cat VERSION)"; \
 	echo -e "$(OK_COLOR)==> Publishing $$v to the module proxy$(NO_COLOR)"; \
-	cache=$$(mktemp -d); rc=0; \
-	out=$$(GOMODCACHE=$$cache GOPROXY=https://proxy.golang.org GOPRIVATE= GONOPROXY= GOFLAGS= \
-		go mod download "$$(go list -m)@$$v" 2>&1) || rc=$$?; \
-	GOMODCACHE=$$cache go clean -modcache || true; rm -rf "$$cache" || true; \
-	if [ $$rc = 0 ]; then \
-		echo "  proxy has it; index.golang.org and pkg.go.dev follow"; exit 0; \
-	fi; \
-	printf '%s\n' "$$out" | sed 's/^/  /'; \
-	case "$$out" in \
-	*"404 Not Found"*) \
-		echo "  a 404 naming no fault is the proxy remembering a miss from before the tag existed;"; \
-		echo "  it holds that for up to 30 minutes — wait it out and rerun: make publish";; \
-	esac; \
-	exit 1
+	GOPROXY=https://proxy.golang.org go list -m "$$(go list -m)@$$v"
 
 # The nix devShell registers this on entry; this target is for everyone else. Needs pre-commit
 # on PATH (pip install pre-commit / brew install pre-commit).
