@@ -147,6 +147,12 @@ func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 
 	assert.Nil(t, tree.Get("m/absent"))
 	assert.NotNil(t, tree.Get("m/pkg"), "and finds one that is")
+
+	// A miss is chainable, so walking down a path one component at a time does not have to check
+	// after every step. 0.8.0's Get returned the file itself and IsFile answered for a nil node;
+	// with files behind a map, this is what is left to be nil-safe.
+	assert.Nil(t, tree.Get("m/absent").Get("deeper"), "a miss is still a tree to ask")
+	assert.Nil(t, (*prettycov.PathTree)(nil).Get("m"))
 }
 
 func TestProcessShortensTheRootPath(t *testing.T) {

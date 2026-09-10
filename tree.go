@@ -70,9 +70,17 @@ func child(nodes *map[string]*PathTree, name string) *PathTree {
 	return created
 }
 
-// Get returns the directory at key, or nil if the tree has no such path. Files are reached through
-// the Files map of the directory holding them, so that a name which is both answers unambiguously.
+// Get returns the directory at key, or nil if the tree has no such path — including when there is
+// no tree, so that a miss can be chained: Get("a").Get("b") is nil where it used to panic.
+//
+// Files are reached through the Files map of the directory holding them, so that a name which is
+// both answers unambiguously. That map is a field rather than a method, so nothing can make it
+// nil-safe the way this is: a caller reading one still has to check what Get handed back.
 func (n *PathTree) Get(key string) *PathTree {
+	if n == nil {
+		return nil
+	}
+
 	node := n
 	parts := strings.SplitSeq(key, "/")
 

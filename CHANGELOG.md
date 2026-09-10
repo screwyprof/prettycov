@@ -33,7 +33,9 @@ tags.
 
 - **Breaking:** `Get` resolves directories, so `Get("m/x/a.go")` is nil where 0.8.0 returned the
   file. This one does not announce itself: it still compiles. Read a file from the `Files` map of
-  the directory holding it.
+  the directory holding it — and check that directory for nil first, because `Files` is a field:
+  `Get("m/x").Files["a.go"]` panics for a profile with no `m/x`, where `Get("m/x/a.go").IsFile()`
+  returned false. `Get` itself now answers nil for a nil tree, so `Get("a").Get("b")` is safe.
 
 ## [0.8.0] — 2026-09-10
 
