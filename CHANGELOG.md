@@ -15,62 +15,41 @@ tags.
 ### Added
 
 - `-counts` writes the statement counts after each percentage, as uncovered over total:
-  `scraper - 88.00  18/150 uncovered`. A percentage hides size, and ranking by it alone points at
-  the smallest package with the loudest number — in delegator's profile `pkg/logger` at 92.50 and
-  `web/handler/bind` at 83.33 hold the same three untested statements. Off by default, so the tree
-  stays as it was; `-total` ignores it, since that output is read into variables.
+  `scraper - 88.00  18/150 uncovered`. Off by default; `-total` ignores it.
 
 - `-files` draws the profile's files as well as its packages, one level below the package holding
-  them, so a package's own files sit beside its subpackages the way `ls`, `tree` and `du -a` list a
-  directory's entries.
+  them, so a file costs a `-depth` level as a subpackage does. Every row is then the sum of what is
+  drawn beneath it. Off by default.
 
-  This is what makes a report addable. The files are now the tree's leaves, so every node's total
-  is exactly the sum of what hangs below it. Before, a package holding both files and subpackages
-  kept its own statements on its own row with nothing below accounting for them: delegator's
-  `scraper` reports 150 statements and the subpackages under it show 52, the other 98 being
-  `service.go` and `subscriber.go`, which no row drew. With `-files` they appear as the file rows
-  they came from; without it they are simply not drawn — which is what `du` does, and `du -a` is
-  its `-files`.
-
-  A file costs a `-depth` level exactly as a subpackage does, being one of a directory's entries.
-  Off by default: the report is about packages.
-
-  One profile shape is exempt, and only one: where a file and a directory share a name — `m/a.go`
-  beside `m/a.go/b.go` — a single row stands for both and carries its own statements as well as its
-  subtree, so it reads higher than the rows below it. No filesystem lets the two share a name, so
-  no `go test` run produces it; merging two profiles can.
+  One shape is exempt: a file and a directory sharing a name — `m/a.go` beside `m/a.go/b.go` — get
+  a single row carrying both, which therefore reads higher than the rows below it. No `go test` run
+  produces such a profile; merging two can.
 
 ### Fixed
 
-- Labels lose the characters a terminal acts on rather than draws, not only the control characters.
-  A path holding `U+202E` reversed the reading order of everything after it, so a file could be
-  drawn under a name it does not have — the Trojan Source trick. Those are category Cf, which
-  `unicode.IsControl` does not cover. Line and paragraph separators (`U+2028`, `U+2029`) and the
-  zero-width no-break space (`U+FEFF`) go for the same reason: the report is read a line at a time.
-  The joiners `U+200C` and `U+200D`, which spell ordinary words in Persian and Devanagari, still
-  render.
+- Labels lose bidi controls (`U+202E` and its relatives), line and paragraph separators (`U+2028`,
+  `U+2029`) and `U+FEFF`, not only control characters — a path holding one could draw a file under
+  a name it does not have. The joiners `U+200C` and `U+200D` still render.
 
-- A file sitting directly at the filesystem root draws under `/` rather than under a blank label,
-  and gets one row rather than two. `path.Dir("/a.go")` is `/`, and splitting a string that is only
-  the separator gave the root a nameless child of a nameless parent. `-new=/` reaches this from an
-  ordinary profile; `/home/ci/repo` and the like were already right and are unchanged.
+- An empty report gives the same reason whichever flags asked for it. With `-fail-under` it read
+  `no statements to cover` even when `-exclude` had emptied it, and now reads
+  `-exclude left nothing to report, wanted at least 80.00%`.
+
+- A file directly at the filesystem root draws under `/` rather than under a blank label, and gets
+  one row rather than two. `-new=/` reaches this from an ordinary profile.
 
 ### Go API
 
-- **Breaking:** `Rows` takes `Options` in place of a bare `Depth`, since which rows exist is now
-  two questions rather than one. It reads `Depth` and `Files` and ignores the rest. Callers pass
-  `prettycov.Options{Depth: d}` for what used to be `Rows(tree, d)`.
+- **Breaking:** `Rows` takes `Options` in place of a bare `Depth`, and reads `Depth` and `Files`
+  from it. Callers pass `prettycov.Options{Depth: d}` for what used to be `Rows(tree, d)`.
 
-- `CoverageStats.Total` is the statements a node holds, covered or not — the denominator of the
-  percentage beside it, named once so `-counts` and `Percentage` cannot divide by different sums.
+- **Breaking:** `PathTree.Children` holds the profile's files as well as its directories. This one
+  still compiles and returns different data; `IsFile` tells them apart.
 
-- `Row.Level` is how far a row sits below the top one. `Prefix` says the same in box-drawing
-  characters, so anything rendering rows as something other than a tree had to measure the glyphs.
+- `CoverageStats.Total` is the statements a node holds, covered or not.
 
-- **Breaking:** `PathTree.Children` now holds the profile's files as well as its directories, so
-  anything walking the tree to enumerate packages sees `service.go` beside `config` and `store`.
-  This one does not announce itself — it still compiles and returns different data. `IsFile`
-  reports which a node is; `Rows` filters them out unless `Options.Files` is set.
+- `Row.Level` is how far a row sits below the top one, which `Prefix` says in box-drawing
+  characters.
 
 ## [0.7.1] — 2026-09-10
 
@@ -85,8 +64,9 @@ tags.
   not. With `-fail-under` the gate still reports it and exits 1, and no longer draws the `n/a`
   row above the message — an empty report reads the same now whichever flags asked for it.
 - `make publish` is the one `go list -m` the Go publishing guide prescribes, dropping the `curl`
-  requirement and the retry loop around it. `make release` no longer tries to undo a failed push:
-  a pushed tag cannot be unpublished, so deleting one is the worse outcome.
+  requirement and the retry loop around it. `make release` no longer refuses a version ./VERSION
+  has already been tagged at: `git tag` says so itself, and `.SHELLFLAGS` carries `-e`, so the
+  recipe still stops before pushing.
 
 ### Go API
 

@@ -174,8 +174,7 @@ func sanitize(label string) string {
 func obeyed(r rune) bool {
 	return unicode.IsControl(r) ||
 		unicode.Is(unicode.Bidi_Control, r) ||
-		unicode.In(r, unicode.Zl, unicode.Zp) ||
-		r == '\ufeff'
+		r == '\u2028' || r == '\u2029' || r == '\ufeff'
 }
 
 // formatCoverage renders a package with no statements as "n/a" rather than a percentage — it used

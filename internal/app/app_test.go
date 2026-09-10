@@ -463,8 +463,13 @@ func TestRunExcludesPackages(t *testing.T) {
 		{
 			// A pattern that excludes the whole profile leaves nothing to average, which
 			// checkThreshold already refuses rather than passing silently.
+			// The gate says what it wanted; it cannot say what emptied the report, so the reason
+			// is the same sentence either way. Being sent to check `go test -coverprofile` for a
+			// report your own pattern emptied is what emptyReason exists to prevent, and the
+			// gated path used to do exactly that.
 			name: "excluding everything cannot pass a gate",
 			args: []string{"-exclude", "example.com", "-fail-under", "0"}, wantCode: codeBelow,
+			wantErr: "-exclude left nothing to report, wanted at least 0.00%",
 		},
 		{
 			// Without a gate nothing refuses it downstream, and an empty report exiting 0 is
