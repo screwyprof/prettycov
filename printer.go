@@ -79,7 +79,12 @@ type entry struct {
 // level and no glyph rather than being filtered out later: without that the last package under a
 // directory would draw the branch glyph of a middle one whenever a file sorted after it.
 func (b *rowBuilder) visible(tree *PathTree) []entry {
-	entries := make([]entry, 0, len(tree.Children)+len(tree.Files))
+	size := len(tree.Children)
+	if b.opts.Files {
+		size += len(tree.Files)
+	}
+
+	entries := make([]entry, 0, size)
 
 	for name, node := range tree.Children {
 		entries = append(entries, entry{name: name, node: node})
@@ -109,11 +114,7 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 	entries := b.visible(tree)
 
 	for i, e := range entries {
-		// A directory's own file is merged into it only where that file has a row of its own to
-		// merge with: below the depth being drawn there is no second row, so merging would show a
-		// filename the depth was asked to leave out, and put one branch at file granularity while
-		// its siblings stayed at package granularity.
-		label, node := collapse(e.name, e.node, b.opts.Files && level < b.opts.Depth)
+		label, node := collapse(e.name, e.node, b.opts.Files)
 		root := level == 0
 
 		// The filesystem root is the one node with no name of its own: an absolute path splits to
@@ -146,26 +147,20 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 // the first does not: "tzkt/client.go" names the directory and the file in the row the directory
 // had anyway. Two files, or a file beside a subdirectory, and it is left alone.
 func collapse(label string, node *PathTree, mergeFiles bool) (string, *PathTree) {
-	for {
-		switch {
-		case len(node.Files) == 0 && len(node.Children) == 1:
-			label, node = descend(label, node.Children)
-		case mergeFiles && len(node.Files) == 1 && len(node.Children) == 0:
-			// A file has nothing below it, so this is where the run ends.
-			return descend(label, node.Files)
-		default:
-			return label, node
+	for len(node.Files) == 0 && len(node.Children) == 1 {
+		for name, child := range node.Children {
+			label, node = label+"/"+name, child
 		}
 	}
-}
 
-// descend takes the sole entry of a map, which its callers have checked there is exactly one of.
-func descend(label string, nodes map[string]*PathTree) (string, *PathTree) {
-	for name, node := range nodes {
-		return label + "/" + name, node
+	// A file has nothing below it, so this is where the run ends either way.
+	if mergeFiles && len(node.Files) == 1 && len(node.Children) == 0 {
+		for name, file := range node.Files {
+			return label + "/" + name, file
+		}
 	}
 
-	return label, nil
+	return label, node
 }
 
 // sanitize replaces the characters in a label that a terminal would obey rather than draw.

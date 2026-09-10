@@ -29,6 +29,10 @@ tags.
   directories below it and nothing else, as it was before 0.8.0. `IsFile` is **removed** — a file
   and a directory of the same name are separate nodes, so nothing has to ask which a node is.
 
+- **Breaking:** `Get` resolves directories, so `Get("m/x/a.go")` is nil where 0.8.0 returned the
+  file. This one does not announce itself: it still compiles. Read a file from the `Files` map of
+  the directory holding it.
+
 ## [0.8.0] — 2026-09-10
 
 ### Added

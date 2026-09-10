@@ -63,6 +63,8 @@ func assertRowsMatchTheProfile(
 	lines := strings.Split(strings.TrimSuffix(renderOpts(t, tree, opts), "\n"), "\n")
 	require.Lenf(t, lines, len(rows), "one line per row, depth=%v files=%v", opts.Depth, opts.Files)
 
+	drawnAt := map[string]int{}
+
 	for i, r := range rowInfos(rows) {
 		// Candidates, not one total: a name can be a file and a directory at once, and then the
 		// path names two nodes with different numbers. Every other path names exactly one, so this
@@ -70,6 +72,12 @@ func assertRowsMatchTheProfile(
 		want, ok := totals[r.path]
 		require.Truef(t, ok, "row %q is not a path the profile names", r.path)
 		assert.Containsf(t, want, rows[i].Coverage, "row %q at depth %v", r.path, opts.Depth)
+
+		// And no more rows at a path than there are nodes to draw there, or one node has been
+		// drawn twice and the candidates would accept both.
+		drawnAt[r.path]++
+		assert.LessOrEqualf(t, drawnAt[r.path], len(want),
+			"%q is drawn %d times and the profile names %d", r.path, drawnAt[r.path], len(want))
 
 		if r.total > 0 {
 			assert.Containsf(t, lines[i], fmt.Sprintf("%d/%d uncovered", rows[i].Coverage.Uncovered, r.total),
@@ -120,6 +128,14 @@ func assertRowsHoldEveryStatement(
 
 	for path, n := range held {
 		assert.Equalf(t, kept[path], n, "the rows for %q keep back %d statements", path, n)
+	}
+
+	// Per path is what the collision needs, and it lets one row of a pair borrow from the other:
+	// swap the two and the sum still balances. No row can hold back less than nothing, and a row
+	// carrying its sibling's number does exactly that.
+	for i, r := range infos {
+		assert.GreaterOrEqualf(t, r.total-below[i], 0,
+			"row %q reports %d statements and the rows below it show %d", r.path, r.total, below[i])
 	}
 
 	// Arithmetic alone is too weak: a row that quietly keeps back a file no deeper row shows still
@@ -190,12 +206,11 @@ func nodeTotals(files []prettycov.FileCoverage) map[string][]prettycov.CoverageS
 	}
 
 	totals := map[string][]prettycov.CoverageStats{}
-	for path, stat := range asFile {
-		totals[path] = append(totals[path], stat)
-	}
 
-	for path, stat := range asDir {
-		totals[path] = append(totals[path], stat)
+	for _, in := range []map[string]prettycov.CoverageStats{asFile, asDir} {
+		for path, stat := range in {
+			totals[path] = append(totals[path], stat)
+		}
 	}
 
 	return totals
@@ -285,6 +300,14 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 		},
 		// And the root can hold a file directly, which is the one node with no name of its own.
 		// `-new=/` reaches this from an ordinary profile.
+		// Two files under the directory, so it does not merge into one of them and the file and
+		// the directory are drawn at the same path — the shape the per-path reconciliation exists
+		// for, and the only one where a row could borrow its sibling's number.
+		"a file and a directory of one name, both drawn": {
+			file("m/a.go", 5, 0),
+			file("m/a.go/b.go", 0, 4),
+			file("m/a.go/c.go", 0, 3),
+		},
 		"files at the filesystem root": {
 			file("/a.go", 3, 1),
 			file("/b/c.go", 2, 0),

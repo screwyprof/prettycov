@@ -42,18 +42,18 @@ Turn on the two flags that say more, and go a level deeper:
 ❯ prettycov -counts -files -depth=2
  github.com/screwyprof/delegator - 91.54  34/402 uncovered
  ├ pkg - 93.33  8/120 uncovered
- │ ├ clock - 100.00  0/2 uncovered
- │ ├ httpkit - 96.30  1/27 uncovered
+ │ ├ clock/clock.go - 100.00  0/2 uncovered
+ │ ├ httpkit/httpkit.go - 96.30  1/27 uncovered
  │ ├ logger - 92.50  3/40 uncovered
- │ ├ pgxdb - 75.00  4/16 uncovered
- │ └ tzkt - 100.00  0/35 uncovered
+ │ ├ pgxdb/pgxdb.go - 75.00  4/16 uncovered
+ │ └ tzkt/client.go - 100.00  0/35 uncovered
  ├ scraper - 88.00  18/150 uncovered
- │ ├ config - 100.00  0/1 uncovered
+ │ ├ config/config.go - 100.00  0/1 uncovered
  │ ├ service.go - 92.31  5/65 uncovered
  │ ├ store - 74.51  13/51 uncovered
  │ └ subscriber.go - 100.00  0/33 uncovered
  └ web - 93.94  8/132 uncovered
-   ├ api - 100.00  0/14 uncovered
+   ├ api/errors.go - 100.00  0/14 uncovered
    ├ handler - 87.23  6/47 uncovered
    ├ store/pgxstore - 95.12  2/41 uncovered
    └ tezos - 100.00  0/30 uncovered
@@ -81,7 +81,7 @@ distinct, so a CI step can tell a missing profile from a failed gate.
 ## What a percentage will not tell you
 
 A percentage hides size, and that changes which package you should open first. In the tree above
-`pkg/pgxdb` reads 75.00 and `web/handler` reads 87.23 — and `handler` holds **more** untested code
+`pgxdb/pgxdb.go` reads 75.00 and `handler` reads 87.23 — and `handler` holds **more** untested code
 than `pgxdb`, six statements against four. Sorting by the percentage points at the smaller package
 with the louder number; the uncovered count is the one to act on. That is what `-counts` is for.
 
@@ -104,10 +104,9 @@ drawn, so a package holding both files and subpackages shows a total larger than
 children; `du` behaves the same way, and `du -a` is its `-files`. A file costs a `-depth` level
 exactly as a subpackage does, being one of a directory's entries.
 
-**A package whose whole content is one file is one row**, named for both: `pkg/tzkt/client.go`
-rather than `tzkt` above an identical `client.go`. Only where that file is being drawn anyway —
-at a `-depth` that stops above it there is no second row to merge with, and the package keeps its
-own name.
+**A package whose whole content is one file is one row**, named for both: `tzkt/client.go` rather
+than `tzkt` above an identical `client.go`. A row's label is a property of the node, so raising
+`-depth` adds rows below rather than renaming the ones already drawn.
 
 ## Just the number
 
