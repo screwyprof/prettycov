@@ -10,11 +10,6 @@ type CoverageStats struct {
 	Uncovered int
 }
 
-// Percentage reports the share of statements covered. The bool is false when there are none to
-// cover, which is not 0% — there is nothing to report.
-//
-// Derived rather than stored: a stored percentage can disagree with the counts beside it, which is
-// exactly how the roll-up used to go wrong.
 // Total is the statements a node holds, covered or not. Named rather than added up at each use,
 // because it is the denominator of the percentage beside it and the two must be the same number:
 // -counts prints the fraction the percentage stands for, so a second expression for it could drift
@@ -23,6 +18,11 @@ type CoverageStats struct {
 // No overflow check: this is the raw sum, and Percentage is what refuses one that has wrapped.
 func (c CoverageStats) Total() int { return c.Covered + c.Uncovered }
 
+// Percentage reports the share of statements covered. The bool is false when there are none to
+// cover, which is not 0% — there is nothing to report.
+//
+// Derived rather than stored: a stored percentage can disagree with the counts beside it, which is
+// exactly how the roll-up used to go wrong.
 func (c CoverageStats) Percentage() (Percentage, bool) {
 	total := c.Total()
 
