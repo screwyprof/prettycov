@@ -10,7 +10,7 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
-## [Unreleased]
+## [0.9.0] — 2026-09-10
 
 ### Changed
 
@@ -24,6 +24,14 @@ tags.
 - Every row is now the sum of what is drawn beneath it with no exception. 0.8.0 had one: a file
   and a directory sharing a name were a single node carrying both. They are two nodes now, so the
   report adds up whatever the profile holds.
+
+### Fixed
+
+- Rows sort by the label they are drawn with rather than the name they started as, so a collapsed
+  run lands where a reader looks for it: `store.go` before `store/pgxstore`, not after. 0.8.0
+  sorted on the first component alone, and `/` sorts after `.`. Reachable with `-files` from an
+  ordinary layout — a `store.go` beside a `store/` package — and without it only from a profile
+  that names a directory `store.go`.
 
 ### Go API
 
@@ -323,7 +331,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
-[Unreleased]: https://github.com/screwyprof/prettycov/compare/v0.8.0...HEAD
+[0.9.0]: https://github.com/screwyprof/prettycov/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/screwyprof/prettycov/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/screwyprof/prettycov/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/screwyprof/prettycov/compare/v0.6.0...v0.7.0
