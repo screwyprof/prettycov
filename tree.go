@@ -5,30 +5,33 @@ import (
 	"strings"
 )
 
+// PathTree is a directory and what the profile says about it: the files it holds, the directories
+// below it, and the statements of everything under both once Process has rolled them up.
+//
+// Two maps rather than one, because a name can be a file and a directory at once — a profile
+// naming "m/a.go" and "m/a.go/b.go" describes both, which no filesystem allows but merging two
+// profiles can produce. One namespace made that a single node standing for two things, and every
+// question about it had to be answered with a flag: whether it counted as a package, whether it
+// counted as a file, whether it could be folded away. Here it is simply two nodes.
 type PathTree struct {
 	Coverage CoverageStats
+	// Children is the directories below this one. Files is what the profile named here directly.
+	// A node in Files never has anything below it; a directory of the same name is in Children.
 	Children map[string]*PathTree
-
-	// isPkg marks a directory the profile named directly, as opposed to one created only to hold
-	// another. It cannot be inferred from Coverage: a package whose files declare no statements
-	// contributes nothing, so its totals equal its child's.
-	isPkg bool
-	// isFile marks a node as one of the profile's files rather than a directory. Files are the
-	// only nodes carrying coverage of their own; a directory's is entirely rolled up from these.
-	isFile bool
+	Files    map[string]*PathTree
 }
 
-// add grafts one of the profile's files onto the tree, creating the directories along the way and
-// marking the one that holds it as a package. Unexported: a tree is built by Process from a
-// profile, and there is no reason to assemble one by hand. Get is the half a caller needs.
+// add grafts one of the profile's files onto the tree, creating the directories along the way.
+// Unexported: a tree is built by Process from a profile, and there is no reason to assemble one by
+// hand. Get is the half a caller needs.
 //
 // Only the file carries the statements. Putting them on the directory as well — which is what
 // totalling per directory before building the tree amounts to — makes rollUp count every statement
 // twice, once on the directory and once beneath it.
 func (n *PathTree) add(file string, stats CoverageStats) {
 	// Split with path.Dir rather than by counting components, so a file with no directory at all
-	// still lands in a package: path.Dir gives it ".", which is the row it renders as. Reading the
-	// package off the second-to-last component instead left such a file hanging under the tree
+	// still lands somewhere: path.Dir gives it ".", which is the row it renders as. Reading the
+	// directory off the second-to-last component instead left such a file hanging under the tree
 	// root, which nothing draws — `prettycov -new=.` printed an empty report and exited 0.
 	//
 	// path.Dir cleans on the way, which the walk below relies on: splitting a path is not the same
@@ -39,50 +42,45 @@ func (n *PathTree) add(file string, stats CoverageStats) {
 	// path.Dir returns has no trailing slash, so this touches nothing else.
 	dir := n
 	for part := range strings.SplitSeq(strings.TrimSuffix(path.Dir(file), "/"), "/") {
-		dir = dir.child(part)
+		dir = child(&dir.Children, part)
 	}
 
-	dir.isPkg = true
-
-	leaf := dir.child(path.Base(file))
+	leaf := child(&dir.Files, path.Base(file))
 	// Accumulated, not assigned, so a file named twice adds up rather than keeping the last one.
 	// ParseProfile cannot deliver that — x/tools keys profiles by filename and merges their blocks
 	// — so this is for a caller handing Process a slice of its own.
 	leaf.Coverage.Covered += stats.Covered
 	leaf.Coverage.Uncovered += stats.Uncovered
-	leaf.isFile = true
 }
 
-// child returns the node under n called name, creating it if this is the first time it is named.
-func (n *PathTree) child(name string) *PathTree {
-	if existing, ok := n.Children[name]; ok {
+// child returns the node called name in the given map, creating both if this is the first time it
+// is named. The map is taken by pointer so the nil one a fresh node starts with can be filled in.
+func child(nodes *map[string]*PathTree, name string) *PathTree {
+	if existing, ok := (*nodes)[name]; ok {
 		return existing
 	}
 
-	if n.Children == nil {
-		n.Children = map[string]*PathTree{}
+	if *nodes == nil {
+		*nodes = map[string]*PathTree{}
 	}
 
 	created := &PathTree{}
-	n.Children[name] = created
+	(*nodes)[name] = created
 
 	return created
 }
 
-// IsFile reports whether the node is one of the profile's files and nothing else. Children holds
-// files as well as directories, so anything walking the tree to enumerate packages has to ask.
+// Get returns the directory at key, or nil if the tree has no such path — including when there is
+// no tree, so that a miss can be chained: Get("a").Get("b") is nil where it used to panic.
 //
-// A name that is both — "m/a.go" beside "m/a.go/b.go", which no filesystem allows but a merge of
-// two profiles can produce — reports false, because a caller skipping it would drop the packages
-// underneath while still counting their statements in every ancestor. The report answers it the
-// same way, by drawing such a node as the directory it also is.
-//
-// Nil is not a file: Get returns nil for a path the profile does not hold, and indexing Children
-// with a name it does not have gives the same, so both ways of reaching a node can produce one.
-func (n *PathTree) IsFile() bool { return n != nil && n.isFile && len(n.Children) == 0 }
-
-// Get returns the node at key, or nil if the tree has no such path.
+// Files are reached through the Files map of the directory holding them, so that a name which is
+// both answers unambiguously. That map is a field rather than a method, so nothing can make it
+// nil-safe the way this is: a caller reading one still has to check what Get handed back.
 func (n *PathTree) Get(key string) *PathTree {
+	if n == nil {
+		return nil
+	}
+
 	node := n
 	parts := strings.SplitSeq(key, "/")
 

@@ -10,6 +10,33 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Changed
+
+- With `-files`, a package whose whole content is one file is drawn as one row named for both —
+  `tzkt/client.go`, not `tzkt` above an identical `client.go`. The two rows carried the same number
+  twice. A row's label is a property of its node, so raising `-depth` adds rows below rather than
+  renaming the ones already drawn, and the merged row costs the one `-depth` level the package did
+  rather than a second for the file. On delegator this is 37 rows down to 28. Without `-files`,
+  unchanged.
+
+- Every row is now the sum of what is drawn beneath it with no exception. 0.8.0 had one: a file
+  and a directory sharing a name were a single node carrying both. They are two nodes now, so the
+  report adds up whatever the profile holds.
+
+### Go API
+
+- **Breaking:** `PathTree.Files` holds what the profile named in a directory; `Children` is the
+  directories below it and nothing else, as it was before 0.8.0. `IsFile` is **removed** — a file
+  and a directory of the same name are separate nodes, so nothing has to ask which a node is.
+
+- **Breaking:** `Get` resolves directories, so `Get("m/x/a.go")` is nil where 0.8.0 returned the
+  file. This one does not announce itself: it still compiles. Read a file from the `Files` map of
+  the directory holding it — and check that directory for nil first, because `Files` is a field:
+  `Get("m/x").Files["a.go"]` panics for a profile with no `m/x`, where `Get("m/x/a.go").IsFile()`
+  returned false. `Get` itself now answers nil for a nil tree, so `Get("a").Get("b")` is safe.
+
 ## [0.8.0] — 2026-09-10
 
 ### Added
@@ -296,6 +323,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[Unreleased]: https://github.com/screwyprof/prettycov/compare/v0.8.0...HEAD
 [0.8.0]: https://github.com/screwyprof/prettycov/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/screwyprof/prettycov/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/screwyprof/prettycov/compare/v0.6.0...v0.7.0

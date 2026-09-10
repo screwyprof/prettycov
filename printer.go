@@ -1,8 +1,10 @@
 package prettycov
 
 import (
+	"cmp"
 	"fmt"
 	"io"
+	"path"
 	"slices"
 	"strings"
 	"unicode"
@@ -20,11 +22,12 @@ type Options struct {
 	// Counts writes uncovered/total statements after each percentage, which hides size on its own.
 	Counts bool
 
-	// Files draws the profile's files as well as its packages. They sit one level below the
-	// package that holds them, the way tree -L counts a directory's entries, so a package's own
-	// files and its subpackages appear side by side and every parent is the sum of what is drawn
-	// beneath it. Off by default: the report is about packages, and a file row per source file
-	// buries that.
+	// Files draws the profile's files as well as its packages, as entries of the package holding
+	// them the way tree -L counts a directory's, so a package's own files and its subpackages
+	// appear side by side and every parent is the sum of what is drawn beneath it. A file costs a
+	// level like any other entry, unless it is all its package holds and the two merge into one
+	// row. Off by default: the report is about packages, and a file row per source file buries
+	// that.
 	Files bool
 }
 
@@ -67,29 +70,63 @@ type rowBuilder struct {
 	rows []Row
 }
 
-// visible is the children to draw, sorted — map order is randomised and this output gets diffed
-// between runs. Files are dropped rather than skipped later, so they cost no level and no glyph
-// when they are not being shown: without this the last package under a directory would draw the
-// branch glyph of a middle one whenever a file sorted after it.
-//
-// Only a file with nothing beneath it is dropped. One name can be both — a profile naming
-// "m/a.go" and "m/a.go/b.go" describes a file and a directory called the same thing, which no
-// filesystem allows but merging two profiles, or an -old/-new rewrite, can produce. Dropping it
-// took its whole subtree with it while every ancestor went on counting the statements.
-func (b *rowBuilder) visible(tree *PathTree) []string {
-	names := make([]string, 0, len(tree.Children))
+// entry is one row to draw: the node, and the label it will carry once any run below it has been
+// merged in. A name can belong to a file and a directory at once, so the two cannot be told apart
+// by name alone.
+type entry struct {
+	label string
+	// name is what the map called this before any merging, kept only to break a tie between two
+	// labels that came out the same. Within one map it is unique, so it is a total order there.
+	name string
+	node *PathTree
+}
 
-	for name, child := range tree.Children {
-		if child.IsFile() && !b.opts.Files {
-			continue
+// visible is what to draw below tree, sorted — map order is randomised and this output gets diffed
+// between runs. Files are simply not enumerated when they are not being shown, so they cost no
+// level and no glyph rather than being filtered out later: without that the last package under a
+// directory would draw the branch glyph of a middle one whenever a file sorted after it.
+func (b *rowBuilder) visible(tree *PathTree) []entry {
+	entries := make([]entry, 0, len(tree.Children)+len(tree.Files))
+
+	for name, node := range tree.Children {
+		label, merged := collapse(name, node, b.opts.Files)
+
+		// The filesystem root is the one node with no name of its own: an absolute path splits to
+		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
+		// there is something below to fold. When there is not — a root holding two files — the
+		// label is left empty, and a blank row says nothing. Decided here rather than at the row,
+		// so the sort below sees the label the reader will: "/" belongs after ".", and sorting on
+		// the empty string put it first.
+		if label == "" {
+			label = "/"
 		}
 
-		names = append(names, name)
+		entries = append(entries, entry{label: label, name: name, node: merged})
 	}
 
-	slices.Sort(names)
+	if b.opts.Files {
+		for name, node := range tree.Files {
+			entries = append(entries, entry{label: name, name: name, node: node})
+		}
+	}
 
-	return names
+	// Sorted by the label the reader sees rather than by the name it started as, or a merged row
+	// lands where its first component would have put it: "api/errors.go" before "api.go", which
+	// reads out of order because "/" sorts after ".".
+	//
+	// Merging is what makes two labels able to tie, since it renames a row to something a sibling
+	// may already be called: a profile naming "a.go", "a.go/b.go" and "a.go/c.go" gives the bare
+	// file a "." directory that merges to "a.go", beside the directory of that name. Map order
+	// decided which came first, and this output gets diffed between runs. The name each started as
+	// breaks it, being unique within a map.
+	//
+	// Stable for the tie that leaves: a name in both maps is the same in both. Directories are
+	// gathered first, so that one puts the directory above the file.
+	slices.SortStableFunc(entries, func(x, y entry) int {
+		return cmp.Or(strings.Compare(x.label, y.label), strings.Compare(x.name, y.name))
+	})
+
+	return entries
 }
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
@@ -99,48 +136,58 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 		return
 	}
 
-	names := b.visible(tree)
+	entries := b.visible(tree)
 
-	for i, name := range names {
-		label, node := collapse(name, tree.Children[name])
+	for i, e := range entries {
 		root := level == 0
 
-		// The filesystem root is the one node with no name of its own: an absolute path splits to
-		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
-		// there is something below to fold. When there is not — a profile holding "/a.go" — the
-		// label is left empty, and a blank row says nothing.
-		if label == "" {
-			label = "/"
-		}
-
 		b.rows = append(b.rows, Row{
-			Prefix: padding + symbol(root, getBoxType(i, len(names))),
+			Prefix: padding + symbol(root, getBoxType(i, len(entries))),
 			// Sanitised here rather than at the writer, so no consumer of a Row has to remember to.
-			Label:    sanitize(label),
+			Label:    sanitize(e.label),
 			Level:    int(level),
-			Coverage: node.Coverage,
+			Coverage: e.node.Coverage,
 		})
 
-		b.walk(node, level+1, padding+symbol(root, childSymbol(i, len(names))))
+		b.walk(e.node, level+1, padding+symbol(root, childSymbol(i, len(entries))))
 	}
 }
 
-// collapse folds a run of directories that each hold nothing but the next one into a single row,
-// so a module path does not spend three levels on "github.com", "owner", "repo" before reaching
-// anything worth reading. A directory the profile named itself is never folded away, however few
-// statements it holds — a package whose files declare none still deserves its own row.
+// collapse merges a run of nodes that each hold nothing but the next one into a single row, so a
+// module path does not spend three levels on "github.com", "owner", "repo" before reaching
+// anything worth reading.
 //
-// Nor is a file, which carries statements of its own that the row it folded into would not report:
-// "m/a.go" beside "m/a.go/sub/b.go" makes a.go a file with one child and no package of its own, and
-// folding it left m claiming twelve statements above a single row showing seven.
-func collapse(label string, node *PathTree) (string, *PathTree) {
-	for !node.isPkg && !node.isFile && len(node.Children) == 1 {
+// A directory holding files of its own stops the run, however few statements they declare — a
+// package whose files declare none still deserves its own row — unless mergeFiles and that one
+// file is all it holds. Then the two rows carry the same number twice and the second says nothing
+// the first does not: "tzkt/client.go" names the directory and the file in the row the directory
+// had anyway. Two files, or a file beside a subdirectory, and it is left alone.
+func collapse(label string, node *PathTree, mergeFiles bool) (string, *PathTree) {
+	for len(node.Files) == 0 && len(node.Children) == 1 {
 		for name, child := range node.Children {
-			label, node = label+"/"+name, child
+			label, node = join(label, name), child
+		}
+	}
+
+	// A file has nothing below it, so this is where the run ends either way.
+	if mergeFiles && len(node.Files) == 1 && len(node.Children) == 0 {
+		for name, file := range node.Files {
+			return join(label, name), file
 		}
 	}
 
 	return label, node
+}
+
+// join names something inside label. Cleaned, because "." is a directory of this tree and of no
+// profile — it is where a file the profile gave no directory of its own lands — and putting a
+// separator after it printed "./printer.go", a path no profile contained, beside siblings written
+// plainly.
+//
+// path.Clean rather than path.Join, which has that rule and one more: the filesystem root is the
+// empty label, where the separator is the whole name, and Join cleans "/a.go" down to "a.go".
+func join(label, name string) string {
+	return path.Clean(label + "/" + name)
 }
 
 // sanitize replaces the characters in a label that a terminal would obey rather than draw.
