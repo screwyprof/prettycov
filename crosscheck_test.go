@@ -295,6 +295,14 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 			file("m/a.go/b.go", 0, 4),
 			file("m/a.go/c.go", 0, 3),
 		},
+		// The "." holding a bare file merges to that file's name, which a sibling directory can
+		// already have — two rows of one map tied on the label, where every other tie is between
+		// the two maps.
+		"a bare file taking a sibling's name": {
+			file("a.go", 3, 0),
+			file("a.go/b.go", 0, 4),
+			file("a.go/c.go", 0, 3),
+		},
 		// And the root can hold a file directly, which is the one node with no name of its own.
 		// `-new=/` reaches this from an ordinary profile.
 		"files at the filesystem root": {

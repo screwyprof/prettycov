@@ -112,11 +112,38 @@ func TestRowsHandlesANilTree(t *testing.T) {
 func TestDisplayTreeIsDeterministic(t *testing.T) {
 	t.Parallel()
 
-	tree := prettycov.Process(printerFiles(), "", "")
-	first := render(t, tree, 4)
+	tests := map[string]struct {
+		files []prettycov.FileCoverage
+		opts  prettycov.Options
+	}{
+		"packages": {files: printerFiles(), opts: prettycov.Options{Depth: 4}},
+		// Sorting on the label is not a total order by itself, because merging renames a row to
+		// something a sibling may already be called: the bare "a.go" gets a "." directory that
+		// merges to "a.go", beside the directory of that name. Both are Children, so gathering one
+		// map before the other does not separate them, and map order decided which came first.
+		"labels that tie after merging": {
+			files: []prettycov.FileCoverage{
+				file("a.go", 3, 0),
+				file("a.go/b.go", 0, 4),
+				file("a.go/c.go", 0, 3),
+			},
+			opts: prettycov.Options{Depth: prettycov.DepthAll, Files: true},
+		},
+	}
 
-	for range 50 {
-		assert.Equal(t, first, render(t, tree, 4))
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process(tc.files, "", "")
+			first := renderOpts(t, tree, tc.opts)
+
+			// Enough that a coin flip left to the map would have shown up: the tie above came out
+			// the wrong way about one render in seven.
+			for range 100 {
+				assert.Equal(t, first, renderOpts(t, tree, tc.opts))
+			}
+		})
 	}
 }
 

@@ -1,6 +1,7 @@
 package prettycov
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"path"
@@ -74,7 +75,10 @@ type rowBuilder struct {
 // by name alone.
 type entry struct {
 	label string
-	node  *PathTree
+	// name is what the map called this before any merging, kept only to break a tie between two
+	// labels that came out the same. Within one map it is unique, so it is a total order there.
+	name string
+	node *PathTree
 }
 
 // visible is what to draw below tree, sorted — map order is randomised and this output gets diffed
@@ -97,12 +101,12 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 			label = "/"
 		}
 
-		entries = append(entries, entry{label: label, node: merged})
+		entries = append(entries, entry{label: label, name: name, node: merged})
 	}
 
 	if b.opts.Files {
 		for name, node := range tree.Files {
-			entries = append(entries, entry{label: name, node: node})
+			entries = append(entries, entry{label: name, name: name, node: node})
 		}
 	}
 
@@ -110,11 +114,17 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 	// lands where its first component would have put it: "api/errors.go" before "api.go", which
 	// reads out of order because "/" sorts after ".".
 	//
-	// Stable, because a name can appear in both maps and a directory that merges away nothing
-	// keeps it, leaving the two tied: an unstable sort would order them differently between runs,
-	// and this output gets diffed. Directories are gathered first, so a tie puts the directory
-	// above the file.
-	slices.SortStableFunc(entries, func(x, y entry) int { return strings.Compare(x.label, y.label) })
+	// Merging is what makes two labels able to tie, since it renames a row to something a sibling
+	// may already be called: a profile naming "a.go", "a.go/b.go" and "a.go/c.go" gives the bare
+	// file a "." directory that merges to "a.go", beside the directory of that name. Map order
+	// decided which came first, and this output gets diffed between runs. The name each started as
+	// breaks it, being unique within a map.
+	//
+	// Stable for the tie that leaves: a name in both maps is the same in both. Directories are
+	// gathered first, so that one puts the directory above the file.
+	slices.SortStableFunc(entries, func(x, y entry) int {
+		return cmp.Or(strings.Compare(x.label, y.label), strings.Compare(x.name, y.name))
+	})
 
 	return entries
 }
