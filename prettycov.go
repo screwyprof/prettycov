@@ -15,8 +15,16 @@ type CoverageStats struct {
 //
 // Derived rather than stored: a stored percentage can disagree with the counts beside it, which is
 // exactly how the roll-up used to go wrong.
+// Total is the statements a node holds, covered or not. Named rather than added up at each use,
+// because it is the denominator of the percentage beside it and the two must be the same number:
+// -counts prints the fraction the percentage stands for, so a second expression for it could drift
+// from the one Percentage divides by.
+//
+// No overflow check: this is the raw sum, and Percentage is what refuses one that has wrapped.
+func (c CoverageStats) Total() int { return c.Covered + c.Uncovered }
+
 func (c CoverageStats) Percentage() (Percentage, bool) {
-	total := c.Covered + c.Uncovered
+	total := c.Total()
 
 	// Both counts are statement totals, so they are non-negative and covered is at most total.
 	// Breaking either means the sum overflowed, which a profile can arrange by declaring blocks
@@ -78,39 +86,27 @@ func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
 		tree.add(f.File, f.Coverage)
 	}
 
-	return rollUp(tree)
+	rollUp(tree)
+
+	return tree
 }
 
-// rollUp returns a copy of n in which every node's coverage is its own statements plus those of
-// each descendant, counted exactly once. A directory can be both a package and the parent of
-// packages, so the two contributions are summed rather than conflated: that conflation is what
-// made a node's totals grow by a factor of its child count.
-func rollUp(node *PathTree) *PathTree {
-	covered, uncovered := node.Coverage.Covered, node.Coverage.Uncovered
-
-	var children map[string]*PathTree
-
-	if len(node.Children) > 0 {
-		children = make(map[string]*PathTree, len(node.Children))
-
-		for name, child := range node.Children {
-			rolled := rollUp(child)
-			children[name] = rolled
-
-			covered += rolled.Coverage.Covered
-			uncovered += rolled.Coverage.Uncovered
-		}
+// rollUp gives every node the statements of everything beneath it, counted exactly once, and
+// reports the node's own new total. Only the profile's files arrive carrying statements, so a
+// directory's total is entirely this sum: counting its own as well is what made a node's totals
+// grow by a factor of its child count.
+//
+// In place, because Process builds the tree and the tree never leaves it before this runs. The
+// copy this used to return doubled a node count that the profile's files, now leaves of their own,
+// had already multiplied several times over.
+func rollUp(node *PathTree) CoverageStats {
+	for _, child := range node.Children {
+		rolled := rollUp(child)
+		node.Coverage.Covered += rolled.Covered
+		node.Coverage.Uncovered += rolled.Uncovered
 	}
 
-	return &PathTree{
-		Coverage: CoverageStats{
-			Covered:   covered,
-			Uncovered: uncovered,
-		},
-		Children: children,
-		isPkg:    node.isPkg,
-		isFile:   node.isFile,
-	}
+	return node.Coverage
 }
 
 // shortenPaths rewrites the leading oldRoot of each path to newRoot. It has to be leading, and it

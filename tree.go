@@ -33,7 +33,11 @@ func (n *PathTree) add(file string, stats CoverageStats) {
 	//
 	// path.Dir cleans on the way, which the walk below relies on: splitting a path is not the same
 	// as walking one, and "m//a/b.go" would otherwise give an empty component and read "m//a".
-	dir := n.directory(path.Dir(file))
+	dir := n
+	for part := range strings.SplitSeq(path.Dir(file), "/") {
+		dir = dir.child(part)
+	}
+
 	dir.isPkg = true
 
 	leaf := dir.child(path.Base(file))
@@ -42,16 +46,6 @@ func (n *PathTree) add(file string, stats CoverageStats) {
 	leaf.Coverage.Covered += stats.Covered
 	leaf.Coverage.Uncovered += stats.Uncovered
 	leaf.isFile = true
-}
-
-// directory returns the node at dir, creating the nodes along the way.
-func (n *PathTree) directory(dir string) *PathTree {
-	node := n
-	for part := range strings.SplitSeq(dir, "/") {
-		node = node.child(part)
-	}
-
-	return node
 }
 
 // child returns the node under n called name, creating it if this is the first time it is named.

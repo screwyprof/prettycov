@@ -45,6 +45,12 @@ tags.
   two questions rather than one. It reads `Depth` and `Files` and ignores the rest. Callers pass
   `prettycov.Options{Depth: d}` for what used to be `Rows(tree, d)`.
 
+- `CoverageStats.Total` is the statements a node holds, covered or not — the denominator of the
+  percentage beside it, named once so `-counts` and `Percentage` cannot divide by different sums.
+
+- `Row.Level` is how far a row sits below the top one. `Prefix` says the same in box-drawing
+  characters, so anything rendering rows as something other than a tree had to measure the glyphs.
+
 - **Breaking:** `PathTree.Children` now holds the profile's files as well as its directories, so
   anything walking the tree to enumerate packages sees `service.go` beside `config` and `store`.
   This one does not announce itself — it still compiles and returns different data. `IsFile`

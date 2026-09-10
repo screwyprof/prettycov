@@ -32,14 +32,18 @@ func TestRowsReconcileAgainstTheProfile(t *testing.T) {
 				t.Run(fmt.Sprintf("files=%v", withFiles), func(t *testing.T) {
 					t.Parallel()
 
+					// Built once: neither the tree nor the totals depend on the depth being drawn.
+					tree := prettycov.Process(files, "", "")
+					totals := nodeTotals(files)
+
 					// Every level, because depth decides which rows exist and the guards that went
 					// wrong were the ones deciding whether a node is drawn at all.
 					for _, depth := range []prettycov.Depth{0, 1, 2, 3, prettycov.DepthAll} {
-						assertRowsMatchTheProfile(t, files,
+						assertRowsMatchTheProfile(t, tree, totals,
 							prettycov.Options{Depth: depth, Files: withFiles, Counts: true})
 					}
 
-					assertRowsHoldEveryStatement(t, files, withFiles)
+					assertRowsHoldEveryStatement(t, tree, files, withFiles)
 				})
 			}
 		})
@@ -49,18 +53,14 @@ func TestRowsReconcileAgainstTheProfile(t *testing.T) {
 // assertRowsMatchTheProfile checks each row against totals derived from the parsed files rather
 // than from the tree, and checks that what is printed carries that row's own numbers — so a row
 // cannot be right while the line describing it is wrong.
-func assertRowsMatchTheProfile(t *testing.T, files []prettycov.FileCoverage, opts prettycov.Options) {
+func assertRowsMatchTheProfile(
+	t *testing.T, tree *prettycov.PathTree, totals map[string]prettycov.CoverageStats, opts prettycov.Options,
+) {
 	t.Helper()
 
-	tree := prettycov.Process(files, "", "")
 	rows := prettycov.Rows(tree, opts)
-	totals := nodeTotals(files)
 
-	var buf strings.Builder
-
-	prettycov.DisplayTree(&buf, tree, opts)
-
-	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+	lines := strings.Split(strings.TrimSuffix(renderOpts(t, tree, opts), "\n"), "\n")
 	require.Lenf(t, lines, len(rows), "one line per row, depth=%v files=%v", opts.Depth, opts.Files)
 
 	for i, r := range rowInfos(rows) {
@@ -69,7 +69,7 @@ func assertRowsMatchTheProfile(t *testing.T, files []prettycov.FileCoverage, opt
 		assert.Equalf(t, want, rows[i].Coverage, "row %q at depth %v", r.path, opts.Depth)
 
 		if r.total > 0 {
-			assert.Containsf(t, lines[i], fmt.Sprintf("%d/%d uncovered", want.Uncovered, r.total),
+			assert.Containsf(t, lines[i], fmt.Sprintf("%d/%d uncovered", want.Uncovered, want.Total()),
 				"the printed line for %q", r.path)
 		}
 	}
@@ -79,10 +79,11 @@ func assertRowsMatchTheProfile(t *testing.T, files []prettycov.FileCoverage, opt
 // row show away from it, and what is left must be exactly the files that row is the last one to
 // account for. Zero for a directory once -files draws them; the directory's own files without it,
 // which is the `du` behaviour the README documents.
-func assertRowsHoldEveryStatement(t *testing.T, files []prettycov.FileCoverage, withFiles bool) {
+func assertRowsHoldEveryStatement(
+	t *testing.T, tree *prettycov.PathTree, files []prettycov.FileCoverage, withFiles bool,
+) {
 	t.Helper()
 
-	tree := prettycov.Process(files, "", "")
 	rows := prettycov.Rows(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: withFiles})
 	infos := rowInfos(rows)
 
@@ -134,23 +135,23 @@ type row struct {
 	total int
 }
 
-// rowInfos reconstructs the path each row stands for. The prefix is one leading space plus two
-// runes per level, and a collapsed run's label already carries its slashes, so joining the labels
-// down the stack rebuilds the path the profile used.
+// rowInfos reconstructs the path each row stands for. A collapsed run's label already carries its
+// slashes, so joining the labels down the stack rebuilds the path the profile used. Row.Level says
+// how deep to join from — read rather than measured off the box-drawing prefix, which would make
+// every level here depend on the glyphs staying two runes wide.
 func rowInfos(rows []prettycov.Row) []row {
 	stack := []string{}
 	infos := make([]row, len(rows))
 
 	for i, r := range rows {
-		level := (len([]rune(r.Prefix)) - 1) / 2
-		stack = append(stack[:level], r.Label)
+		stack = append(stack[:r.Level], r.Label)
 
 		infos[i] = row{
 			// Cleaned, because a file with no directory of its own sits under a "." row and would
 			// otherwise join to "./a.go", which is not what the profile called it.
 			path:  path.Clean(strings.Join(stack, "/")),
-			level: level,
-			total: r.Coverage.Covered + r.Coverage.Uncovered,
+			level: r.Level,
+			total: r.Coverage.Total(),
 		}
 	}
 
@@ -206,19 +207,11 @@ func keptBack(files []prettycov.FileCoverage, drawn map[string]bool) map[string]
 	kept := map[string]int{}
 
 	for _, f := range files {
-		n := f.Coverage.Covered + f.Coverage.Uncovered
-
-		if drawn[f.File] {
-			kept[f.File] += n
-
-			continue
-		}
-
-		// A collapsed run leaves the levels between undrawn, so this keeps walking rather than
-		// giving up at the first miss.
-		for _, dir := range dirsOf(f.File) {
-			if drawn[dir] {
-				kept[dir] += n
+		// The file's own row first, then the directories above it. A collapsed run leaves the
+		// levels between undrawn, so this keeps walking rather than giving up at the first miss.
+		for _, candidate := range append([]string{f.File}, dirsOf(f.File)...) {
+			if drawn[candidate] {
+				kept[candidate] += f.Coverage.Total()
 
 				break
 			}

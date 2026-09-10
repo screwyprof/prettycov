@@ -278,11 +278,11 @@ func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 
 			for _, row := range rows {
 				labels = append(labels, row.Label)
-				total += row.Coverage.Covered + row.Coverage.Uncovered
+				total += row.Coverage.Total()
 			}
 
 			assert.Equal(t, tc.want, labels)
-			assert.Equal(t, tree.Coverage.Covered+tree.Coverage.Uncovered, total,
+			assert.Equal(t, tree.Coverage.Total(), total,
 				"every statement in the profile is drawn beside some row")
 		})
 	}
@@ -338,7 +338,7 @@ func TestProcessMakesEveryParentTheSumOfItsChildren(t *testing.T) {
 
 	walk = func(path string, node *prettycov.PathTree) int {
 		if len(node.Children) == 0 {
-			return node.Coverage.Covered + node.Coverage.Uncovered
+			return node.Coverage.Total()
 		}
 
 		sum := 0
@@ -346,7 +346,7 @@ func TestProcessMakesEveryParentTheSumOfItsChildren(t *testing.T) {
 			sum += walk(path+"/"+name, child)
 		}
 
-		assert.Equal(t, sum, node.Coverage.Covered+node.Coverage.Uncovered,
+		assert.Equal(t, sum, node.Coverage.Total(),
 			"%s does not equal the sum of its children", path)
 
 		return sum
