@@ -27,8 +27,8 @@ tags.
   This is what makes a report addable. The files are now the tree's leaves, so every node's total
   is exactly the sum of what hangs below it. Before, a package holding both files and subpackages
   kept its own statements on its own row with nothing below accounting for them: prettycov's own
-  root is 315 statements, 166 of them in the root package, and the tree showed two children summing
-  to 149. With `-files` those 166 appear as the file rows they came from; without it they are
+  root is 321 statements, 166 of them in the root package, and the tree showed two children summing
+  to 155. With `-files` those 166 appear as the file rows they came from; without it they are
   simply not drawn — which is what `du` does, and `du -a` is its `-files`.
 
   A file costs a `-depth` level exactly as a subpackage does, being one of a directory's entries.

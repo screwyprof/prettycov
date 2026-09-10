@@ -29,8 +29,8 @@ func TestDisplayTreeMatchesGolden(t *testing.T) {
 	t.Parallel()
 
 	// The profile the README documents, so the numbers in one cannot drift from the other. It is
-	// also the one measured without golang/go#80974, and the one whose blocks arrive six times
-	// over from -coverpkg, so the golden pins deduplication as well as the drawing.
+	// also the one measured without golang/go#80974, which inflated statement counts by splitting
+	// a block and giving each part the whole NumStmt.
 	files, err := prettycov.ParseProfile(filepath.Join("testdata", "delegator-go126.out"))
 	require.NoError(t, err)
 

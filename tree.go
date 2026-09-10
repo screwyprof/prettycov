@@ -41,8 +41,9 @@ func (n *PathTree) add(file string, stats CoverageStats) {
 	dir.isPkg = true
 
 	leaf := dir.child(path.Base(file))
-	// Accumulated, not assigned: a profile may name the same file more than once, which is how a
-	// run with -coverpkg across several packages reports one of them.
+	// Accumulated, not assigned, so a file named twice adds up rather than keeping the last one.
+	// ParseProfile cannot deliver that — x/tools keys profiles by filename and merges their blocks
+	// — so this is for a caller handing Process a slice of its own.
 	leaf.Coverage.Covered += stats.Covered
 	leaf.Coverage.Uncovered += stats.Uncovered
 	leaf.isFile = true

@@ -35,8 +35,9 @@ type Row struct {
 	Prefix string
 	Label  string
 	// Level is how far the row sits below the top one, which carries level 0. Prefix says the same
-	// thing in box-drawing characters; this says it in a number, so a caller rendering to anything
-	// but a terminal does not have to measure the glyphs to recover the shape.
+	// in box-drawing characters, and reading the shape back out of it means measuring a glyph
+	// string and trusting it to stay two runes wide — which is what the reconciliation test did
+	// before this existed, and what any other consumer of Rows would otherwise have to do.
 	Level    int
 	Coverage CoverageStats
 }
