@@ -2,7 +2,7 @@ package prettycov_test
 
 import (
 	"bytes"
-	"strings"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -285,20 +285,12 @@ func TestDisplayTreeOrdersATieBetweenAFileAndADirectory(t *testing.T) {
 		file("m/a.go/c.go", 0, 3),
 	}, "", "")
 
-	assert.Equal(t, []string{"m", "a.go", "b.go", "c.go", "a.go"},
-		namesWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
+	// The order, and which of the two rows carries which number. The reconciliation in
+	// crosscheck_test.go sums them by path, so it balances just as well if they trade: give the
+	// file the directory's 7 and the directory the file's 5 and the path still holds 12.
+	assert.Equal(t, []string{"m 7/12", "a.go 7/7", "b.go 4/4", "c.go 3/3", "a.go 0/5"},
+		countsWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
 		"the directory and its files first, then the file of the same name")
-
-	// Which row carries which number, in order. The reconciliation in crosscheck_test.go sums the
-	// two by path, so it balances just as well if they trade: give the file the directory's 7 and
-	// the directory the file's 5 and the path still holds 12. Here they are pinned apart.
-	assert.Equal(t, []string{
-		"m - 41.67  7/12 uncovered",
-		"a.go - 0.00  7/7 uncovered",
-		"b.go - 0.00  4/4 uncovered",
-		"c.go - 0.00  3/3 uncovered",
-		"a.go - 100.00  0/5 uncovered",
-	}, renderedLines(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true, Counts: true}))
 }
 
 // A file is one level below the package holding it, exactly as a subdirectory is — -depth counts
@@ -494,17 +486,21 @@ func renderOpts(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) 
 	return buf.String()
 }
 
-// renderedLines is the report without the box-drawing prefix, so a test can pin what every row
-// says and in what order without pinning the glyphs a separate test already covers.
-func renderedLines(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) []string {
+// countsWith is namesWith with each row's numbers, for a test that has to say which of two rows
+// carrying the same label holds which. Read off Rows for the same reason nodeNames is: scraping
+// them back out of the rendered text means stripping box-drawing glyphs, and a label may contain
+// one.
+func countsWith(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) []string {
 	t.Helper()
 
-	var lines []string
-	for line := range strings.SplitSeq(strings.TrimSuffix(renderOpts(t, tree, opts), "\n"), "\n") {
-		lines = append(lines, strings.TrimLeft(line, "├└│ "))
+	rows := prettycov.Rows(tree, opts)
+
+	counts := make([]string, 0, len(rows))
+	for _, row := range rows {
+		counts = append(counts, fmt.Sprintf("%s %d/%d", row.Label, row.Coverage.Uncovered, row.Coverage.Total()))
 	}
 
-	return lines
+	return counts
 }
 
 // nodeNames is the labels a tree renders to, in order. Read off Rows rather than scraped back

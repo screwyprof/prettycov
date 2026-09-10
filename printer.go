@@ -3,6 +3,7 @@ package prettycov
 import (
 	"fmt"
 	"io"
+	"path"
 	"slices"
 	"strings"
 	"unicode"
@@ -168,20 +169,15 @@ func collapse(label string, node *PathTree, mergeFiles bool) (string, *PathTree)
 	return label, node
 }
 
-// join names something inside label. Two labels are not directories and take a separator between
-// them, with two exceptions the profile's paths do not have and this tree's do:
+// join names something inside label. Cleaned, because "." is a directory of this tree and of no
+// profile — it is where a file the profile gave no directory of its own lands — and putting a
+// separator after it printed "./printer.go", a path no profile contained, beside siblings written
+// plainly.
 //
-//   - ".", which is where a file the profile named with no directory of its own lands, and merging
-//     it printed "./printer.go" — a path no profile contained, beside siblings written plainly;
-//   - "", which is the filesystem root, and there the separator is the whole name: "/a.go".
-//
-// path.Join is the first rule and the wrong half of the second, cleaning the root away entirely.
+// path.Clean rather than path.Join, which has that rule and one more: the filesystem root is the
+// empty label, where the separator is the whole name, and Join cleans "/a.go" down to "a.go".
 func join(label, name string) string {
-	if label == "." {
-		return name
-	}
-
-	return label + "/" + name
+	return path.Clean(label + "/" + name)
 }
 
 // sanitize replaces the characters in a label that a terminal would obey rather than draw.
