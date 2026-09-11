@@ -177,6 +177,56 @@ func TestShortenCountsEveryFileItRenamed(t *testing.T) {
 	assert.Equal(t, "example.com/m/a.go", files[0].File, "the input is not modified")
 }
 
+// HasRoot answers with a boolean what Shorten answers with a count, so the two have to agree on
+// what a root names — every case here is one Shorten is asserted on above, asked the other way.
+func TestHasRootMatchesTheSameRootsShortenRenames(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{
+		file("github.com/foobar/svc/a.go", 1, 0),
+		file("github.com/o/repo/pkg/b.go", 1, 0),
+	}
+
+	tests := map[string]struct {
+		root string
+		want bool
+	}{
+		"a root the profile holds":          {root: "github.com/o/repo", want: true},
+		"however many trailing separators":  {root: "github.com/o/repo//", want: true},
+		"a root it does not":                {root: "github.com/WRONG", want: false},
+		"not a bare prefix":                 {root: "github.com/foo", want: false},
+		"not a component out of the middle": {root: "repo", want: false},
+		"no root names nothing":             {root: "", want: false},
+		"nor one of only separators":        {root: "//", want: false},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, prettycov.HasRoot(files, tc.root))
+
+			// The agreement itself, not just the two answers: whatever Shorten would rewrite is
+			// what HasRoot has to find, or the CLI reports a root as absent while renaming by it.
+			_, renamed := prettycov.Shorten(files, tc.root, "x")
+			assert.Equal(t, tc.want, renamed > 0, "Shorten disagrees")
+		})
+	}
+}
+
+// Not parallel: AllocsPerRun counts allocations process-wide and panics if asked to do it beside
+// another test.
+//
+//nolint:paralleltest // see above.
+func TestHasRootAllocatesNothing(t *testing.T) {
+	files := []prettycov.FileCoverage{file("m/a.go", 1, 0), file("m/b.go", 1, 0)}
+
+	// One allocation would be the copy Shorten makes, which is the whole reason this exists.
+	assert.Zero(t, testing.AllocsPerRun(100, func() {
+		_ = prettycov.HasRoot(files, "m")
+	}), "HasRoot allocates")
+}
+
 func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 	t.Parallel()
 

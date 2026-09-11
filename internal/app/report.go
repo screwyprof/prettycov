@@ -88,14 +88,13 @@ func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stder
 	// no invocation can reach, and an uncoverable branch in a tool that reports coverage.
 	//
 	// renamed is a shortcut, not a second reason: Exclude only drops files, never renames them, so
-	// anything it left that matched the root is in the profile too and the pass below would reach
-	// the same answer. It keeps that pass off the path where the rename worked, which is every run
-	// that is not a mistake.
+	// anything it left that matched the root is in the profile too and HasRoot would agree. It
+	// keeps even that scan off the path where the rename worked, which is every run not a mistake.
 	if cfg.CurrentRoot == "" || renamed > 0 {
 		return
 	}
 
-	if _, inProfile := prettycov.Shorten(items, cfg.CurrentRoot, cfg.NewRoot); inProfile > 0 {
+	if prettycov.HasRoot(items, cfg.CurrentRoot) {
 		return
 	}
 

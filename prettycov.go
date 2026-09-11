@@ -181,7 +181,7 @@ func Shorten(files []FileCoverage, oldRoot, newRoot string) ([]FileCoverage, int
 	renamed := 0
 
 	for i, item := range files {
-		if rest, found := strings.CutPrefix(item.File, oldRoot); found && strings.HasPrefix(rest, "/") {
+		if rest, ok := under(item.File, oldRoot); ok {
 			item.File = newRoot + rest
 			renamed++
 		}
@@ -190,4 +190,36 @@ func Shorten(files []FileCoverage, oldRoot, newRoot string) ([]FileCoverage, int
 	}
 
 	return shortened, renamed
+}
+
+// HasRoot reports whether any file sits under root, by the rule Shorten renames by.
+//
+// Shorten answers the same question with a count, but only as a by-product of building the renamed
+// slice: asking it costs a copy of every FileCoverage, thrown away for a number that is only ever
+// compared against zero. This stops at the first file that matches and allocates nothing.
+//
+// Exported for that one caller, rather than spelled out again where it is needed, so the rule for
+// what a root names lives beside the code that acts on it. Two copies would be two chances to
+// disagree, and the one that reports would be the one that starts lying.
+func HasRoot(files []FileCoverage, root string) bool {
+	root = strings.TrimRight(root, "/")
+	if root == "" {
+		return false
+	}
+
+	for _, item := range files {
+		if _, ok := under(item.File, root); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// under returns the part of path below root, and whether it is below it at all. The one place the
+// rule is written: leading, and ending on a separator, for the reasons Shorten sets out.
+func under(path, root string) (string, bool) {
+	rest, found := strings.CutPrefix(path, root)
+
+	return rest, found && strings.HasPrefix(rest, "/")
 }

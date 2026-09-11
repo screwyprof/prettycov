@@ -78,6 +78,11 @@ tags.
   rewrote nothing and said nothing. Callers that passed `Process(files, "", "")` drop the two
   arguments; callers that renamed put `Shorten` in front of it.
 
+- `HasRoot` reports whether any file sits under a root, by the rule `Shorten` renames by. `Shorten`
+  answers the same question with a count, but only as a by-product of building the renamed slice,
+  so asking it costs a copy of every `FileCoverage` for a number that is compared against zero.
+  `HasRoot` stops at the first match and allocates nothing.
+
 - `FileCoverage.Blocks` holds each block's start position and statements. Optional — a
   `FileCoverage` built by a caller may leave it empty, and only `Exclude` reads it.
 
