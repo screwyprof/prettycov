@@ -215,18 +215,23 @@ func parseFlags(args []string) (config, error) {
 	//
 	// Either message quotes what was typed rather than what is left of it, since that is what the
 	// reader has to find on their own command line.
-	switch oldRoot := strings.Trim(cfg.CurrentRoot, "/"); {
-	case oldRoot == "" && cfg.CurrentRoot != "":
-		return cfg, fmt.Errorf("%w: got -old=%s", errRootNamesNoPkg, cfg.CurrentRoot)
-	case (oldRoot == "") != (cfg.NewRoot == ""):
+	// Each guard reads the flags as typed rather than what the other left of them, so neither
+	// depends on having run second and reordering them cannot quietly change what either means.
+	if cfg.CurrentRoot != "" && strings.Trim(cfg.CurrentRoot, "/") == "" {
+		return cfg, fmt.Errorf("%w: got %s", errRootNamesNoPkg, given(cfg.CurrentRoot, ""))
+	}
+
+	if (cfg.CurrentRoot == "") != (cfg.NewRoot == "") {
 		return cfg, fmt.Errorf("%w: got %s", errHalfARename, given(cfg.CurrentRoot, cfg.NewRoot))
 	}
 
 	return cfg, nil
 }
 
-// given names whichever half was passed, so the message points at the flag that is there rather
-// than the one that is not.
+// given spells out a flag and the value it was handed, preferring -old when there is one: for half
+// a rename that is whichever half was passed, so the message points at the flag that is there
+// rather than the one that is not, and for a root that names no package it is always -old, since
+// that is the only one the trim looks at.
 func given(oldRoot, newRoot string) string {
 	if oldRoot != "" {
 		return "-old=" + oldRoot

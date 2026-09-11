@@ -711,21 +711,32 @@ func TestRunRefusesARootThatNamesNoPackage(t *testing.T) {
 	}
 }
 
-// Only the old root is trimmed before the guard asks whether one was given. The new one is the
-// replacement, used raw, and "/" is a target that works: it renders the tree under the filesystem
-// root. A guard made symmetrical would refuse this, and until now nothing would have noticed.
-func TestRunAcceptsTheFilesystemRootAsARenameTarget(t *testing.T) {
+// A rename that lands says nothing at all, and the label it lands on is the new root verbatim.
+//
+// "/" is one of those: only the old root is trimmed before the guard asks whether one was given,
+// the new one being the replacement, used raw. It renders the tree under the filesystem root. A
+// guard made symmetrical would refuse it, and until now nothing would have noticed.
+func TestRunIsSilentWhenARootMatched(t *testing.T) {
 	t.Parallel()
 
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := app.Run([]string{
-		"-old", "m", "-new", "/", "-depth", "0",
-		"-profile", writeProfile(t, profile), "-color", "never",
-	}, stdout, stderr)
+	for name, newRoot := range map[string]string{
+		"a package name":      "renamed",
+		"the filesystem root": "/",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	assert.Equal(t, codeOK, code)
-	assert.Equal(t, " / - 60.00\n", stdout.String())
-	assert.Empty(t, stderr.String())
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{
+				"-old", "m", "-new", newRoot, "-depth", "0",
+				"-profile", writeProfile(t, profile), "-color", "never",
+			}, stdout, stderr)
+
+			assert.Equal(t, codeOK, code)
+			assert.Equal(t, " "+newRoot+" - 60.00\n", stdout.String())
+			assert.Empty(t, stderr.String())
+		})
+	}
 }
 
 // A root that names no package in the profile rewrites nothing, which looks exactly like asking
@@ -760,21 +771,6 @@ func TestRunDoesNotBlameTheRootForWhatExcludeTook(t *testing.T) {
 
 	assert.NotContains(t, stderr.String(), "matched nothing, so no label was shortened")
 	assert.Contains(t, stderr.String(), `-exclude "^m/" left out`, "and -exclude still says what it took")
-}
-
-// The counterpart: a root that matches says nothing at all.
-func TestRunIsSilentWhenARootMatched(t *testing.T) {
-	t.Parallel()
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := app.Run([]string{
-		"-old", "m", "-new", "renamed", "-depth", "0",
-		"-profile", writeProfile(t, profile), "-color", "never",
-	}, stdout, stderr)
-
-	assert.Equal(t, codeOK, code)
-	assert.Empty(t, stderr.String())
-	assert.Equal(t, " renamed - 60.00\n", stdout.String())
 }
 
 func TestRunPrintsOnlyTheTotal(t *testing.T) {

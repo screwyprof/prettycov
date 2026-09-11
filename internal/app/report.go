@@ -83,8 +83,14 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 // bad root — sending someone to fix a flag that is already right, which is the confusion the
 // overlap branch above exists to prevent.
 func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stderr io.Writer) {
-	// A root alone is refused before this, so one that is set means a rename was asked for and a
-	// target came with it. Testing NewRoot here as well would be a guard no invocation can reach.
+	// A root alone is refused by parseFlags, which TestRunRefusesHalfARename drives end to end, so
+	// a root that is set means a target came with it. Testing NewRoot here as well would be a guard
+	// no invocation can reach, and an uncoverable branch in a tool that reports coverage.
+	//
+	// renamed is a shortcut, not a second reason: Exclude only drops files, never renames them, so
+	// anything it left that matched the root is in the profile too and the pass below would reach
+	// the same answer. It keeps that pass off the path where the rename worked, which is every run
+	// that is not a mistake.
 	if cfg.CurrentRoot == "" || renamed > 0 {
 		return
 	}

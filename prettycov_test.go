@@ -154,10 +154,11 @@ func TestCoverageStatsAdd(t *testing.T) {
 	assert.Equal(t, prettycov.CoverageStats{Covered: 7, Uncovered: 3}, stats, "adding nothing changes nothing")
 }
 
-// Shorten reports how many it renamed, which is the whole reason it is its own step: a root that
-// matches nothing rewrites nothing, and that is indistinguishable from no rename being asked for
-// unless the count says otherwise.
-func TestShortenReportsHowManyItRenamed(t *testing.T) {
+// The count is the whole reason Shorten is its own step: a root that matches nothing rewrites
+// nothing, and that is indistinguishable from no rename being asked for unless the count says
+// otherwise. Which paths match is the table below; only more than one file can show the counting,
+// and only a rewrite can show that the caller's slice survives it.
+func TestShortenCountsEveryFileItRenamed(t *testing.T) {
 	t.Parallel()
 
 	files := []prettycov.FileCoverage{
@@ -166,33 +167,14 @@ func TestShortenReportsHowManyItRenamed(t *testing.T) {
 		file("other.com/c.go", 1, 0),
 	}
 
-	tests := map[string]struct {
-		oldRoot, newRoot string
-		want             int
-		wantFirst        string
-	}{
-		"matches two of three":  {oldRoot: "example.com/m", newRoot: "m", want: 2, wantFirst: "m/a.go"},
-		"matches nothing":       {oldRoot: "example.com/WRONG", newRoot: "w", want: 0, wantFirst: "example.com/m/a.go"},
-		"no rename asked for":   {want: 0, wantFirst: "example.com/m/a.go"},
-		"half a rename is none": {oldRoot: "example.com/m", want: 0, wantFirst: "example.com/m/a.go"},
-	}
+	shortened, renamed := prettycov.Shorten(files, "example.com/m", "m")
 
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+	assert.Equal(t, 2, renamed, "two of the three")
+	assert.Equal(t, "m/a.go", shortened[0].File)
+	assert.Equal(t, "m/b.go", shortened[1].File)
+	assert.Equal(t, "other.com/c.go", shortened[2].File, "and the third is left alone")
 
-			shortened, renamed := prettycov.Shorten(files, tc.oldRoot, tc.newRoot)
-
-			assert.Equal(t, tc.want, renamed)
-			assert.Equal(t, tc.wantFirst, shortened[0].File)
-
-			// Only meaningful when something was rewritten: with no rename the result is the
-			// caller's own slice, which is documented and is why this asserts on the count.
-			if renamed > 0 {
-				assert.Equal(t, "example.com/m/a.go", files[0].File, "the input is not modified")
-			}
-		})
-	}
+	assert.Equal(t, "example.com/m/a.go", files[0].File, "the input is not modified")
 }
 
 func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
@@ -210,45 +192,52 @@ func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 	assert.Nil(t, (*prettycov.PathTree)(nil).Get("m"))
 }
 
-func TestProcessShortensTheRootPath(t *testing.T) {
+// Which paths a root names, and the count that follows from it — a row that rewrites nothing is a
+// row that counts nothing, and stating both together is what stops the two drifting apart.
+//
+// Asserted on the path Shorten returns rather than on a node in the tree built from it: renaming
+// is no longer part of building the tree, and asking Process where a label ended up tested this
+// through an indirection that could only mislead whoever a failure here sends looking.
+func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		file    string
-		old     string
-		replace string
-		want    string
+		name        string
+		file        string
+		old         string
+		replace     string
+		want        string
+		wantRenamed int
 	}{
 		{
 			name: "replaces a leading root", file: "github.com/o/repo/pkg/a.go",
-			old: "github.com/o/repo", replace: "repo", want: "repo/pkg",
+			old: "github.com/o/repo", replace: "repo", want: "repo/pkg/a.go", wantRenamed: 1,
 		},
 		{
 			// "api" appears inside "rapid" first. Replacing the first match anywhere turned
 			// github.com/rapid/api into github.com/rcored/api.
 			name: "only a leading one", file: "github.com/rapid/api/svc/a.go",
-			old: "api", replace: "core", want: "github.com/rapid/api/svc",
+			old: "api", replace: "core", want: "github.com/rapid/api/svc/a.go",
 		},
 		{
 			// The separator is implied, so writing it out changes nothing.
 			name: "a trailing slash on the old root is the same root", file: "github.com/o/repo/pkg/a.go",
-			old: "github.com/o/repo/", replace: "repo", want: "repo/pkg",
+			old: "github.com/o/repo/", replace: "repo", want: "repo/pkg/a.go", wantRenamed: 1,
 		},
 		{
 			// A prefix is not a root: "github.com/foo" starts "github.com/foobar" too, and cutting
 			// it there left the unrelated package as "xbar/svc".
 			name: "and only a whole path segment", file: "github.com/foobar/svc/a.go",
-			old: "github.com/foo", replace: "x", want: "github.com/foobar/svc",
+			old: "github.com/foo", replace: "x", want: "github.com/foobar/svc/a.go",
 		},
 		{
 			// An empty old root matches at position 0, so this used to prepend rather than replace.
 			name: "no old root means no rewrite", file: "github.com/o/repo/pkg/a.go",
-			old: "", replace: "repo", want: "github.com/o/repo/pkg",
+			old: "", replace: "repo", want: "github.com/o/repo/pkg/a.go",
 		},
 		{
 			name: "no new root means no rewrite", file: "github.com/o/repo/pkg/a.go",
-			old: "github.com/o/repo", replace: "", want: "github.com/o/repo/pkg",
+			old: "github.com/o/repo", replace: "", want: "github.com/o/repo/pkg/a.go",
 		},
 	}
 
@@ -256,10 +245,10 @@ func TestProcessShortensTheRootPath(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			shortened, _ := prettycov.Shorten([]prettycov.FileCoverage{file(tc.file, 1, 1)}, tc.old, tc.replace)
-			tree := prettycov.Process(shortened)
+			shortened, renamed := prettycov.Shorten([]prettycov.FileCoverage{file(tc.file, 1, 1)}, tc.old, tc.replace)
 
-			assert.NotNil(t, tree.Get(tc.want), "want a node at %q", tc.want)
+			assert.Equal(t, tc.want, shortened[0].File)
+			assert.Equal(t, tc.wantRenamed, renamed)
 		})
 	}
 }
@@ -390,15 +379,16 @@ func TestPathTreeSplitsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	assert.Equal(t, 12, m.Coverage.Total(), "and m is exactly the two of them")
 }
 
-// Process must not write through the slice it is handed.
+// Process must not write through the slice it is handed, which it documents and a caller reusing
+// the parse for a second report relies on. Handed the slice directly: with Shorten in between this
+// asserted on a slice Process never saw, so it held even when Process rewrote every path it got.
 func TestProcessDoesNotModifyItsInput(t *testing.T) {
 	t.Parallel()
 
 	files := []prettycov.FileCoverage{file("example.com/m/pkg/a.go", 1, 1)}
 	before := files[0].File
 
-	shortened, _ := prettycov.Shorten(files, "example.com/m", "m")
-	prettycov.Process(shortened)
+	prettycov.Process(files)
 
 	assert.Equal(t, before, files[0].File, "Process rewrote the caller's slice")
 }
