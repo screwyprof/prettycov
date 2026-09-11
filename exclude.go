@@ -35,8 +35,8 @@ func ParseExclude(s string) (*regexp.Regexp, error) {
 // so dropping it here gives the same total as leaving it out of -coverpkg — and -coverpkg stays a
 // single pattern instead of a list derived out of band, which is what goes stale.
 //
-// Each pattern is tried unanchored against two strings, and the first that matches decides how
-// much goes:
+// Each pattern is tried unanchored against two strings, and which one matches decides how much
+// goes:
 //
 //   - the file's full path, "internal/app/version.go". A package is a path its files share,
 //     "/pkg/logger/"; files rather than packages, because ignore lists name files — etcd's
@@ -83,11 +83,18 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 // denominator. Patterns that took the path are skipped: a path is a prefix of every coordinate in
 // its file, so they would be charged twice for the same match.
 func noteBlocksAlreadyGone(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage) {
+	// Asked once, not once per block: whether a pattern took the path is a fact about the file.
+	// Answered here rather than carried from chargeFile, so neither has to know what the other did.
+	tookPath := make([]bool, len(patterns))
+	for i, re := range patterns {
+		tookPath[i] = re.MatchString(item.File)
+	}
+
 	for _, block := range item.Blocks {
 		withCol, toLine := block.at(item.File)
 
 		for i, re := range patterns {
-			if !re.MatchString(item.File) && names(re, withCol, toLine) {
+			if !tookPath[i] && names(re, withCol, toLine) {
 				dropped[i].OverlappedBlocks++
 			}
 		}
@@ -187,8 +194,8 @@ func chargeBlocks(
 
 // Exclusion is what one pattern took out.
 //
-// Per pattern, since unanchored matching needs showing: "cmd/" also takes pkg/subcmd. Zero files
-// and zero overlapped means a typo, or code that has moved.
+// Per pattern, since unanchored matching needs showing: "cmd/" also takes pkg/subcmd. Charged
+// nothing and overlapped nothing — no files, no blocks — means a typo, or code that has moved.
 type Exclusion struct {
 	Pattern string
 	// Files, Blocks and Statements are what this pattern was charged, which is what it matched
@@ -198,8 +205,12 @@ type Exclusion struct {
 	Files      int
 	Blocks     int
 	Statements int
-	// OverlappedFiles and OverlappedBlocks are what it matched that an earlier pattern had already
-	// taken. Separate from the charges, because a pattern can be doing its job and still be charged
+	// OverlappedFiles and OverlappedBlocks are what it matched that another pattern was charged
+	// for. Usually an earlier one, which is what first-match-wins means among equals — but a path
+	// takes precedence over a coordinate wherever it sits in the list, so a pattern naming a block
+	// can be overlapped by a later one that took the file whole.
+	//
+	// Separate from the charges, because a pattern can be doing its job and still be charged
 	// nothing; separate from each other, so the message can say which it was rather than retreating
 	// to a word that covers both.
 	OverlappedFiles  int
