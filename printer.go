@@ -101,18 +101,21 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 			label = "/"
 		}
 
-		entries = append(entries, entry{label: label, name: name, node: merged})
+		entries = append(entries, entry{label: sanitize(label), name: name, node: merged})
 	}
 
 	if b.opts.Files {
 		for name, node := range tree.Files {
-			entries = append(entries, entry{label: name, name: name, node: node})
+			entries = append(entries, entry{label: sanitize(name), name: name, node: node})
 		}
 	}
 
 	// Sorted by the label the reader sees rather than by the name it started as, or a merged row
 	// lands where its first component would have put it: "api/errors.go" before "api.go", which
 	// reads out of order because "/" sorts after ".".
+	//
+	// Sanitised above for the same reason, rather than at the row: a replaced rune sorts where the
+	// replacement does, not where the original did. "a\x01" precedes "ab" and draws after it.
 	//
 	// Merging is what makes two labels able to tie, since it renames a row to something a sibling
 	// may already be called: a profile naming "a.go", "a.go/b.go" and "a.go/c.go" gives the bare
@@ -142,9 +145,8 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 		root := level == 0
 
 		b.rows = append(b.rows, Row{
-			Prefix: padding + symbol(root, getBoxType(i, len(entries))),
-			// Sanitised here rather than at the writer, so no consumer of a Row has to remember to.
-			Label:    sanitize(e.label),
+			Prefix:   padding + symbol(root, getBoxType(i, len(entries))),
+			Label:    e.label,
 			Level:    int(level),
 			Coverage: e.node.Coverage,
 		})
