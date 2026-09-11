@@ -50,7 +50,9 @@ tags.
   every label, and an unset `-old=$(MODULE)` leaves the report full of paths its author believed
   were gone. Exit 2, as for any other argument mistake. The same reasoning already refuses an empty
   `-exclude`. A root of nothing but separators counts as absent — `-old=$(MODULE)/` with `MODULE`
-  unset is `-old=/`, which named no package and left the report exactly as it was.
+  unset is `-old=/`, which named no package and left the report exactly as it was. That gets its own
+  message — `-old names no package: got -old=/` — because both flags may well have been given, and
+  "one alone does nothing" would send the reader to supply a flag they already supplied.
 
 - `-old` that matches no path in the profile says so — `-old "github.com/WRONG/module" matched
   nothing, so no label was shortened` — rather than printing an unshortened report and exiting 0
@@ -70,8 +72,6 @@ tags.
   no way to see whether it had done anything, so a root naming a package the profile does not hold
   rewrote nothing and said nothing. Callers that passed `Process(files, "", "")` drop the two
   arguments; callers that renamed put `Shorten` in front of it.
-
-
 
 - `FileCoverage.Blocks` holds each block's start position and statements. Optional — a
   `FileCoverage` built by a caller may leave it empty, and only `Exclude` reads it.

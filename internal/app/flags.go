@@ -28,6 +28,7 @@ var (
 	errTwoProfiles     = errors.New("profile given twice")
 	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
 	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
+	errRootNamesNoPkg  = errors.New("-old names no package")
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -200,18 +201,24 @@ func parseFlags(args []string) (config, error) {
 	// that silently does nothing is a mistake nobody is told about. `-new=.` alone looks like it
 	// shortens every label and does not, and an unset `-old=$(MODULE)` leaves the report full of
 	// paths its author thought were gone.
-	// Separators stripped before asking whether a root was given, because a string of them names
-	// no package: shortenPaths drops the trailing one and then matches a prefix that is not there,
-	// so -old=/ and -old=// both left the report exactly as it was. `-old=$(MODULE)/` with MODULE
-	// unset spells the first of those, which is the mistake this whole check exists to catch.
+	// Two ways to ask for a rename and not get one, and they are different mistakes, so they get
+	// different sentences. Telling someone "one alone does nothing" when they passed both sends
+	// them to supply a flag they already supplied.
 	//
-	// The message quotes what was typed, not what is left of it, since that is what the reader has
-	// to find on their own command line.
+	// A root of nothing but separators names no package: Shorten drops the trailing one and then
+	// matches a prefix that is not there, so -old=/ and -old=// leave the report exactly as it
+	// was. `-old=$(MODULE)/` with MODULE unset spells the first of those.
 	//
-	// Only the old root is trimmed, matching shortenPaths, which trims that one and uses the new
-	// one raw as the replacement. -new=/ is a working target — it renders the tree under the
-	// filesystem root — so a guard made symmetrical here would refuse a rename that works.
-	if (strings.Trim(cfg.CurrentRoot, "/") == "") != (cfg.NewRoot == "") {
+	// Only the old root is trimmed, matching Shorten, which trims that one and uses the new one
+	// raw as the replacement. -new=/ is a working target — it renders the tree under the
+	// filesystem root — so trimming both here would refuse a rename that works.
+	//
+	// Either message quotes what was typed rather than what is left of it, since that is what the
+	// reader has to find on their own command line.
+	switch oldRoot := strings.Trim(cfg.CurrentRoot, "/"); {
+	case oldRoot == "" && cfg.CurrentRoot != "":
+		return cfg, fmt.Errorf("%w: got -old=%s", errRootNamesNoPkg, cfg.CurrentRoot)
+	case (oldRoot == "") != (cfg.NewRoot == ""):
 		return cfg, fmt.Errorf("%w: got %s", errHalfARename, given(cfg.CurrentRoot, cfg.NewRoot))
 	}
 

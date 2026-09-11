@@ -149,8 +149,10 @@ func rollUp(node *PathTree) CoverageStats {
 }
 
 // Shorten rewrites the leading oldRoot of each path to newRoot, and reports how many it renamed.
-// The files argument is not modified. Either root empty means no rename was asked for: the files
-// come back as they were, and the count is zero.
+// The files argument is never modified.
+//
+// Either root empty means no rename was asked for, and then the files are returned as they are —
+// the same slice, not a copy, so writing to it writes to the caller's. A rename returns a new one.
 //
 // The count is the point of it being its own step. A root that names no package in the profile —
 // a typo, a module path that moved — matches nothing and rewrites nothing, which looks exactly

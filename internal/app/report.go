@@ -30,14 +30,8 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	kept, excluded := prettycov.Exclude(items, cfg.Exclude)
 	reportExclusions(excluded, stderr)
 
-	// Said for the same reason -exclude says it: a pattern that matched nothing did nothing, and a
-	// reader who is not told goes looking for why the report is wrong. parseFlags has already
-	// refused a root that names no package at all; this is one that names a package the profile
-	// does not hold — a typo, or a module path that has moved.
 	shortened, renamed := prettycov.Shorten(kept, cfg.CurrentRoot, cfg.NewRoot)
-	if cfg.CurrentRoot != "" && renamed == 0 {
-		_, _ = fmt.Fprintf(stderr, "-old %q matched nothing, so no label was shortened\n", cfg.CurrentRoot)
-	}
+	reportRename(cfg, items, renamed, stderr)
 
 	tree := prettycov.Process(shortened)
 
@@ -77,6 +71,29 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	})
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
+}
+
+// reportRename says when -old named a package the profile does not hold — a typo, or a module path
+// that has moved. Said for the reason -exclude says the same thing: a pattern that matched nothing
+// did nothing, and a reader who is not told goes looking for why the labels are wrong. parseFlags
+// has already refused a root that names no package at all; this is one that names the wrong one.
+//
+// Asked of the whole profile rather than of what survived -exclude. Shorten runs on what is left,
+// so a pattern that took every file under a perfectly good root would otherwise be reported as a
+// bad root — sending someone to fix a flag that is already right, which is the confusion the
+// overlap branch above exists to prevent.
+func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stderr io.Writer) {
+	// A root alone is refused before this, so one that is set means a rename was asked for and a
+	// target came with it. Testing NewRoot here as well would be a guard no invocation can reach.
+	if cfg.CurrentRoot == "" || renamed > 0 {
+		return
+	}
+
+	if _, inProfile := prettycov.Shorten(items, cfg.CurrentRoot, cfg.NewRoot); inProfile > 0 {
+		return
+	}
+
+	_, _ = fmt.Fprintf(stderr, "-old %q matched nothing, so no label was shortened\n", cfg.CurrentRoot)
 }
 
 // emptyReason blames -exclude when it is what took the statements out, and the profile otherwise.

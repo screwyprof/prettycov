@@ -668,17 +668,6 @@ func TestRunRefusesHalfARename(t *testing.T) {
 			args: []string{"-new", "p"},
 			want: "one alone does nothing: got -new=p",
 		},
-		// A root of nothing but separators names no package, and shortenPaths left the report
-		// exactly as it was. `-old=$(MODULE)/` with MODULE unset spells the first of these, which
-		// is the mistake the whole check exists to catch.
-		"a root that is only a separator": {
-			args: []string{"-old", "/", "-new", "x"},
-			want: "one alone does nothing: got -old=/",
-		},
-		"a root that is only separators": {
-			args: []string{"-old", "//", "-new", "x"},
-			want: "one alone does nothing: got -old=//",
-		},
 	}
 
 	for name, tc := range tests {
@@ -691,6 +680,33 @@ func TestRunRefusesHalfARename(t *testing.T) {
 			assert.Equal(t, codeFailed, code)
 			assert.Empty(t, stdout.String(), "nothing on stdout for an argument error")
 			assert.Contains(t, stderr.String(), tc.want)
+		})
+	}
+}
+
+// A different mistake, so a different sentence. -old=/ names no package, and both flags may well
+// have been given — telling the reader "one alone does nothing" sends them to supply a flag they
+// already supplied. `-old=$(MODULE)/` with MODULE unset spells this, and with both unset it is
+// -old=/ with no -new at all.
+func TestRunRefusesARootThatNamesNoPackage(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string][]string{
+		"one separator, with a target":    {"-old", "/", "-new", "x"},
+		"several separators":              {"-old", "//", "-new", "x"},
+		"one separator, without a target": {"-old", "/"},
+	}
+
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run(append(args, "-profile", writeProfile(t, profile)), stdout, stderr)
+
+			assert.Equal(t, codeFailed, code)
+			assert.Empty(t, stdout.String())
+			assert.Contains(t, stderr.String(), "-old names no package: got -old="+args[1])
 		})
 	}
 }
@@ -728,6 +744,22 @@ func TestRunSaysWhenARootMatchedNothing(t *testing.T) {
 	assert.Equal(t, codeOK, code, "the report is correct, just not shortened")
 	assert.Contains(t, stderr.String(), `-old "example.com/WRONG" matched nothing`)
 	assert.Equal(t, " m - 60.00\n", stdout.String(), "and the labels are untouched")
+}
+
+// Shorten runs on what -exclude left, so a pattern that took every file under a perfectly good
+// root would report the root as wrong — sending someone to fix a flag that is already right. The
+// question is asked of the whole profile instead.
+func TestRunDoesNotBlameTheRootForWhatExcludeTook(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	app.Run([]string{
+		"-old", "m", "-new", "x", "-exclude", "^m/",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.NotContains(t, stderr.String(), "matched nothing, so no label was shortened")
+	assert.Contains(t, stderr.String(), `-exclude "^m/" left out`, "and -exclude still says what it took")
 }
 
 // The counterpart: a root that matches says nothing at all.
