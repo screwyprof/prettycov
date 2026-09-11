@@ -465,7 +465,7 @@ func TestRunExcludesPackages(t *testing.T) {
 			// checkThreshold already refuses rather than passing silently.
 			// The gate says what it wanted; it cannot say what emptied the report, so the reason
 			// is the same sentence either way. Being sent to check `go test -coverprofile` for a
-			// report your own pattern emptied is what emptyReason exists to prevent, and the
+			// report your own pattern emptied is what naming -exclude here prevents, and the
 			// gated path used to do exactly that.
 			name: "excluding everything cannot pass a gate",
 			args: []string{"-exclude", "example.com", "-fail-under", "0"}, wantCode: codeBelow,
@@ -663,9 +663,8 @@ func TestRunReportsOverlapAlongsideWhatAPatternTook(t *testing.T) {
 	assert.Equal(t, "100.00\n", stdout.String())
 }
 
-// emptyReason blames -exclude for an empty report only when a pattern took statements. One that
-// matched a file declaring none emptied nothing, so the reader is sent to the profile rather than
-// to a pattern that is not the reason.
+// A pattern that matched a file declaring no statements emptied nothing, so the reader is sent to
+// the profile rather than to a pattern that is not the reason — the report was empty before it ran.
 func TestRunBlamesTheProfileWhenAPatternTookNoStatements(t *testing.T) {
 	t.Parallel()
 
@@ -679,6 +678,40 @@ func TestRunBlamesTheProfileWhenAPatternTookNoStatements(t *testing.T) {
 	assert.Equal(t, codeFailed, code)
 	assert.Contains(t, stderr.String(), "no statements to cover")
 	assert.NotContains(t, stderr.String(), "-exclude left nothing to report")
+}
+
+// A profile with nothing in it has nothing for a flag to match, so judging one against it reports
+// every pattern and every root as stale — naming a good `-old=$(MODULE)` as the fault when the
+// profile is what is empty, and exiting 2 where the gate says 1.
+func TestRunDoesNotBlameFlagsForAnEmptyProfile(t *testing.T) {
+	t.Parallel()
+
+	// A file declaring no statements, not a bare header: the profile has to hold something for the
+	// question "does anything here have statements" to be asked of it at all. With no files the
+	// answer is no whichever way the test is written, and a guard that accepted a file of nothing
+	// would go unnoticed.
+	empty := "mode: set\nexample.com/p/doc.go:1.1,2.2 0 0\n"
+
+	tests := map[string][]string{
+		"a root the profile does not hold": {"-old", "example.com/WRONG", "-new", "w"},
+		"a pattern that matches nothing":   {"-exclude", `pb\.go`},
+		"no flags at all":                  nil,
+	}
+
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run(append(args,
+				"-fail-under", "80", "-profile", writeProfile(t, empty), "-color", "never",
+			), stdout, stderr)
+
+			assert.Equal(t, codeBelow, code, "an empty profile is a failed gate, not a bad invocation")
+			assert.Equal(t, "no statements to cover, wanted at least 80.00%\n", stderr.String())
+			assert.Empty(t, stdout.String())
+		})
+	}
 }
 
 // -old and -new are one rename between them. Alone, either silently did nothing: `-new=.` looks

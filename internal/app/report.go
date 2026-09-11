@@ -27,6 +27,13 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 		return exitFailed
 	}
 
+	// Asked before any flag is judged. A profile with nothing in it has nothing for a pattern or a
+	// root to match, so every one of them would be reported stale — a good `-old=$(MODULE)` named
+	// as the fault when the profile is what is empty, and exit 2 where the gate below says 1.
+	if !anyStatements(items) {
+		return refuseEmpty(cfg, "no statements to cover", stderr)
+	}
+
 	kept, excluded := prettycov.Exclude(items, cfg.Exclude)
 	staleExclude := reportExclusions(excluded, stderr)
 
@@ -45,26 +52,14 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 
 	tree := prettycov.Process(shortened)
 
-	// Settled once here, so the tree and -total cannot answer it differently. Refused rather than
-	// drawn, because an empty report exits 0 and turns a coverage gate into a green no-op. With
-	// -fail-under it is a failed gate instead: exit 2 would read as "prettycov could not run"
-	// when the truth is that coverage was too low.
+	// Settled once here, so the tree and -total cannot answer it differently.
+	//
+	// -exclude is named without asking which flag did it: the profile held statements or the guard
+	// above would have returned, only Exclude takes any away, and every one it takes is charged to
+	// a pattern. So there is no other way to arrive here, and a reason that weighed the exclusions
+	// could only ever reach the same answer.
 	if _, ok := tree.Coverage.Percentage(); !ok {
-		// The same sentence either way, so an empty report reads the same whichever flags asked
-		// for it. The gate adds what it wanted; it cannot say what emptied the report, and being
-		// told to check `go test -coverprofile` for a report your own pattern emptied is the
-		// confusion emptyReason exists to prevent.
-		reason := emptyReason(excluded)
-
-		if cfg.FailUnder != nil {
-			_, _ = fmt.Fprintf(stderr, "%s, wanted at least %.2f%%\n", reason, *cfg.FailUnder)
-
-			return exitBelow
-		}
-
-		_, _ = fmt.Fprintln(stderr, reason)
-
-		return exitFailed
+		return refuseEmpty(cfg, "-exclude left nothing to report", stderr)
 	}
 
 	if cfg.Total {
@@ -114,17 +109,37 @@ func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stder
 	return true
 }
 
-// emptyReason blames -exclude when it is what took the statements out, and the profile otherwise.
-// Statements rather than surviving files: a leftover file declaring none would otherwise send the
-// reader to check `go test -coverprofile` for a report a pattern emptied.
-func emptyReason(excluded []prettycov.Exclusion) string {
-	for _, ex := range excluded {
-		if ex.Statements > 0 {
-			return "-exclude left nothing to report"
+// anyStatements reports whether the profile holds anything to cover. Statements rather than files:
+// cmd/cover emits blocks declaring none, so a profile can name files and still be empty.
+func anyStatements(files []prettycov.FileCoverage) bool {
+	for _, f := range files {
+		if f.Coverage.Total() > 0 {
+			return true
 		}
 	}
 
-	return "no statements to cover"
+	return false
+}
+
+// refuseEmpty says why there is nothing to report and grades the absence.
+//
+// Refused rather than drawn, because an empty report exits 0 and turns a coverage gate into a green
+// no-op. With -fail-under it is a failed gate instead: exit 2 would read as "prettycov could not
+// run" when the truth is that coverage was too low.
+//
+// The reason is the caller's, and the gate only adds what it wanted — being told to check
+// `go test -coverprofile` for a report your own pattern emptied is the confusion it exists to
+// prevent.
+func refuseEmpty(cfg config, reason string, stderr io.Writer) int {
+	if cfg.FailUnder != nil {
+		_, _ = fmt.Fprintf(stderr, "%s, wanted at least %.2f%%\n", reason, *cfg.FailUnder)
+
+		return exitBelow
+	}
+
+	_, _ = fmt.Fprintln(stderr, reason)
+
+	return exitFailed
 }
 
 // showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
