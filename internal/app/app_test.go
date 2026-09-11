@@ -695,6 +695,23 @@ func TestRunRefusesHalfARename(t *testing.T) {
 	}
 }
 
+// Only the old root is trimmed before the guard asks whether one was given. The new one is the
+// replacement, used raw, and "/" is a target that works: it renders the tree under the filesystem
+// root. A guard made symmetrical would refuse this, and until now nothing would have noticed.
+func TestRunAcceptsTheFilesystemRootAsARenameTarget(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-old", "m", "-new", "/", "-depth", "0",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Equal(t, " / - 60.00\n", stdout.String())
+	assert.Empty(t, stderr.String())
+}
+
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 

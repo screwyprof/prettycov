@@ -207,6 +207,10 @@ func parseFlags(args []string) (config, error) {
 	//
 	// The message quotes what was typed, not what is left of it, since that is what the reader has
 	// to find on their own command line.
+	//
+	// Only the old root is trimmed, matching shortenPaths, which trims that one and uses the new
+	// one raw as the replacement. -new=/ is a working target — it renders the tree under the
+	// filesystem root — so a guard made symmetrical here would refuse a rename that works.
 	if (strings.Trim(cfg.CurrentRoot, "/") == "") != (cfg.NewRoot == "") {
 		return cfg, fmt.Errorf("%w: got %s", errHalfARename, given(cfg.CurrentRoot, cfg.NewRoot))
 	}
