@@ -19,8 +19,10 @@ tags.
   stop counting was a whole file. The toolchain has no `//go:cover ignore` comment: golang/go#53271
   was declined, on the grounds that a tool reporting the uncovered lines should filter them itself.
 
-  The path is tried first, so a pattern naming a file or a package behaves exactly as it did. A path
-  holds no colon, so neither kind can be mistaken for the other.
+  The path is tried first, so a pattern naming a file or a package behaves exactly as it did. A
+  path `go test` writes holds no colon, so neither kind can be mistaken for the other — x/tools
+  parses the filename as a greedy `.+`, so a hand-written profile could carry one, and there a
+  coordinate pattern takes the whole file and says so.
 
   The position is the block's start, which `cmd/cover` opens just after the brace — `if !ok {` on
   line 32 owns the `return` on line 33 — so it is read from the profile, not off the source. The

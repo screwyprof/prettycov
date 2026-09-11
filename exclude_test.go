@@ -307,7 +307,7 @@ func TestExcludeChargesAnOverlappingBlockOnce(t *testing.T) {
 	assert.Equal(t, 1, dropped[1].Overlapped())
 }
 
-// A path holds no colon, so a coordinate can never take a whole file by accident.
+// A path `go test` writes holds no colon, so a coordinate cannot take a whole file by accident.
 func TestExcludeKeepsPathsAndCoordinatesApart(t *testing.T) {
 	t.Parallel()
 
@@ -317,6 +317,20 @@ func TestExcludeKeepsPathsAndCoordinatesApart(t *testing.T) {
 
 	require.Len(t, kept, 1, "a coordinate that matches no block leaves the file whole")
 	assert.Equal(t, 0, dropped[0].Files)
+	assert.Equal(t, 0, dropped[0].Blocks)
+}
+
+// x/tools parses the filename as a greedy .+, so a profile no `go test` run writes can carry a
+// colon in a path. Then a coordinate pattern takes the file whole — and the report says so.
+func TestExcludeTakesAColonBearingPathAsAFile(t *testing.T) {
+	t.Parallel()
+
+	items := []prettycov.FileCoverage{withBlocks("m/a.go:3x/y.go", block(1, 1, 5, 0))}
+
+	kept, dropped := prettycov.Exclude(items, patterns(t, `a\.go:3`))
+
+	assert.Empty(t, kept)
+	assert.Equal(t, 1, dropped[0].Files, "charged as the file it took")
 	assert.Equal(t, 0, dropped[0].Blocks)
 }
 

@@ -45,8 +45,11 @@ func ParseExclude(s string) (*regexp.Regexp, error) {
 //     pattern can anchor on the line.
 //
 // The path is tried first and wins, or a pattern aimed at a package would be charged one block at
-// a time. A path holds no colon, so neither can be taken for the other. A pattern naming a block
-// inside a file some other pattern took whole is still credited, as an overlap.
+// a time. A path `go test` writes holds no colon, so neither can be taken for the other — x/tools
+// parses the filename as a greedy .+ and would accept one, and a hand-written profile naming
+// "m/a.go:3x/y.go" hands a coordinate pattern the whole file. The report says so: 1 file, not 1
+// block. A pattern naming a block inside a file some other pattern took whole is still credited,
+// as an overlap.
 //
 // Unanchored means the line is a prefix: "a.go:3" reaches 3, 30 and 300. "a.go:3$" is the one
 // line.
@@ -217,5 +220,5 @@ type Exclusion struct {
 	OverlappedBlocks int
 }
 
-// Overlapped is everything this pattern matched that an earlier one had already taken.
+// Overlapped is everything this pattern matched that another one was charged for.
 func (e Exclusion) Overlapped() int { return e.OverlappedFiles + e.OverlappedBlocks }
