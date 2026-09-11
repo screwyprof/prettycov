@@ -54,10 +54,11 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 
 	// Settled once here, so the tree and -total cannot answer it differently.
 	//
-	// -exclude is named without asking which flag did it: the profile held statements or the guard
-	// above would have returned, only Exclude takes any away, and every one it takes is charged to
-	// a pattern. So there is no other way to arrive here, and a reason that weighed the exclusions
-	// could only ever reach the same answer.
+	// -exclude is named without asking which flag did it. Three things make that safe together: the
+	// profile held statements or the guard above would have returned, only Exclude takes any away,
+	// and ParseProfile refuses a profile whose counts overflow — which is Percentage's other way of
+	// answering !ok, and the one that would put a message here about a flag nobody passed. So there
+	// is no other way to arrive, and weighing the exclusions could only reach the same answer.
 	if _, ok := tree.Coverage.Percentage(); !ok {
 		return refuseEmpty(cfg, "-exclude left nothing to report", stderr)
 	}
@@ -154,7 +155,9 @@ func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) i
 }
 
 // reportExclusions says what each pattern took out, on stderr so the report itself stays pipeable.
-// Always, not behind a verbose flag: exclusion moves the denominator.
+// Not behind a verbose flag: exclusion moves the denominator. The one run it says nothing on is an
+// empty profile, which showReport answers before it gets here — there every pattern took nothing,
+// so the accounting is a column of zeroes under a line already saying why.
 //
 // Reports whether any pattern matched nothing, which showReport refuses on. Only that one of the
 // three messages: a pattern beaten to every file by an earlier one is doing its job, and the branch
