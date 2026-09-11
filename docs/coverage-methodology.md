@@ -158,12 +158,179 @@ alone. That is §2's recommendation carried out to the last step before source i
 `-fail-under` deserve a paragraph on what they cannot tell you, and on the fact that a
 total-coverage gate is the configuration the field has largely abandoned (§3).
 
+## 7. What people ask the toolchain for
+
+Added 2026-09-11. §§1–6 asked what coverage is *for*; this asks what Go users say they cannot get.
+Open `cmd/cover` issues, by reactions:
+
+| 👍 | issue | ask |
+| --- | --- | --- |
+| 20 | [#78205](https://github.com/golang/go/issues/78205) | `-text`: summary table + **uncovered line ranges** + annotated source, in the terminal |
+| 11 | [#70306](https://github.com/golang/go/issues/70306) | branch coverage |
+| 9 | [#36685](https://github.com/golang/go/issues/36685) | HTML output is unusable with a screen reader |
+| 5 | [#31519](https://github.com/golang/go/issues/31519) | number of uncovered lines, because "small packages and giant packages are treated the same" |
+| 3 | [#76789](https://github.com/golang/go/issues/76789) | coverage across packages, not only packages with tests |
+| 3 | [#66713](https://github.com/golang/go/issues/66713) | a second figure, "97.3% without error handling" |
+| 1 | [#45846](https://github.com/golang/go/issues/45846) | flags to print coverage over packages or files |
+| 0 | [#75770](https://github.com/golang/go/issues/75770) | an HTML summary page of files and percentages |
+
+Four of these — #78205, #36685, #45846, #75770 — are one request: **a readable summary, in a
+terminal, without a browser.** #78205 gives the motivation as SSH and CI logs; #36685 is someone
+who cannot use the HTML at all. Nobody asks for statistics.
+
+That is the finding: prettycov is not short of metrics, it is the thing people keep asking the
+toolchain for. What it does not yet emit is the other half of #78205 — the line ranges.
+
+## 8. Ranking and filtering, across ecosystems
+
+| tool | ranking | filtering |
+| --- | --- | --- |
+| [coverage.py](https://coverage.readthedocs.io/en/latest/commands/cmd_report.html) | `--sort=name\|stmts\|miss\|branch\|cover` | `--skip-covered`, `--skip-empty`, `--no-skip-covered` |
+| [nyc/istanbul](https://manpages.ubuntu.com/manpages/jammy/man1/nyc.1.html) | — | `--skip-full`, `--skip-empty` |
+| [gcovr](https://gcovr.com/en/latest/manpage.html) | `--sort={filename,uncovered-number,uncovered-percent}`, `--sort-reverse` | — |
+| [simplecov-console](https://www.rubydoc.info/gems/simplecov-console/0.9.1) | sorts by % **by default**, `max_rows` | fully-covered rows excluded **by default** |
+
+Three things transfer:
+
+- **Ranking is a column sort in every one of them**, because each already prints a flat table. A
+  ranked view is not a flag for us, it is a second report.
+- **Filtering is the more universal feature** — three of four, one of them by default — and it is
+  the one that survives translation to a tree: pruning a fully-covered subtree makes *absence*
+  informative, which a filtered table cannot do.
+- **Filtering never moves the total.** coverage.py: skipping covered files "changes only the
+  display, not the computed totals or `--fail-under` behavior." nyc says the same. Copy this.
+
+One bug to avoid, from [gcovr#918](https://github.com/gcovr/gcovr/pull/918): sorting by uncovered
+*percent* made 0-of-1 and 100% collide, interleaving the best and worst files alphabetically. Their
+fix — sort key primary, total secondary, filename tertiary, and 0/0 sorting as 100% — is the shape
+any ranking here would need, and is a further argument that counts rank cleanly where ratios do not.
+
+## 9. Measurements
+
+Taken 2026-09-11 against four repositories: delegator, [gin](https://github.com/gin-gonic/gin),
+[dive](https://github.com/wagoodman/dive), and prettycov itself. Profiles generated with
+`go test -covermode=atomic`; delegator's is the corrected 1.26 fixture in `testdata/`.
+
+### Misses are small and scattered
+
+| repo | uncovered blocks | 1-statement blocks | largest block |
+| --- | --- | --- | --- |
+| delegator | 32 | 93% | 2 |
+| gin | 34 | 94% | 2 |
+| dive | 1289 | 69% | 21 |
+| prettycov | 101 | 80% | 7 |
+
+Uncovered *statements* say how much; uncovered *blocks* say what kind. 34 statements in 32 blocks is
+thirty untaken branches; 34 statements in two blocks is one untested function. The two are the same
+percentage and not the same afternoon. Concentration varies enough between repositories to carry
+information — dive has a single 21-statement hole, delegator's worst is two.
+
+### #66713 has no data, and the data refutes it
+
+The proposal asks for a second figure excluding `if err != nil` blocks, on the grounds that careful
+error handling lowers the percentage. It offers no measurement. Classifying each uncovered block by
+whether it is error-shaped:
+
+| repo | uncovered blocks that are error handling |
+| --- | --- |
+| delegator | 90% |
+| dive | 32% |
+| gin | 23% |
+| prettycov | 14% |
+
+So the premise is repository-specific, not general. And on the repository where it holds, the
+proposed figure inverts the signal:
+
+```
+delegator as reported:              91.54%   (34 of 402 uncovered)
+"without error handling" (#66713):  99.19%   ( 3 of 371 uncovered)
+hidden:                             31 untested error-handling statements
+```
+
+A service that talks to Postgres and an HTTP API would report 99.19% having never exercised a
+database or network failure. Against
+[Yuan et al., OSDI '14](https://www.usenix.org/conference/osdi14/technical-sessions/presentation/yuan)
+— 198 production failures across Cassandra, HBase, HDFS, MapReduce and Redis — that is the wrong
+direction: **92%** of catastrophic failures came from incorrect handling of non-fatal errors the
+software had explicitly signalled, **58%** were reachable by simple testing of error-handling code,
+and **23%** "would have been exposed by 100% statement coverage testing of the error handling
+stage." The statements #66713 removes from the denominator are the ones a quarter of catastrophic
+failures would have been caught by.
+
+The complaint underneath is still legitimate — the ratio does punish added error handling, and some
+branches are untestable without heroic mocking. The answer to that is coverage.py's
+`# pragma: no cover`: an explicit, per-line, reviewable decision, not a silent category exclusion.
+
+### A hypothesis that died
+
+Block size was proposed as a profile-only proxy for "is this error handling", which would have let a
+profile-only tool answer #66713 without source. Pooled across all four repositories:
+
+```
+1-stmt blocks: 1041   error-shaped: 29%
+2-stmt blocks:  276   error-shaped: 43%
+3+ stmts:       139   error-shaped: 33%
+```
+
+No correlation. The proxy does not exist; that question needs source.
+
+### Coverage cannot see the value of a test — demonstrated locally
+
+prettycov's `property_test.go` against its `crosscheck_test.go`, same package, measured separately:
+
+```
+crosscheck only:   85 blocks
+properties only:   72 blocks
+only properties:    0    only crosscheck: 13    shared: 72
+```
+
+The property test covers a **strict subset**. By statement coverage it is pure redundancy. It is
+also the test that caught the row-ordering bug that reached main through two cleanup passes and a
+review. This is §1's ceiling — Inozemtseva & Holmes, Zhang & Mesbah — reproduced on this repository
+in one command, and it is the reason no feature here may infer a test's *value* from coverage.
+
+### Filtering pays unevenly
+
+Rows at `-depth=max -files`, and how many are fully covered:
+
+```
+gin:   54 rows, 42 fully covered  → --skip-covered hides 77%
+dive: 100 rows,  1 fully covered  → --skip-covered hides  1%
+```
+
+It helps well-covered repositories, which is where a remaining gap is hardest to find, and does
+nothing for badly-covered ones, where gaps are everywhere anyway. A quality-of-life flag, not a
+headline.
+
+## 10. Profile-to-profile comparison
+
+Distinct from patch coverage. Every maintained diff tool — `go-test-coverage`, `octocov`,
+`gocovdiff`, `go-patch-cover`, Codecov — takes one profile plus a git diff and asks whether changed
+lines are covered. Comparing two *profiles* is a different axis, and splits three ways:
+
+| case | needs source? | sound? |
+| --- | --- | --- |
+| same code, two runs | no | exact — blocks match by position |
+| different revisions, per-file or per-package totals | no | exact — no line matching involved |
+| different revisions, per-block | yes | lines have shifted; this is what git buys the tools above |
+
+The first is unserved by anything in Go and costs nothing to compute. It must be scoped to *"what
+did this run cover"* and never to *"is this test worth keeping"* — see the counter-example in §9.
+
 ## Open questions
 
+Answered since the first pass: ranking is a second report rather than a flag (§8); cumulative counts
+cannot be ranked meaningfully because a parent always dominates its children, so ranking needs
+leaves; and `--skip-covered`-style filtering must leave the total alone (§8).
+
+Still open:
+
 - Does ranking by miss count reproduce Marick's problem in a new coordinate? "Biggest number" is not
-  "riskiest", and CodeScene's answer to prioritisation deliberately excludes coverage. Ranking is
-  triage, not risk assessment, and should be described as such.
-- Whether cumulative and per-directory ("flat") miss counts are both needed, or whether cumulative
-  alone suffices for a report this size. `rollUp` currently computes cumulative and discards flat.
-- Whether a ranked flat list should be a separate output shape from the tree, or whether asking for
-  a ranking implicitly *is* the request for one.
+  "riskiest", and CodeScene's hotspot model excludes coverage from risk entirely. Ranking is triage,
+  not risk assessment, and must be described as such — if it is built at all, which §7 gives no
+  evidence for.
+- Whether uncovered blocks should be emitted one per block or merged into contiguous regions. #78205
+  says "line ranges", which implies merged; one per block is simpler and may be noisier.
+- Whether the interesting unit is the file or the block, which probably varies by repository — an
+  argument for emitting the raw misses and letting the consumer choose over building a second
+  opinionated human-facing view.
