@@ -30,7 +30,16 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	kept, excluded := prettycov.Exclude(items, cfg.Exclude)
 	reportExclusions(excluded, stderr)
 
-	tree := prettycov.Process(kept, cfg.CurrentRoot, cfg.NewRoot)
+	// Said for the same reason -exclude says it: a pattern that matched nothing did nothing, and a
+	// reader who is not told goes looking for why the report is wrong. parseFlags has already
+	// refused a root that names no package at all; this is one that names a package the profile
+	// does not hold — a typo, or a module path that has moved.
+	shortened, renamed := prettycov.Shorten(kept, cfg.CurrentRoot, cfg.NewRoot)
+	if cfg.CurrentRoot != "" && renamed == 0 {
+		_, _ = fmt.Fprintf(stderr, "-old %q matched nothing, so no label was shortened\n", cfg.CurrentRoot)
+	}
+
+	tree := prettycov.Process(shortened)
 
 	// Settled once here, so the tree and -total cannot answer it differently. Refused rather than
 	// drawn, because an empty report exits 0 and turns a coverage gate into a green no-op. With

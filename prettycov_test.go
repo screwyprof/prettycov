@@ -93,7 +93,7 @@ func TestProcessCountsEachStatementOnce(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process(tc.files, "", "")
+			tree := prettycov.Process(tc.files)
 
 			for path, want := range tc.want {
 				node := tree.Get(path)
@@ -154,10 +154,46 @@ func TestCoverageStatsAdd(t *testing.T) {
 	assert.Equal(t, prettycov.CoverageStats{Covered: 7, Uncovered: 3}, stats, "adding nothing changes nothing")
 }
 
+// Shorten reports how many it renamed, which is the whole reason it is its own step: a root that
+// matches nothing rewrites nothing, and that is indistinguishable from no rename being asked for
+// unless the count says otherwise.
+func TestShortenReportsHowManyItRenamed(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{
+		file("example.com/m/a.go", 1, 0),
+		file("example.com/m/b.go", 1, 0),
+		file("other.com/c.go", 1, 0),
+	}
+
+	tests := map[string]struct {
+		oldRoot, newRoot string
+		want             int
+		wantFirst        string
+	}{
+		"matches two of three":  {oldRoot: "example.com/m", newRoot: "m", want: 2, wantFirst: "m/a.go"},
+		"matches nothing":       {oldRoot: "example.com/WRONG", newRoot: "w", want: 0, wantFirst: "example.com/m/a.go"},
+		"no rename asked for":   {want: 0, wantFirst: "example.com/m/a.go"},
+		"half a rename is none": {oldRoot: "example.com/m", want: 0, wantFirst: "example.com/m/a.go"},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			shortened, renamed := prettycov.Shorten(files, tc.oldRoot, tc.newRoot)
+
+			assert.Equal(t, tc.want, renamed)
+			assert.Equal(t, tc.wantFirst, shortened[0].File)
+			assert.Equal(t, "example.com/m/a.go", files[0].File, "the input is not modified")
+		})
+	}
+}
+
 func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 	t.Parallel()
 
-	tree := prettycov.Process([]prettycov.FileCoverage{file("m/pkg/a.go", 1, 1)}, "", "")
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/pkg/a.go", 1, 1)})
 
 	assert.Nil(t, tree.Get("m/absent"))
 	assert.NotNil(t, tree.Get("m/pkg"), "and finds one that is")
@@ -215,7 +251,8 @@ func TestProcessShortensTheRootPath(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process([]prettycov.FileCoverage{file(tc.file, 1, 1)}, tc.old, tc.replace)
+			shortened, _ := prettycov.Shorten([]prettycov.FileCoverage{file(tc.file, 1, 1)}, tc.old, tc.replace)
+			tree := prettycov.Process(shortened)
 
 			assert.NotNil(t, tree.Get(tc.want), "want a node at %q", tc.want)
 		})
@@ -252,7 +289,8 @@ func TestProcessCleansPaths(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process(tc.files, "zz", tc.newRoot)
+			shortened, _ := prettycov.Shorten(tc.files, "zz", tc.newRoot)
+			tree := prettycov.Process(shortened)
 
 			assert.Equal(t, tc.want, prettycov.Rows(tree, prettycov.Options{})[0].Label)
 		})
@@ -291,7 +329,8 @@ func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process(tc.files, "foo", tc.newRoot)
+			shortened, _ := prettycov.Shorten(tc.files, "foo", tc.newRoot)
+			tree := prettycov.Process(shortened)
 			rows := prettycov.Rows(tree, prettycov.Options{})
 
 			labels := make([]string, 0, len(rows))
@@ -318,7 +357,7 @@ func TestPathTreeKeepsFilesAndDirectoriesApart(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/x/own.go", 1, 1),
 		file("m/x/sub/s.go", 1, 1),
-	}, "", "")
+	})
 
 	pkg := tree.Get("m/x")
 	require.NotNil(t, pkg)
@@ -336,7 +375,7 @@ func TestPathTreeSplitsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/a.go", 5, 0),
 		file("m/a.go/b.go", 0, 7),
-	}, "", "")
+	})
 
 	m := tree.Get("m")
 	require.NotNil(t, m)
@@ -353,7 +392,8 @@ func TestProcessDoesNotModifyItsInput(t *testing.T) {
 	files := []prettycov.FileCoverage{file("example.com/m/pkg/a.go", 1, 1)}
 	before := files[0].File
 
-	prettycov.Process(files, "example.com/m", "m")
+	shortened, _ := prettycov.Shorten(files, "example.com/m", "m")
+	prettycov.Process(shortened)
 
 	assert.Equal(t, before, files[0].File, "Process rewrote the caller's slice")
 }
@@ -390,7 +430,7 @@ func TestProcessMakesEveryParentTheSumOfItsChildren(t *testing.T) {
 		return sum
 	}
 
-	tree := prettycov.Process(files, "", "")
+	tree := prettycov.Process(files)
 
 	assert.Equal(t, 568, walk("", tree), "the profile's own total")
 }

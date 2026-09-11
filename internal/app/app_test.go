@@ -712,6 +712,39 @@ func TestRunAcceptsTheFilesystemRootAsARenameTarget(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+// A root that names no package in the profile rewrites nothing, which looks exactly like asking
+// for no rename at all. parseFlags catches a root that is empty; only the matching can catch one
+// that is merely wrong. Said, not refused — the report is correct, it is just not what was asked
+// for, which is how -exclude treats a pattern that matched nothing.
+func TestRunSaysWhenARootMatchedNothing(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-old", "example.com/WRONG", "-new", "w", "-depth", "0",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code, "the report is correct, just not shortened")
+	assert.Contains(t, stderr.String(), `-old "example.com/WRONG" matched nothing`)
+	assert.Equal(t, " m - 60.00\n", stdout.String(), "and the labels are untouched")
+}
+
+// The counterpart: a root that matches says nothing at all.
+func TestRunIsSilentWhenARootMatched(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-old", "m", "-new", "renamed", "-depth", "0",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Empty(t, stderr.String())
+	assert.Equal(t, " renamed - 60.00\n", stdout.String())
+}
+
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 

@@ -19,7 +19,7 @@ func TestDisplayTreeRendersBothRatioBranches(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/empty/doc.go", 0, 0),
 		file("m/real/a.go", 3, 1),
-	}, "", "")
+	})
 
 	out := render(t, tree, 2)
 
@@ -60,7 +60,7 @@ func TestDisplayTreeNeutralisesEscapesFromTheProfile(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process([]prettycov.FileCoverage{file(tc.pkg+"/a.go", 1, 1)}, "", "")
+			tree := prettycov.Process([]prettycov.FileCoverage{file(tc.pkg+"/a.go", 1, 1)})
 
 			out := render(t, tree, 3)
 
@@ -84,7 +84,7 @@ func TestDisplayTreeKeepsZeroWidthJoiners(t *testing.T) {
 	// U+200D between the Devanagari letters is part of the spelling, not a control.
 	joined := "\u0915\u094d\u200d\u0937"
 
-	tree := prettycov.Process([]prettycov.FileCoverage{file("m/"+joined+"/a.go", 1, 1)}, "", "")
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/"+joined+"/a.go", 1, 1)})
 
 	assert.Contains(t, render(t, tree, 2), joined)
 }
@@ -93,7 +93,7 @@ func TestDisplayTreeKeepsZeroWidthJoiners(t *testing.T) {
 func TestDisplayTreeKeepsPrintableUnicode(t *testing.T) {
 	t.Parallel()
 
-	tree := prettycov.Process([]prettycov.FileCoverage{file("m/héllo-世界/a.go", 1, 1)}, "", "")
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/héllo-世界/a.go", 1, 1)})
 
 	assert.Contains(t, render(t, tree, 2), "héllo-世界")
 }
@@ -107,7 +107,7 @@ func TestDisplayTreeSortsOnTheLabelAsDrawn(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/a\u0001/x.go", 1, 0),
 		file("m/ab/y.go", 1, 0),
-	}, "", "")
+	})
 
 	assert.Equal(t, []string{"m", "ab", "a\ufffd"}, nodeNames(t, tree, prettycov.DepthAll))
 }
@@ -149,7 +149,7 @@ func TestDisplayTreeIsDeterministic(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process(tc.files, "", "")
+			tree := prettycov.Process(tc.files)
 			first := renderOpts(t, tree, tc.opts)
 
 			// Enough that a coin flip left to the map would have shown up: the tie above came out
@@ -164,7 +164,7 @@ func TestDisplayTreeIsDeterministic(t *testing.T) {
 func TestDisplayTreeSortsChildren(t *testing.T) {
 	t.Parallel()
 
-	tree := prettycov.Process(printerFiles(), "", "")
+	tree := prettycov.Process(printerFiles())
 
 	assert.Equal(t, []string{"m", "alpha/deep", "beta", "gamma"}, nodeNames(t, tree, 1))
 }
@@ -178,7 +178,7 @@ func TestDisplayTreeCollapsesPassThroughDirs(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("github.com/o/repo/pkg/a.go", 3, 1),
 		file("github.com/o/repo/web/b.go", 1, 1),
-	}, "", "")
+	})
 
 	assert.Equal(t, []string{"github.com/o/repo", "pkg", "web"}, nodeNames(t, tree, 1))
 }
@@ -215,7 +215,7 @@ func TestDisplayTreeKeepsDirsThatAreAlsoPackages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process(tc.files, "", "")
+			tree := prettycov.Process(tc.files)
 
 			assert.Equal(t, []string{"m/x", "sub"}, nodeNames(t, tree, 1))
 		})
@@ -232,7 +232,7 @@ func TestDisplayTreeFilesAreLeavesThatSumToTheirPackage(t *testing.T) {
 		file("m/x/own.go", 4, 0),
 		file("m/x/more.go", 2, 0),
 		file("m/x/sub/s.go", 0, 4),
-	}, "", "")
+	})
 
 	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Counts: true, Files: true})
 
@@ -257,7 +257,7 @@ func TestDisplayTreeFilesSortAmongPackages(t *testing.T) {
 		file("m/x/config/d.go", 1, 1),
 		file("m/x/store/s.go", 1, 1),
 		file("m/x/store/t.go", 1, 1),
-	}, "", "")
+	})
 
 	assert.Equal(t, []string{"m/x", "config", "service.go", "store", "subscriber.go"},
 		namesWith(t, tree, prettycov.Options{Depth: 1, Files: true}))
@@ -272,7 +272,7 @@ func TestDisplayTreeHidesFilesUnlessAsked(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/x/own.go", 4, 0),
 		file("m/x/sub/s.go", 0, 4),
-	}, "", "")
+	})
 
 	out := renderOpts(t, tree, prettycov.Options{Depth: prettycov.DepthAll})
 
@@ -291,7 +291,7 @@ func TestDisplayTreeKeepsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/a.go", 5, 0),
 		file("m/a.go/b.go", 0, 7),
-	}, "", "")
+	})
 
 	assert.Equal(t, []string{"m", "a.go"}, nodeNames(t, tree, prettycov.DepthAll),
 		"with the files hidden only the directory is drawn, and it keeps its subtree")
@@ -324,7 +324,7 @@ func TestDisplayTreeOrdersATieBetweenAFileAndADirectory(t *testing.T) {
 		file("m/a.go", 5, 0),
 		file("m/a.go/b.go", 0, 4),
 		file("m/a.go/c.go", 0, 3),
-	}, "", "")
+	})
 
 	// The order, and which of the two rows carries which number. The reconciliation in
 	// crosscheck_test.go sums them by path, so it balances just as well if they trade: give the
@@ -344,7 +344,7 @@ func TestDisplayTreeFilesCountAsALevel(t *testing.T) {
 		file("m/x/own.go", 1, 1),
 		file("m/x/sub/s.go", 1, 1),
 		file("m/x/sub/t.go", 1, 1),
-	}, "", "")
+	})
 
 	assert.Equal(t, []string{"m/x"}, namesWith(t, tree, prettycov.Options{Depth: 0, Files: true}))
 	assert.Equal(t, []string{"m/x", "own.go", "sub"}, namesWith(t, tree, prettycov.Options{Depth: 1, Files: true}))
@@ -362,7 +362,7 @@ func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
 		file("m/one/only.go", 3, 1),
 		file("m/two/a.go", 1, 1),
 		file("m/two/b.go", 1, 1),
-	}, "", "")
+	})
 
 	assert.Equal(t, []string{"m", "one/only.go", "two"},
 		namesWith(t, tree, prettycov.Options{Depth: 1, Files: true}),
@@ -393,11 +393,11 @@ func TestDisplayTreeMergesAFileThatHasNoDirectory(t *testing.T) {
 	bare := prettycov.Process([]prettycov.FileCoverage{
 		file("printer.go", 3, 1),
 		file("internal/app/a.go", 2, 0),
-	}, "", "")
+	})
 
 	assert.Equal(t, []string{"internal/app/a.go", "printer.go"}, namesWith(t, bare, withFiles))
 
-	atRoot := prettycov.Process([]prettycov.FileCoverage{file("/main.go", 8, 1)}, "", "")
+	atRoot := prettycov.Process([]prettycov.FileCoverage{file("/main.go", 8, 1)})
 
 	assert.Equal(t, []string{"/main.go"}, namesWith(t, atRoot, withFiles))
 }
@@ -409,7 +409,7 @@ func TestDisplayTreeMergesAFileThatHasNoDirectory(t *testing.T) {
 func TestDisplayTreeMergesTheTopRowToo(t *testing.T) {
 	t.Parallel()
 
-	tree := prettycov.Process([]prettycov.FileCoverage{file("github.com/o/tool/main.go", 8, 1)}, "", "")
+	tree := prettycov.Process([]prettycov.FileCoverage{file("github.com/o/tool/main.go", 8, 1)})
 
 	assert.Equal(t, []string{"github.com/o/tool/main.go"},
 		namesWith(t, tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}))
@@ -435,7 +435,7 @@ func TestDisplayTreeDepthCountsLevels(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process(printerFiles(), "", "")
+			tree := prettycov.Process(printerFiles())
 
 			assert.Equal(t, tc.want, nodeNames(t, tree, tc.depth))
 		})
@@ -456,7 +456,7 @@ func TestDisplayTreeGradesByThreshold(t *testing.T) {
 		file("m/none/doc.go", 0, 0), // nothing to grade
 	}
 
-	out := renderColor(t, prettycov.Process(files, "", ""), 1)
+	out := renderColor(t, prettycov.Process(files), 1)
 
 	assert.Contains(t, out, "\x1b[31m10.00\x1b[0m", "red below 50")
 	assert.Contains(t, out, "\x1b[33m50.00\x1b[0m", "50 is yellow, not red")
@@ -476,7 +476,7 @@ func TestDisplayTreeCountsShowUncoveredOverTotal(t *testing.T) {
 		file("m/big/a.go", 115, 5),
 		file("m/small/b.go", 18, 3),
 		file("m/none/doc.go", 0, 0),
-	}, "", "")
+	})
 
 	out := renderOpts(t, tree, prettycov.Options{Depth: 1, Counts: true})
 

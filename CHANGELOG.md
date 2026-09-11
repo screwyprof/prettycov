@@ -52,12 +52,26 @@ tags.
   `-exclude`. A root of nothing but separators counts as absent — `-old=$(MODULE)/` with `MODULE`
   unset is `-old=/`, which named no package and left the report exactly as it was.
 
+- `-old` that matches no path in the profile says so — `-old "github.com/WRONG/module" matched
+  nothing, so no label was shortened` — rather than printing an unshortened report and exiting 0
+  with no explanation. A typo or a module path that has moved looks exactly like asking for no
+  rename at all. Said rather than refused, because the report is correct and only the labels are
+  not what was asked for, which is how `-exclude` treats a pattern that matched nothing.
+
 - Rows sort by the label as drawn rather than as parsed. `sanitize` replaces a rune a terminal
   would obey, and the replacement sorts elsewhere than the original, so a package named `a\x01`
   sorted before `ab` and drew after it. Only reachable from a profile carrying a control character
   in a path.
 
 ### Go API
+
+- **Breaking:** `Process` no longer renames a root — it takes only the files, and `Shorten` is the
+  step that renames and reports how many paths it rewrote. Renaming inside `Process` gave a caller
+  no way to see whether it had done anything, so a root naming a package the profile does not hold
+  rewrote nothing and said nothing. Callers that passed `Process(files, "", "")` drop the two
+  arguments; callers that renamed put `Shorten` in front of it.
+
+
 
 - `FileCoverage.Blocks` holds each block's start position and statements. Optional — a
   `FileCoverage` built by a caller may leave it empty, and only `Exclude` reads it.
