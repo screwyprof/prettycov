@@ -233,12 +233,15 @@ func parseFlags(args []string) (config, error) {
 // a rename that is whichever half was passed, so the message points at the flag that is there
 // rather than the one that is not, and for a root that names no package it is always -old, since
 // that is the only one the trim looks at.
+// Quoted, as reportRename and every -exclude message quote theirs. A root is a value the reader
+// typed, so it can be empty-looking or carry a control byte: -old=" " printed as a trailing space
+// nobody can see, and an escape went to the terminal raw.
 func given(oldRoot, newRoot string) string {
 	if oldRoot != "" {
-		return "-old=" + oldRoot
+		return fmt.Sprintf("-old=%q", oldRoot)
 	}
 
-	return "-new=" + newRoot
+	return fmt.Sprintf("-new=%q", newRoot)
 }
 
 // profilePath settles which profile to read. Naming it both ways is a mistake rather than a

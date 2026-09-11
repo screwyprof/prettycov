@@ -728,11 +728,11 @@ func TestRunRefusesHalfARename(t *testing.T) {
 		// `given` does, and a prefix assertion holds just as well when it names the wrong one.
 		"old without new": {
 			args: []string{"-old", "example.com/p"},
-			want: "one alone does nothing: got -old=example.com/p",
+			want: `one alone does nothing: got -old="example.com/p"`,
 		},
 		"new without old": {
 			args: []string{"-new", "p"},
-			want: "one alone does nothing: got -new=p",
+			want: `one alone does nothing: got -new="p"`,
 		},
 	}
 
@@ -772,7 +772,7 @@ func TestRunRefusesARootThatNamesNoPackage(t *testing.T) {
 
 			assert.Equal(t, codeFailed, code)
 			assert.Empty(t, stdout.String())
-			assert.Contains(t, stderr.String(), "-old names no package: got -old="+args[1])
+			assert.Contains(t, stderr.String(), `-old names no package: got -old="`+args[1]+`"`)
 		})
 	}
 }

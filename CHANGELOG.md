@@ -51,7 +51,7 @@ tags.
   were gone. Exit 2, as for any other argument mistake. The same reasoning already refuses an empty
   `-exclude`. A root of nothing but separators counts as absent — `-old=$(MODULE)/` with `MODULE`
   unset is `-old=/`, which named no package and left the report exactly as it was. That gets its own
-  message — `-old names no package: got -old=/` — because both flags may well have been given, and
+  message — ``-old names no package: got -old="/"`` — because both flags may well have been given, and
   "one alone does nothing" would send the reader to supply a flag they already supplied.
 
 - **Breaking:** a flag that matched nothing exits 2 rather than warning and carrying on. Two of
@@ -62,6 +62,10 @@ tags.
 
   A pattern beaten to every file by an *earlier* pattern still exits 0. It is doing its job, and
   deleting it is what would break; telling it apart from a typo is why that message is separate.
+
+  A profile with no statements is answered before any flag is judged, so it stays `no statements to
+  cover` — exit 1 under `-fail-under`, 2 without. Nothing can match an empty profile, so judging
+  flags against one reported every pattern and every root as stale and blamed a flag that was fine.
 
 - `-old` with more than one trailing separator renames again. `-old=$(MODULE)/` where `MODULE`
   already ends in one spells `-old=example.com/m//`, and only the last separator was trimmed, so
