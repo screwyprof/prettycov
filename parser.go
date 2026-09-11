@@ -42,8 +42,12 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 	items := make([]FileCoverage, 0, len(profiles))
 
 	// One backing array for every file's blocks, sized exactly, so a file costs no allocation of
-	// its own. Exact matters: a re-alloc part way would leave the slices already handed out
-	// pointing at the old array.
+	// its own. Exactness is for waste, not safety: a re-alloc part way is harmless — the slices
+	// already handed out keep the old array, which is still correct — but it would leave two.
+	//
+	// The cost is a shared lifetime. Every file's Blocks points into this one array, so it lives
+	// as long as any FileCoverage does: Exclude dropping nine files in ten frees none of it. That
+	// is the run's memory for a CLI, and worth knowing for a caller that keeps one file of many.
 	blocks := 0
 	for _, profile := range profiles {
 		blocks += len(profile.Blocks)

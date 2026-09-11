@@ -81,8 +81,10 @@ type arena struct {
 	used  int
 }
 
-// chunkNodes is 16KB at PathTree's current size — enough to amortise, small enough that a
-// one-file profile does not pay for a hundred thousand.
+// chunkNodes is 16KB at PathTree's current size. That is also the floor: the first node allocates
+// a whole chunk, so a one-file profile pays 16KB where it used to pay one node. Measured across
+// 64..32768, time is flat for a large profile and bytes scale with the chunk for a small one, so
+// this trades a fixed 16KB against an allocation per node.
 const chunkNodes = 512
 
 func (a *arena) next() *PathTree {

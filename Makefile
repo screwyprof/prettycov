@@ -105,15 +105,24 @@ fmt: require-golangci ## format code
 #
 # Two passes because the second must run without -cover: under -cover, cmd/go points GOCOVERDIR at
 # a directory of its own and never reads it back, so a spawned binary's counters are discarded
-# (golang/go#66225). Without it the variable is ours. -race stays on the first pass; the second
-# forks a binary built without it.
+# (golang/go#66225). Without it the variable is ours.
+#
+# -race on both passes: the forked binary is built without it, but the harness runs its cases in
+# parallel over a shared binary path and coverage directory, and no other target compiles that
+# file at all.
+#
+# The counter check is for tag drift. "integration" lives here, in the build tag and in
+# .golangci.yml, and nothing makes the three agree — without it a mismatch runs no tests, leaves
+# the directory empty, and fails inside covdata naming neither the tag nor the tests.
 #
 # Appending merges, because readers of this format sum blocks they see twice.
 $(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
 	@go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
-	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -count=1 -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/
+	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -race -count=1 -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/
+	@test -n "$$(ls -A $(COVERDATA) 2>/dev/null)" || \
+		{ echo "no counters in $(COVERDATA): did the -tags=$(GO_TAGS) pass run any tests?"; exit 1; }
 	@go tool covdata textfmt -i=$(COVERDATA) -o=$(COVERDATA)/binary.txt
 	@tail -n +2 $(COVERDATA)/binary.txt >> $@
 
