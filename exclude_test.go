@@ -354,3 +354,62 @@ func withBlocks(name string, blocks ...prettycov.Block) prettycov.FileCoverage {
 
 	return item
 }
+
+// A pattern naming a block inside a file another pattern took whole has not failed. Reporting it as
+// a typo invites deleting it, and the day the path pattern narrows the block is back in the
+// denominator with nobody the wiser.
+func TestExcludeCreditsABlockInsideAFileTakenWhole(t *testing.T) {
+	t.Parallel()
+
+	items := []prettycov.FileCoverage{withBlocks("m/a.go", block(31, 2, 2, 0), block(32, 9, 0, 1))}
+
+	_, dropped := prettycov.Exclude(items, patterns(t, `a\.go:32`, `a\.go$`))
+
+	assert.Equal(t, 0, dropped[0].Blocks, "the file went whole, so it is charged to the path")
+	assert.Equal(t, 1, dropped[0].OverlappedBlocks, "but the coordinate did match")
+	assert.Equal(t, 1, dropped[1].Files)
+
+	// Unanchored, so it matches the coordinates as well as the path — a path is a prefix of every
+	// one of them. It still may not be credited twice for the same match.
+	_, unanchored := prettycov.Exclude(items, patterns(t, `m/a\.go`, `a\.go:32`))
+
+	assert.Equal(t, 1, unanchored[0].Files)
+	assert.Equal(t, 0, unanchored[0].OverlappedBlocks, "the pattern that took the path is not charged twice")
+	assert.Equal(t, 1, unanchored[1].OverlappedBlocks)
+}
+
+// Unanchored, the line is a prefix. Anchored, it is the line — which needs the position matched
+// without its column too, or "$" could never follow a line number.
+func TestExcludeAnchorsOnTheLine(t *testing.T) {
+	t.Parallel()
+
+	items := []prettycov.FileCoverage{withBlocks("m/a.go",
+		block(3, 2, 0, 1), block(30, 2, 0, 1), block(300, 2, 0, 1), block(50, 2, 5, 0),
+	)}
+
+	_, loose := prettycov.Exclude(items, patterns(t, `a\.go:3`))
+	assert.Equal(t, 3, loose[0].Blocks, "3, 30 and 300")
+
+	_, exact := prettycov.Exclude(items, patterns(t, `a\.go:3$`))
+	assert.Equal(t, 1, exact[0].Blocks, "line 3 alone")
+
+	_, withCol := prettycov.Exclude(items, patterns(t, `a\.go:3:2$`))
+	assert.Equal(t, 1, withCol[0].Blocks, "and the column still anchors")
+}
+
+// cmd/cover emits blocks declaring no statements, so "every block went" is the wrong test for an
+// empty file: one of those left behind kept it alive as a row reading "n/a".
+func TestExcludeDropsAFileLeftWithNoStatements(t *testing.T) {
+	t.Parallel()
+
+	items := []prettycov.FileCoverage{
+		withBlocks("m/a.go", block(10, 2, 0, 0), block(32, 9, 0, 1)),
+		withBlocks("m/b.go", block(1, 1, 4, 0)),
+	}
+
+	kept, dropped := prettycov.Exclude(items, patterns(t, `a\.go:32`))
+
+	require.Len(t, kept, 1)
+	assert.Equal(t, "m/b.go", kept[0].File, "a.go held nothing but an empty block, so it went too")
+	assert.Equal(t, 1, dropped[0].Blocks)
+}

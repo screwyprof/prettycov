@@ -24,7 +24,12 @@ tags.
 
   The position is the block's start, which `cmd/cover` opens just after the brace — `if !ok {` on
   line 32 owns the `return` on line 33 — so it is read from the profile, not off the source. The
-  column is optional.
+  column is optional, and the line anchors: `a\.go:3` reaches lines 3, 30 and 300, `a\.go:3$` is
+  line 3 alone.
+
+  A file left holding no statements goes with its blocks rather than drawing as an `n/a` row, and a
+  pattern naming a block inside a file another pattern took whole is reported as an overlap rather
+  than as having matched nothing.
 
 ### Changed
 

@@ -41,10 +41,15 @@ func ParseExclude(s string) (*regexp.Regexp, error) {
 //   - the file's full path, "internal/app/version.go". A package is a path its files share,
 //     "/pkg/logger/"; files rather than packages, because ignore lists name files — etcd's
 //     codecov.yml drops **/*.pb.go.
-//   - one block's position, "internal/app/version.go:32:9".
+//   - one block's position, "internal/app/version.go:32:9", and the same without the column, so a
+//     pattern can anchor on the line.
 //
 // The path is tried first and wins, or a pattern aimed at a package would be charged one block at
-// a time. A path holds no colon, so neither can be taken for the other.
+// a time. A path holds no colon, so neither can be taken for the other. A pattern naming a block
+// inside a file some other pattern took whole is still credited, as an overlap.
+//
+// Unanchored means the line is a prefix: "a.go:3" reaches 3, 30 and 300. "a.go:3$" is the one
+// line.
 func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, []Exclusion) {
 	if len(patterns) == 0 {
 		return items, nil
@@ -56,9 +61,16 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 	}
 
 	kept := make([]FileCoverage, 0, len(items))
+	// Reused rather than allocated per file: it says which patterns took the path, so the ones that
+	// did not can still be asked about the blocks inside.
+	tookPath := make([]bool, len(patterns))
 
 	for _, item := range items {
-		if chargeFile(dropped, patterns, item) {
+		clear(tookPath)
+
+		if chargeFile(dropped, patterns, item, tookPath) {
+			noteBlocksAlreadyGone(dropped, patterns, item, tookPath)
+
 			continue
 		}
 
@@ -70,19 +82,44 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 	return kept, dropped
 }
 
+// noteBlocksAlreadyGone credits a pattern that names a block inside a file another pattern took
+// whole. Without it such a pattern reports "matched nothing", which reads as a typo and invites
+// deleting it — and the day the path pattern narrows, the block silently returns to the
+// denominator. Patterns that took the path are skipped: a path is a prefix of every coordinate in
+// its file, so they would be charged twice for the same match.
+func noteBlocksAlreadyGone(
+	dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage, tookPath []bool,
+) {
+	for i, re := range patterns {
+		if tookPath[i] {
+			continue
+		}
+
+		for _, block := range item.Blocks {
+			if block.names(re, item.File) {
+				dropped[i].OverlappedBlocks++
+			}
+		}
+	}
+}
+
 // chargeFile asks every pattern about the path and reports whether the file goes whole.
 //
 // Every pattern is asked, not just up to the first hit: one that only ever matches files an earlier
 // pattern already took is still a working pattern, and reporting it as if it matched nothing reads
 // as a typo. First match wins for the statements, so the totals still add up to what left the
 // report.
-func chargeFile(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage) bool {
+func chargeFile(
+	dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage, tookPath []bool,
+) bool {
 	charged := -1
 
 	for i, re := range patterns {
 		if !re.MatchString(item.File) {
 			continue
 		}
+
+		tookPath[i] = true
 
 		if charged >= 0 {
 			dropped[i].OverlappedFiles++
@@ -99,7 +136,7 @@ func chargeFile(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverag
 }
 
 // chargeBlocks takes the blocks a pattern names out of a file the patterns did not take whole, and
-// reports whether anything is left to draw. A file whose every block goes is excluded in every
+// reports whether anything is left to draw. A file with no statements left is excluded in every
 // sense that matters, so it goes too rather than drawing as a row with nothing in it.
 //
 // A file carrying no blocks is returned untouched: Blocks is optional, and a caller who assembled
@@ -118,10 +155,9 @@ func chargeBlocks(
 
 	for _, block := range item.Blocks {
 		charged := -1
-		at := block.at(item.File)
 
 		for i, re := range patterns {
-			if !re.MatchString(at) {
+			if !block.names(re, item.File) {
 				continue
 			}
 
@@ -143,10 +179,12 @@ func chargeBlocks(
 		}
 	}
 
-	switch len(blocks) {
-	case len(item.Blocks):
+	switch {
+	case len(blocks) == len(item.Blocks):
 		return item, true
-	case 0:
+	// Not len(blocks) == 0: cmd/cover emits blocks declaring no statements, and one of those left
+	// behind kept the file alive as a row reading "n/a", which is a row about nothing.
+	case left.Total() == 0:
 		return FileCoverage{}, false
 	default:
 		item.Blocks, item.Coverage = blocks, left

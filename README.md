@@ -179,6 +179,10 @@ The position is the block's start, which `cmd/cover` opens just after the brace 
 32 owns the `return` on line 33 — so read it from the profile rather than off the source. The column
 is optional, and only tells two blocks opening on one line apart.
 
+Patterns are unanchored here as everywhere, so a bare line number is a prefix: `a\.go:3` reaches
+lines 3, 30 and 300. Anchor it when you mean one line — `a\.go:3$`, or `a\.go:3:2$` to pin the
+column too.
+
 The accounting goes to stderr, so the report itself stays pipeable. It filters the report, not the
 profile on disk: `go tool cover -html` and anything else reading the file still sees everything in
 it, and changing your mind costs a re-render rather than a re-run.

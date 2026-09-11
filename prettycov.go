@@ -2,6 +2,7 @@ package prettycov
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -89,10 +90,21 @@ type Block struct {
 	Coverage  CoverageStats
 }
 
-// at names the block the way a compiler names a position, which is the form -exclude matches
-// against and the form a jump-to-line tool reads.
-func (b Block) at(file string) string {
-	return file + ":" + strconv.Itoa(b.Line) + ":" + strconv.Itoa(b.Col)
+// at names the block the way a compiler names a position, and again without the column. -exclude
+// matches a pattern against both, so "a.go:3$" anchors on line 3 rather than never matching: the
+// column is what a reader leaves off, and a pattern ending at the line has nowhere to stop without
+// this.
+func (b Block) at(file string) (withCol, toLine string) {
+	toLine = file + ":" + strconv.Itoa(b.Line)
+
+	return toLine + ":" + strconv.Itoa(b.Col), toLine
+}
+
+// names reports whether the pattern picks out this block, by either spelling of its position.
+func (b Block) names(re *regexp.Regexp, file string) bool {
+	withCol, toLine := b.at(file)
+
+	return re.MatchString(withCol) || re.MatchString(toLine)
 }
 
 // Process turns per-file coverage into a tree in which every node reports its own statements plus
