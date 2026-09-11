@@ -140,6 +140,20 @@ func TestCoverageStatsPercentage(t *testing.T) {
 	}
 }
 
+// Both sides move together, or a percentage ends up drawn from counts that were never summed the
+// same way.
+func TestCoverageStatsAdd(t *testing.T) {
+	t.Parallel()
+
+	stats := prettycov.CoverageStats{Covered: 3, Uncovered: 1}
+	stats.Add(prettycov.CoverageStats{Covered: 4, Uncovered: 2})
+
+	assert.Equal(t, prettycov.CoverageStats{Covered: 7, Uncovered: 3}, stats)
+
+	stats.Add(prettycov.CoverageStats{})
+	assert.Equal(t, prettycov.CoverageStats{Covered: 7, Uncovered: 3}, stats, "adding nothing changes nothing")
+}
+
 func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 	t.Parallel()
 

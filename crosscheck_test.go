@@ -181,8 +181,7 @@ func nodeTotals(files []prettycov.FileCoverage) map[string][]prettycov.CoverageS
 
 	add := func(into map[string]prettycov.CoverageStats, key string, c prettycov.CoverageStats) {
 		stat := into[key]
-		stat.Covered += c.Covered
-		stat.Uncovered += c.Uncovered
+		stat.Add(c)
 		into[key] = stat
 	}
 
