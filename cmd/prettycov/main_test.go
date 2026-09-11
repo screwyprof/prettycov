@@ -1,3 +1,5 @@
+//go:build integration
+
 package main_test
 
 import (
@@ -5,7 +7,6 @@ import (
 	"context"
 	_ "embed"
 	"errors"
-	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,16 +40,6 @@ const buildTimeout = 2 * time.Minute
 var binary string
 
 func TestMain(m *testing.M) {
-	// Init before Short: the testing flags do not exist until then, and m.Run is too late to ask.
-	testing.Init()
-	flag.Parse()
-
-	// -short leaves these out, so there is no binary to build. The tests skip themselves; exiting
-	// here instead would report a pass for work that never ran.
-	if testing.Short() {
-		os.Exit(m.Run())
-	}
-
 	dir, err := os.MkdirTemp("", "prettycov-binary-test")
 	if err != nil {
 		panic(err)
@@ -80,7 +71,6 @@ func TestMain(m *testing.M) {
 // is opaque to it. One case per distinct code proves that; the branch matrix behind each code is
 // app_test's, and re-walking it here would cost a process fork per case to learn nothing.
 func TestBinaryExitCodes(t *testing.T) {
-	integrationOnly(t)
 	t.Parallel()
 
 	tests := []struct {
@@ -107,7 +97,6 @@ func TestBinaryExitCodes(t *testing.T) {
 // Swapping the streams leaves `prettycov > report.txt` holding the diagnostics. One case each way
 // settles which writer main hands to which stream; which message goes where is app_test's.
 func TestBinaryWritesToTheRightStream(t *testing.T) {
-	integrationOnly(t)
 	t.Parallel()
 
 	tests := []struct {
@@ -150,7 +139,6 @@ func TestBinaryWritesToTheRightStream(t *testing.T) {
 // keeps succeeding while stamping nothing, which is how a nix build once reported "(devel)".
 // Only a build can catch that, so it is checked here rather than by calling pickVersion.
 func TestBinaryReportsTheStampedVersion(t *testing.T) {
-	integrationOnly(t)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -172,7 +160,6 @@ func TestBinaryReportsTheStampedVersion(t *testing.T) {
 // Without a stamp the version comes from the build info, and must still be something a script can
 // read. "(devel)" is what an unstamped build reports.
 func TestBinaryReportsAVersionWithoutAStamp(t *testing.T) {
-	integrationOnly(t)
 	t.Parallel()
 
 	got, errOut, code := runBinary(t, "version")
@@ -183,7 +170,6 @@ func TestBinaryReportsAVersionWithoutAStamp(t *testing.T) {
 
 // os.Args passed unsliced feeds the program's own path in as a positional.
 func TestBinaryPassesItsArguments(t *testing.T) {
-	integrationOnly(t)
 	t.Parallel()
 
 	stdout, stderr, code := runBinary(t, "-color", "never", "-depth", "0")
@@ -203,20 +189,7 @@ func buildBinary(ctx context.Context, out string, extra ...string) ([]byte, erro
 	return exec.CommandContext(ctx, "go", args...).CombinedOutput()
 }
 
-// integrationOnly skips a test that drives a compiled prettycov. These are the module's only
-// subprocess tests — everything else runs in process — and that line is also where coverage stops
-// being automatic, which is why the Makefile runs them in a pass of their own.
-func integrationOnly(t *testing.T) {
-	t.Helper()
-
-	if testing.Short() {
-		t.Skip("spawns a compiled binary")
-	}
-}
-
-// coverDir is where a child writes its counters. GOCOVERDIR as the toolchain documents it, because
-// this pass runs without -cover — under -cover cmd/go claims the variable for a directory of its
-// own and then discards what lands there. A throwaway directory when it is unset, so an
+// coverDir is where a child writes its counters. A throwaway when GOCOVERDIR is unset, so an
 // uninstrumented run does not warn onto the stderr these tests assert on.
 func coverDir(t *testing.T) string {
 	t.Helper()

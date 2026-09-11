@@ -2,6 +2,9 @@
 version: "2"
 
 run:
+  # main_test.go is behind //go:build integration; without this the linters never see it.
+  build-tags:
+    - integration
   modules-download-mode: readonly
 linters:
   default: none
