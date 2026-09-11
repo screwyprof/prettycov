@@ -3,10 +3,10 @@ package prettycov
 import (
 	"bufio"
 	"cmp"
-	"fmt"
 	"io"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -265,7 +265,7 @@ func formatCoverage(stats CoverageStats, opts Options) string {
 	}
 
 	if opts.Counts {
-		text += fmt.Sprintf("  %d/%d uncovered", stats.Uncovered, stats.Total())
+		text += "  " + strconv.Itoa(stats.Uncovered) + "/" + strconv.Itoa(stats.Total()) + " uncovered"
 	}
 
 	return text
