@@ -71,7 +71,7 @@ Turn on the two flags that say more, and go a level deeper:
 | `-total` | print only the number, for a Makefile or a badge |
 | `-fail-under=N` | exit 1 when total coverage is below N, so prettycov can gate CI |
 | `-exclude=REGEXP` | leave out files whose path matches, or blocks whose `file:line:col` matches, before anything is totalled. Repeatable |
-| `-old=PATH -new=PATH` | shorten a long root package path in the labels |
+| `-old=PATH -new=PATH` | shorten a long root package path in the labels. `-new=.` strips it, leaving one row per top-level entry |
 | `-color=auto` \| `always` \| `never` | when to colour |
 | `-profile=PATH` | which profile to read. Also accepted as the sole positional argument |
 | `-version` | print the version and exit. Also `prettycov version` |
