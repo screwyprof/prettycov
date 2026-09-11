@@ -205,22 +205,20 @@ func parseFlags(args []string) (config, error) {
 	// different sentences. Telling someone "one alone does nothing" when they passed both sends
 	// them to supply a flag they already supplied.
 	//
-	// A root of nothing but separators names no package: Shorten drops the trailing one and then
-	// matches a prefix that is not there, so -old=/ and -old=// leave the report exactly as it
-	// was. `-old=$(MODULE)/` with MODULE unset spells the first of those.
+	// A root of nothing but separators names no package: the same TrimRight Shorten uses leaves
+	// nothing to match on, so -old=/ and -old=// would rewrite nothing and say nothing.
+	// `-old=$(MODULE)/` with MODULE unset spells the first of those.
 	//
-	// Only the old root is trimmed, matching Shorten, which trims that one and uses the new one
-	// raw as the replacement. -new=/ is a working target — it renders the tree under the
-	// filesystem root — so trimming both here would refuse a rename that works.
+	// Only the old root is trimmed, as in Shorten, which uses the new one raw as the replacement.
+	// -new=/ is a working target — it renders the tree under the filesystem root — so trimming
+	// both here would refuse a rename that works.
 	//
 	// Either message quotes what was typed rather than what is left of it, since that is what the
 	// reader has to find on their own command line.
-	// Each guard reads the flags as typed rather than what the other left of them, so deleting one
-	// cannot change what the other means. The order does still matter, and only for -old=/ with no
-	// -new, which is both mistakes at once: it names no package and it has no target. Refusing it
-	// for the root is the more useful of the two sentences, since supplying -new would not help.
-	// TestRunRefusesARootThatNamesNoPackage pins that, so a swap here is a red test, not a shrug.
-	if cfg.CurrentRoot != "" && strings.Trim(cfg.CurrentRoot, "/") == "" {
+	//
+	// Order matters for -old=/ with no -new, which is both mistakes at once. Naming the root is
+	// the more useful of the two, since supplying -new would not help; the tests pin it.
+	if cfg.CurrentRoot != "" && strings.TrimRight(cfg.CurrentRoot, "/") == "" {
 		return cfg, fmt.Errorf("%w: got %s", errRootNamesNoPkg, given(cfg.CurrentRoot, ""))
 	}
 
