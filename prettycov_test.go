@@ -358,6 +358,43 @@ func TestProcessCleansPaths(t *testing.T) {
 // package off the second-to-last path component instead left such a file hanging under the tree
 // root, which nothing draws: the statements stayed in the total and appeared beside no row, and a
 // profile of nothing but bare filenames printed an empty report and exited 0.
+// "./x.go" and "x.go" are one file, because they are one path — path.Dir cleans a leading "." away
+// as redundant. Worth pinning: making -new=. draw a single "." root means giving that prefix a
+// meaning of its own, and then a profile naming both spellings of one package splits into two rows
+// carrying the same label, with the package's statements divided between them.
+func TestProcessReadsADotPrefixAsTheSamePath(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("sub/x.go", 4, 0),
+		file("./sub/y.go", 0, 3),
+	})
+
+	rows := prettycov.Rows(tree, prettycov.Options{Depth: prettycov.DepthAll})
+
+	require.Len(t, rows, 1, "one package, however its files were spelled")
+	assert.Equal(t, "sub", rows[0].Label)
+	assert.Equal(t, 7, rows[0].Coverage.Total(), "holding every statement of both")
+}
+
+// -new=. strips the root rather than renaming it to a node called ".", because that is what the
+// path means: everything below the old root moves up, and a module whose top level holds more than
+// one entry is drawn as more than one row. Identical to the profile it would have been written as.
+func TestShortenToDotStripsTheRoot(t *testing.T) {
+	t.Parallel()
+
+	shortened, renamed := prettycov.Shorten(
+		[]prettycov.FileCoverage{file("m/a.go", 5, 1), file("m/sub/b.go", 0, 4)}, "m", ".")
+	require.Equal(t, 2, renamed)
+
+	stripped := prettycov.Rows(prettycov.Process(shortened), prettycov.Options{Depth: prettycov.DepthAll})
+	native := prettycov.Rows(prettycov.Process([]prettycov.FileCoverage{
+		file("a.go", 5, 1), file("sub/b.go", 0, 4),
+	}), prettycov.Options{Depth: prettycov.DepthAll})
+
+	assert.Equal(t, native, stripped)
+}
+
 func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 	t.Parallel()
 
