@@ -526,48 +526,17 @@ func TestRunAppliesEveryExcludePattern(t *testing.T) {
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
-		"-exclude", "cmd/", "-exclude", "testutil",
+		"-exclude", "cmd/", "-exclude", "testutil", "-exclude", "absent",
 		"-profile", writeProfile(t, patterned), "-color", "never",
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
 	assert.Contains(t, stdout.String(), "100.00", "both excluded, only the covered handler is left")
 
-	// Every pattern is accounted for, not just the last.
+	// Every pattern is accounted for, including the one that took nothing.
 	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 10 statements in 1 file`)
 	assert.Contains(t, stderr.String(), `-exclude "testutil" left out 10 statements in 1 file`)
-}
-
-// A pattern that matched nothing did nothing, which is an argument mistake — found a step later
-// than the rest only because the profile is what answers it. No report with it, as for any other.
-func TestRunRefusesAnExcludePatternThatMatchedNothing(t *testing.T) {
-	t.Parallel()
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := app.Run([]string{
-		"-exclude", "absent", "-profile", writeProfile(t, profile), "-color", "never",
-	}, stdout, stderr)
-
-	assert.Equal(t, codeFailed, code)
 	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
-	assert.Empty(t, stdout.String(), "and no report goes out")
-}
-
-// Every stale flag is named before any of them refuses, or fixing the first sends the reader back
-// for the second.
-func TestRunNamesEveryStaleFlagBeforeRefusing(t *testing.T) {
-	t.Parallel()
-
-	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	code := app.Run([]string{
-		"-exclude", "absent", "-old", "example.com/WRONG", "-new", "w",
-		"-profile", writeProfile(t, profile), "-color", "never",
-	}, stdout, stderr)
-
-	assert.Equal(t, codeFailed, code)
-	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
-	assert.Contains(t, stderr.String(), `-old "example.com/WRONG" matched nothing`)
-	assert.Empty(t, stdout.String())
 }
 
 // A pattern beaten to a file by an earlier one is not a typo, and must not be reported as one:
@@ -581,16 +550,49 @@ func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
-		"-exclude", "cmd/", "-exclude", `\.pb\.go$`,
+		"-exclude", "cmd/", "-exclude", `\.pb\.go$`, "-exclude", "absent",
 		"-profile", writeProfile(t, overlapping), "-color", "never",
 	}, stdout, stderr)
 
-	// The distinction has teeth now: a pattern that matched nothing fails the run, so treating an
-	// overlapped one as a typo would refuse a run over a pattern that is doing its job.
-	assert.Equal(t, codeOK, code, "an overlapped pattern is not a stale one")
+	assert.Equal(t, codeOK, code)
 	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 10 statements in 1 file`)
 	assert.Contains(t, stderr.String(), `took nothing out, 1 file already excluded`)
-	assert.NotContains(t, stderr.String(), "matched nothing")
+	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+}
+
+// A pattern that matched nothing is said and not refused, unlike a root that did. prettycov has no
+// history, so it cannot tell a pattern that rotted from one written to be conditional — and "drop
+// this if it is here" is a reasonable thing to write. A defensive `-exclude=\.pb\.go$`, or one
+// config shared across repositories, is right to match nothing where nothing is generated. A root
+// has no such case: it either names this profile's packages or the labels are wrong.
+func TestRunSaysWhenAnExcludePatternMatchedNothing(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "absent", "-depth", "0",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code, "a filter that had nothing to drop did its job")
+	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+	assert.Equal(t, " m - 60.00\n", stdout.String(), "and the report is drawn")
+}
+
+// A stale pattern beside a wrong root: the root decides the exit, the pattern is still reported.
+func TestRunRefusesOnTheRootNotThePattern(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "absent", "-old", "example.com/WRONG", "-new", "w",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+	assert.Contains(t, stderr.String(), `-old "example.com/WRONG" matched nothing`)
+	assert.Empty(t, stdout.String())
 }
 
 // A coordinate takes one block, and the report says "block" so a reader is not told a file went.

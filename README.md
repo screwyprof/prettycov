@@ -80,12 +80,8 @@ Turn on the two flags that say more, and go a level deeper:
 Exit codes are `0`, `1` when `-fail-under` was not met, and `2` when prettycov could not do what was
 asked — distinct, so a CI step can tell a bad invocation from a failed gate.
 
-**A flag that matched nothing is a `2`**: `-exclude` whose pattern hits no file, `-old` naming a root
-the profile does not hold. Both did nothing, which is an argument mistake — found a step later than
-the rest only because the profile is what answers it. No report goes to stdout, as for any other.
-
-A pattern beaten to every file by an *earlier* pattern still exits `0`. It is doing its job, and
-deleting it is what would break.
+`-old` that matches no path in the profile is a `2` and prints no report. An `-exclude` that matches
+nothing says so on stderr and exits `0`.
 
 ## What a percentage will not tell you
 
@@ -156,24 +152,17 @@ shortfall and exits 1 instead.
 
 `-exclude` drops files whose path matches a regexp, before anything is totalled — generated code,
 mocks, a migrator you never intended to cover. Patterns are unanchored and match the full path, so a
-short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out:
-
-```shell
-❯ prettycov -exclude='/store/' -exclude='/bind/'
--exclude "/store/" left out 92 statements in 4 files
--exclude "/bind/" left out 18 statements in 1 file
- github.com/screwyprof/delegator - 94.52
- ├ pkg - 93.33
- ├ scraper - 94.95
- └ web - 95.89
-```
-
-A pattern that matched nothing is a typo, so it exits 2 and the report is not drawn:
+short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out,
+including nothing, which is how you spot a typo:
 
 ```shell
 ❯ prettycov -exclude='/store/' -exclude='\.pb\.go$'
 -exclude "/store/" left out 92 statements in 4 files
 -exclude "\\.pb\\.go$" matched nothing
+ github.com/screwyprof/delegator - 93.87
+ ├ pkg - 93.33
+ ├ scraper - 94.95
+ └ web - 93.41
 ```
 
 A pattern matching `file:line:col` takes one block instead of a whole file. The toolchain has no

@@ -54,18 +54,21 @@ tags.
   message — ``-old names no package: got -old="/"`` — because both flags may well have been given, and
   "one alone does nothing" would send the reader to supply a flag they already supplied.
 
-- **Breaking:** a flag that matched nothing exits 2 rather than warning and carrying on. Two of
-  them: `-old` naming a root the profile does not hold — `-old "github.com/WRONG/module" matched
-  nothing, so no label was shortened` — and `-exclude` whose pattern hits no file. Both did nothing,
-  which is the argument mistake `-old` alone is already refused for, found a step later only because
-  the profile is what answers it. Nothing goes to stdout, as for any other argument mistake.
+- **Breaking:** `-old` that matches no path in the profile exits 2 rather than warning and carrying
+  on — `-old "github.com/WRONG/module" matched nothing, so no label was shortened`. The rename did
+  not happen, so the labels are not the ones asked for; that is the argument mistake `-old` alone is
+  already refused for, found a step later only because the profile is what answers it. Nothing goes
+  to stdout, as for any other argument mistake.
 
-  A pattern beaten to every file by an *earlier* pattern still exits 0. It is doing its job, and
-  deleting it is what would break; telling it apart from a typo is why that message is separate.
+  `-exclude` is unchanged: a pattern that matches nothing still says so and still exits 0. A rename
+  transforms the output, so one that does not happen leaves a report nobody asked for. A pattern is
+  a filter, and prettycov has no history to tell one that rotted from one written to be conditional
+  — a defensive `-exclude='\.pb\.go$'`, or one config shared across repositories, is right to match
+  nothing where nothing is generated.
 
-  A profile with no statements is answered before any flag is judged, so it stays `no statements to
-  cover` — exit 1 under `-fail-under`, 2 without. Nothing can match an empty profile, so judging
-  flags against one reported every pattern and every root as stale and blamed a flag that was fine.
+  A profile with no statements is answered before `-old` is judged, so it stays `no statements to
+  cover` — exit 1 under `-fail-under`, 2 without. Nothing can match an empty profile, so judging a
+  root against one blamed a flag that was fine.
 
 - `-old` with more than one trailing separator renames again. `-old=$(MODULE)/` where `MODULE`
   already ends in one spells `-old=example.com/m//`, and only the last separator was trimmed, so
