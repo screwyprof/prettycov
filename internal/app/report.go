@@ -28,10 +28,26 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	}
 
 	kept, excluded := prettycov.Exclude(items, cfg.Exclude)
-	reportExclusions(excluded, stderr)
+	staleExclude := reportExclusions(excluded, stderr)
 
 	shortened, renamed := prettycov.Shorten(kept, cfg.CurrentRoot, cfg.NewRoot)
-	reportRename(cfg, items, renamed, stderr)
+	staleRoot := reportRename(cfg, items, renamed, stderr)
+
+	// A flag that matched nothing did nothing, and a flag that did nothing is an argument mistake
+	// — the same one parseFlags refuses -old alone for, found a step later because only the profile
+	// can answer it. Exit 2, and no report: the other argument mistakes print none either, and a
+	// report that goes out anyway is one a CI step keeps publishing while the flag rots.
+	//
+	// The likely way to get here is a root or a pattern that was right once. `-old=$(MODULE)` in a
+	// Makefile survives the repository being renamed and the module moving; `-exclude` outlives the
+	// generated file it was written for. Both then quietly stop doing anything, and a warning on
+	// stderr is what scrolls past in CI while the build stays green.
+	//
+	// Both are asked before either refuses, so a run with two stale flags names both rather than
+	// sending the reader back for the second after they fix the first.
+	if staleExclude || staleRoot {
+		return exitFailed
+	}
 
 	tree := prettycov.Process(shortened)
 
@@ -82,7 +98,8 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 // so a pattern that took every file under a perfectly good root would otherwise be reported as a
 // bad root — sending someone to fix a flag that is already right, which is the confusion the
 // overlap branch above exists to prevent.
-func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stderr io.Writer) {
+// Reports whether the root matched nothing, which showReport refuses on.
+func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stderr io.Writer) bool {
 	// A root alone is refused by parseFlags, which TestRunRefusesHalfARename drives end to end, so
 	// a root that is set means a target came with it. Testing NewRoot here as well would be a guard
 	// no invocation can reach, and an uncoverable branch in a tool that reports coverage.
@@ -91,14 +108,16 @@ func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stder
 	// anything it left that matched the root is in the profile too and HasRoot would agree. It
 	// keeps even that scan off the path where the rename worked, which is every run not a mistake.
 	if cfg.CurrentRoot == "" || renamed > 0 {
-		return
+		return false
 	}
 
 	if prettycov.HasRoot(items, cfg.CurrentRoot) {
-		return
+		return false
 	}
 
 	_, _ = fmt.Fprintf(stderr, "-old %q matched nothing, so no label was shortened\n", cfg.CurrentRoot)
+
+	return true
 }
 
 // emptyReason blames -exclude when it is what took the statements out, and the profile otherwise.
@@ -127,7 +146,14 @@ func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) i
 
 // reportExclusions says what each pattern took out, on stderr so the report itself stays pipeable.
 // Always, not behind a verbose flag: exclusion moves the denominator.
-func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
+//
+// Reports whether any pattern matched nothing, which showReport refuses on. Only that one of the
+// three messages: a pattern beaten to every file by an earlier one is doing its job, and the branch
+// below exists precisely so it is not mistaken for a typo — failing the run on it would be that
+// same mistake with a worse outcome.
+func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) bool {
+	stale := false
+
 	for _, ex := range excluded {
 		// Distinct from matching nothing: the pattern works, an earlier one just got there first.
 		// Saying "matched nothing" here sends someone to fix a pattern that is already right, and
@@ -141,6 +167,7 @@ func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
 
 		if ex.Files == 0 && ex.Blocks == 0 {
 			_, _ = fmt.Fprintf(stderr, "-exclude %q matched nothing\n", ex.Pattern)
+			stale = true
 
 			continue
 		}
@@ -157,6 +184,8 @@ func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
 		_, _ = fmt.Fprintf(stderr, "-exclude %q left out %s in %s%s\n",
 			ex.Pattern, plural(ex.Statements, "statement"), units(ex.Files, ex.Blocks), overlap)
 	}
+
+	return stale
 }
 
 // units names a count of files and a count of blocks. A pattern can reach both at once — one that

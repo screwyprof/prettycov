@@ -77,8 +77,20 @@ Turn on the two flags that say more, and go a level deeper:
 | `-version` | print the version and exit. Also `prettycov version` |
 | `-help` \| `-h` | print the flags with an example apiece. Also `prettycov help` |
 
-Exit codes are `0`, `1` when `-fail-under` was not met, and `2` when prettycov could not run at all —
-distinct, so a CI step can tell a missing profile from a failed gate.
+Exit codes are `0`, `1` when `-fail-under` was not met, and `2` when prettycov could not do what was
+asked — distinct, so a CI step can tell a bad invocation from a failed gate.
+
+**A flag that matched nothing is a `2`**, not a warning: `-exclude` whose pattern hits no file,
+`-old` naming a root the profile does not hold. Both did nothing, and a flag that does nothing is an
+argument mistake found a step later than the rest, because only the profile can answer it. Nothing
+is printed on stdout, as for any other argument mistake.
+
+This is worth knowing before putting prettycov in a pipeline, because the likely way to get there is
+a flag that was right once. `-old=$(MODULE)` survives the repository being renamed and the module
+moving; an `-exclude` outlives the generated file it was written for. Left as warnings they scroll
+past in CI and the build stays green, publishing a report under labels nobody asked for, or one
+whose denominator quietly grew back. A pattern beaten to every file by an *earlier* pattern is a
+different thing and still exits `0` — it is doing its job, and deleting it is what would break.
 
 ## What a percentage will not tell you
 

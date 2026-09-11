@@ -54,11 +54,20 @@ tags.
   message — `-old names no package: got -old=/` — because both flags may well have been given, and
   "one alone does nothing" would send the reader to supply a flag they already supplied.
 
-- `-old` that matches no path in the profile says so — `-old "github.com/WRONG/module" matched
-  nothing, so no label was shortened` — rather than printing an unshortened report and exiting 0
-  with no explanation. A typo or a module path that has moved looks exactly like asking for no
-  rename at all. Said rather than refused, because the report is correct and only the labels are
-  not what was asked for, which is how `-exclude` treats a pattern that matched nothing.
+- **Breaking:** a flag that matched nothing exits 2 rather than warning and carrying on. Two of
+  them: `-old` naming a root the profile does not hold — `-old "github.com/WRONG/module" matched
+  nothing, so no label was shortened` — and `-exclude` whose pattern hits no file. Both did nothing,
+  and a flag that does nothing is the argument mistake `-old` alone is already refused for, found a
+  step later because only the profile can answer it. Nothing goes to stdout, as for any other
+  argument mistake.
+
+  The likely way to get either is a flag that was right once: `-old=$(MODULE)` survives the
+  repository being renamed and the module moving, and an `-exclude` outlives the generated file it
+  was written for. As warnings they scroll past in CI while the build stays green, publishing a
+  report under labels nobody asked for, or one whose denominator quietly grew back.
+
+  A pattern beaten to every file by an *earlier* pattern still exits 0. It is doing its job, and
+  deleting it is what would break; telling it apart from a typo is why that message is separate.
 
 - `-old` with more than one trailing separator renames again. `-old=$(MODULE)/` where `MODULE`
   already ends in one spells `-old=example.com/m//`, and only the last separator was trimmed, so

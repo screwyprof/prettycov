@@ -526,17 +526,52 @@ func TestRunAppliesEveryExcludePattern(t *testing.T) {
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
-		"-exclude", "cmd/", "-exclude", "testutil", "-exclude", "absent",
+		"-exclude", "cmd/", "-exclude", "testutil",
 		"-profile", writeProfile(t, patterned), "-color", "never",
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
 	assert.Contains(t, stdout.String(), "100.00", "both excluded, only the covered handler is left")
 
-	// Every pattern is accounted for, including the one that took nothing.
+	// Every pattern is accounted for, not just the last.
 	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 10 statements in 1 file`)
 	assert.Contains(t, stderr.String(), `-exclude "testutil" left out 10 statements in 1 file`)
+}
+
+// A pattern that matched nothing did nothing, which is an argument mistake found a step later than
+// the rest because only the profile can answer it. `-exclude` outlives the generated file it was
+// written for, and a warning on stderr is what scrolls past in CI while the build stays green.
+//
+// No report with it: the other argument mistakes print none either, and one that goes out anyway is
+// one a CI step keeps publishing while the flag rots.
+func TestRunRefusesAnExcludePatternThatMatchedNothing(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "absent", "-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
 	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+	assert.Empty(t, stdout.String(), "and no report goes out")
+}
+
+// Every stale flag is named before any of them refuses, or fixing the first sends the reader back
+// for the second.
+func TestRunNamesEveryStaleFlagBeforeRefusing(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "absent", "-old", "example.com/WRONG", "-new", "w",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+	assert.Contains(t, stderr.String(), `-old "example.com/WRONG" matched nothing`)
+	assert.Empty(t, stdout.String())
 }
 
 // A pattern beaten to a file by an earlier one is not a typo, and must not be reported as one:
@@ -550,14 +585,16 @@ func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
-		"-exclude", "cmd/", "-exclude", `\.pb\.go$`, "-exclude", "absent",
+		"-exclude", "cmd/", "-exclude", `\.pb\.go$`,
 		"-profile", writeProfile(t, overlapping), "-color", "never",
 	}, stdout, stderr)
 
-	assert.Equal(t, codeOK, code)
+	// The distinction has teeth now: a pattern that matched nothing fails the run, so treating an
+	// overlapped one as a typo would refuse a run over a pattern that is doing its job.
+	assert.Equal(t, codeOK, code, "an overlapped pattern is not a stale one")
 	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 10 statements in 1 file`)
 	assert.Contains(t, stderr.String(), `took nothing out, 1 file already excluded`)
-	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+	assert.NotContains(t, stderr.String(), "matched nothing")
 }
 
 // A coordinate takes one block, and the report says "block" so a reader is not told a file went.
@@ -747,9 +784,11 @@ func TestRunIsSilentWhenARootMatched(t *testing.T) {
 
 // A root that names no package in the profile rewrites nothing, which looks exactly like asking
 // for no rename at all. parseFlags catches a root that is empty; only the matching can catch one
-// that is merely wrong. Said, not refused — the report is correct, it is just not what was asked
-// for, which is how -exclude treats a pattern that matched nothing.
-func TestRunSaysWhenARootMatchedNothing(t *testing.T) {
+// that is merely wrong, so it is refused a step later rather than differently.
+//
+// This is the likely way to get one: `-old=$(MODULE)` in a Makefile survives the repository being
+// renamed and the module moving, then quietly stops doing anything.
+func TestRunRefusesARootThatMatchedNothing(t *testing.T) {
 	t.Parallel()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -758,9 +797,9 @@ func TestRunSaysWhenARootMatchedNothing(t *testing.T) {
 		"-profile", writeProfile(t, profile), "-color", "never",
 	}, stdout, stderr)
 
-	assert.Equal(t, codeOK, code, "the report is correct, just not shortened")
+	assert.Equal(t, codeFailed, code)
 	assert.Contains(t, stderr.String(), `-old "example.com/WRONG" matched nothing`)
-	assert.Equal(t, " m - 60.00\n", stdout.String(), "and the labels are untouched")
+	assert.Empty(t, stdout.String(), "and no report goes out under the labels it was not given")
 }
 
 // Shorten runs on what -exclude left, so a pattern that took every file under a perfectly good
