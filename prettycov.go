@@ -1,7 +1,6 @@
 package prettycov
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -69,7 +68,7 @@ func (p Percentage) Float() float64 { return p.value }
 // covered. Rounding to nearest would print 100.00 for 73999 of 74000 statements, and 100% is what
 // a badge shows and what stops someone writing another test.
 func (p Percentage) String() string {
-	text := fmt.Sprintf("%.2f", p.value)
+	text := strconv.FormatFloat(p.value, 'f', 2, 64)
 	if text == "100.00" && !p.complete {
 		return "99.99"
 	}
@@ -116,9 +115,9 @@ func (b Block) at(file string) (withCol, toLine string) {
 // below it and a report can be checked by adding it up. Whether the file rows are drawn is
 // Options.Files; whether they exist is not a rendering question.
 func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
-	tree := &PathTree{}
+	tree, nodes := &PathTree{}, &arena{}
 	for _, f := range shortenPaths(files, curRoot, newRoot) {
-		tree.add(f.File, f.Coverage)
+		tree.add(f.File, f.Coverage, nodes)
 	}
 
 	rollUp(tree)
@@ -135,10 +134,12 @@ func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
 // copy this used to return doubled a node count that the profile's files, now leaves of their own,
 // had already multiplied several times over.
 func rollUp(node *PathTree) CoverageStats {
-	for _, below := range []map[string]*PathTree{node.Files, node.Children} {
-		for _, child := range below {
-			node.Coverage.Add(rollUp(child))
-		}
+	for _, file := range node.Files {
+		node.Coverage.Add(rollUp(file))
+	}
+
+	for _, child := range node.Children {
+		node.Coverage.Add(rollUp(child))
 	}
 
 	return node.Coverage

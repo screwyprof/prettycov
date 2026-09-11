@@ -59,6 +59,14 @@ func TestPalette(t *testing.T) {
 		// The mode is settled before the environment is consulted, and nothing else pins that
 		// order: move the NO_COLOR lookup above the switch and only this fails.
 		{name: "always ignores NO_COLOR", mode: colorAlways, key: "NO_COLOR", val: "1", want: prettycov.ANSI},
+		// colorMode is an int, so a caller of the package can hand over any of them. An
+		// unrecognised one falls through to auto rather than to a fixed answer: the switch settles
+		// the two modes that decide by themselves, and everything else asks the environment.
+		{name: "an unrecognised mode asks like auto", mode: colorMode(99), want: prettycov.ANSI},
+		{
+			name: "an unrecognised mode still obeys NO_COLOR",
+			mode: colorMode(99), key: "NO_COLOR", val: "1", want: prettycov.Plain,
+		},
 	}
 
 	for _, tc := range tests {

@@ -41,15 +41,29 @@ func (s scrubbed) Unwrap() error { return s.err }
 func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 	items := make([]FileCoverage, 0, len(profiles))
 
+	// One backing array for every file's blocks, sized exactly, so a file costs no allocation of
+	// its own. Exactness is for waste, not safety: a re-alloc part way is harmless — the slices
+	// already handed out keep the old array, which is still correct — but it would leave two.
+	//
+	// The cost is a shared lifetime. Every file's Blocks points into this one array, so it lives
+	// as long as any FileCoverage does: Exclude dropping nine files in ten frees none of it. That
+	// is the run's memory for a CLI, and worth knowing for a caller that keeps one file of many.
+	blocks := 0
+	for _, profile := range profiles {
+		blocks += len(profile.Blocks)
+	}
+
+	slab := make([]Block, 0, blocks)
+
 	// Every later sum — per package, then up the tree — adds a subset of these same blocks, so
 	// a running total that stays in range here keeps all of them in range too. cover rejects a
 	// negative NumStmt, so adding one can only grow the total or wrap it past zero.
 	var total int
 
 	for _, profile := range profiles {
-		var covered, uncovered int
+		var file CoverageStats
 
-		blocks := make([]Block, 0, len(profile.Blocks))
+		start := len(slab)
 
 		for _, block := range profile.Blocks {
 			if total += block.NumStmt; total < 0 {
@@ -63,10 +77,9 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 				stats = CoverageStats{Covered: block.NumStmt}
 			}
 
-			covered += stats.Covered
-			uncovered += stats.Uncovered
+			file.Add(stats)
 
-			blocks = append(blocks, Block{
+			slab = append(slab, Block{
 				Line:     block.StartLine,
 				Col:      block.StartCol,
 				Coverage: stats,
@@ -74,12 +87,10 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 		}
 
 		items = append(items, FileCoverage{
-			File: profile.FileName,
-			Coverage: CoverageStats{
-				Covered:   covered,
-				Uncovered: uncovered,
-			},
-			Blocks: blocks,
+			File:     profile.FileName,
+			Coverage: file,
+			// Capped, so appending to one file's blocks can never reach into the next file's.
+			Blocks: slab[start:len(slab):len(slab)],
 		})
 	}
 

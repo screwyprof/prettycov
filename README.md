@@ -1,7 +1,5 @@
 # Prettycov
-[![codecov](https://codecov.io/gh/screwyprof/prettycov/graph/badge.svg)](https://codecov.io/gh/screwyprof/prettycov) [![Go](https://github.com/screwyprof/prettycov/actions/workflows/go.yml/badge.svg)](https://github.com/screwyprof/prettycov/actions/workflows/go.yml)<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
-<!-- ALL-CONTRIBUTORS-BADGE:END --> 
+[![codecov](https://codecov.io/gh/screwyprof/prettycov/graph/badge.svg)](https://codecov.io/gh/screwyprof/prettycov) [![Go](https://github.com/screwyprof/prettycov/actions/workflows/go.yml/badge.svg)](https://github.com/screwyprof/prettycov/actions/workflows/go.yml)
 
 Pretty Golang Coverage.
 
@@ -9,6 +7,8 @@ The other day I wanted to output a pretty overall coverage summary in my termina
 I wanted to show a table or a tree with top-level packages and their corresponding coverage. 
 I tried to search for some ready to use tools which would offer something similar but with not luck.
 After that, I decided to build it on my own. So here it is :)
+
+With thanks to [antongr](https://github.com/kannman), whose nudge got this started.
 
 ## Status
 Pre-1.0. Flags, output format and the Go API may all change between minor versions — pin a version if you gate CI on it. What changed and what broke is in [CHANGELOG.md](CHANGELOG.md).
@@ -74,6 +74,8 @@ Turn on the two flags that say more, and go a level deeper:
 | `-old=PATH -new=PATH` | shorten a long root package path in the labels |
 | `-color=auto` \| `always` \| `never` | when to colour |
 | `-profile=PATH` | which profile to read. Also accepted as the sole positional argument |
+| `-version` | print the version and exit. Also `prettycov version` |
+| `-help` \| `-h` | print the flags with an example apiece. Also `prettycov help` |
 
 Exit codes are `0`, `1` when `-fail-under` was not met, and `2` when prettycov could not run at all —
 distinct, so a CI step can tell a missing profile from a failed gate.
@@ -217,24 +219,3 @@ only when `-files` asks for them.
 
 It reads the profile and nothing else — no source tree, no `go.mod`, no git — so it works on a CI
 artefact, a colleague's file, or a repository you do not have checked out.
-
-## Contributors ✨
-Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
-
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
-<table>
-  <tbody>
-    <tr>
-      <td align="center"><a href="https://github.com/kannman"><img src="https://avatars.githubusercontent.com/u/40325995?v=4?s=100" width="100px;" alt=""/><br /><sub><b>antongr</b></sub></a><br /><a href="https://github.com/screwyprof/prettycov/commits?author=kannman" title="Code">💻</a></td>
-    </tr>
-  </tobdy>
-</table>
-
-<!-- markdownlint-restore -->
-<!-- prettier-ignore-end -->
-
-<!-- ALL-CONTRIBUTORS-LIST:END -->
-
-This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!

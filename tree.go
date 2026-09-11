@@ -28,7 +28,7 @@ type PathTree struct {
 // Only the file carries the statements. Putting them on the directory as well — which is what
 // totalling per directory before building the tree amounts to — makes rollUp count every statement
 // twice, once on the directory and once beneath it.
-func (n *PathTree) add(file string, stats CoverageStats) {
+func (n *PathTree) add(file string, stats CoverageStats, nodes *arena) {
 	// Split with path.Dir rather than by counting components, so a file with no directory at all
 	// still lands somewhere: path.Dir gives it ".", which is the row it renders as. Reading the
 	// directory off the second-to-last component instead left such a file hanging under the tree
@@ -42,10 +42,10 @@ func (n *PathTree) add(file string, stats CoverageStats) {
 	// path.Dir returns has no trailing slash, so this touches nothing else.
 	dir := n
 	for part := range strings.SplitSeq(strings.TrimSuffix(path.Dir(file), "/"), "/") {
-		dir = child(&dir.Children, part)
+		dir = nodes.child(&dir.Children, part)
 	}
 
-	leaf := child(&dir.Files, path.Base(file))
+	leaf := nodes.child(&dir.Files, path.Base(file))
 	// Accumulated, not assigned, so a file named twice adds up rather than keeping the last one.
 	// ParseProfile cannot deliver that — x/tools keys profiles by filename and merges their blocks
 	// — so this is for a caller handing Process a slice of its own.
@@ -54,7 +54,7 @@ func (n *PathTree) add(file string, stats CoverageStats) {
 
 // child returns the node called name in the given map, creating both if this is the first time it
 // is named. The map is taken by pointer so the nil one a fresh node starts with can be filled in.
-func child(nodes *map[string]*PathTree, name string) *PathTree {
+func (a *arena) child(nodes *map[string]*PathTree, name string) *PathTree {
 	if existing, ok := (*nodes)[name]; ok {
 		return existing
 	}
@@ -63,10 +63,39 @@ func child(nodes *map[string]*PathTree, name string) *PathTree {
 		*nodes = map[string]*PathTree{}
 	}
 
-	created := &PathTree{}
+	created := a.next()
 	(*nodes)[name] = created
 
 	return created
+}
+
+// arena hands out nodes a chunk at a time, so a tree of a hundred thousand of them costs a few
+// hundred allocations rather than one each.
+//
+// Indexed rather than appended, so a full chunk can only be replaced and never grown. Growing is
+// not unsafe — the tree holds pointers into the old array, which stays alive and correct — it is
+// waste: append copies every node into the new array, nothing reads the copies, and the originals
+// keep the old array anyway. Measured at 36.9MB against 22.7MB on a 30,000-file profile.
+type arena struct {
+	chunk []PathTree
+	used  int
+}
+
+// chunkNodes is 16KB at PathTree's current size. That is also the floor: the first node allocates
+// a whole chunk, so a one-file profile pays 16KB where it used to pay one node. Measured across
+// 64..32768, time is flat for a large profile and bytes scale with the chunk for a small one, so
+// this trades a fixed 16KB against an allocation per node.
+const chunkNodes = 512
+
+func (a *arena) next() *PathTree {
+	if a.used == len(a.chunk) {
+		a.chunk, a.used = make([]PathTree, chunkNodes), 0
+	}
+
+	node := &a.chunk[a.used]
+	a.used++
+
+	return node
 }
 
 // Get returns the directory at key, or nil if the tree has no such path — including when there is

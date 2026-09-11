@@ -1,3 +1,5 @@
+//go:build integration
+
 package main_test
 
 import (
@@ -187,12 +189,12 @@ func buildBinary(ctx context.Context, out string, extra ...string) ([]byte, erro
 	return exec.CommandContext(ctx, "go", args...).CombinedOutput()
 }
 
-// coverDir is where a child writes its counters. The Makefile sets PRETTYCOV_COVERDIR and collects
-// them; a bare `go test` gets a throwaway directory.
+// coverDir is where a child writes its counters. A throwaway when GOCOVERDIR is unset, so an
+// uninstrumented run does not warn onto the stderr these tests assert on.
 func coverDir(t *testing.T) string {
 	t.Helper()
 
-	if dir := os.Getenv("PRETTYCOV_COVERDIR"); dir != "" {
+	if dir := os.Getenv("GOCOVERDIR"); dir != "" {
 		return dir
 	}
 

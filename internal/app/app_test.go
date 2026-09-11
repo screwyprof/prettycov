@@ -600,6 +600,54 @@ func TestRunReportsFilesAndBlocksTakenByOnePattern(t *testing.T) {
 	assert.Equal(t, "100.00\n", stdout.String())
 }
 
+// A pattern can take something and still be covering for an earlier one. Saying only what it took
+// reads as barely earning its keep, and deleting it hands back the files the earlier pattern is
+// holding — the trap the overlap count exists to prevent, sprung on a pattern that did take
+// something.
+func TestRunReportsOverlapAlongsideWhatAPatternTook(t *testing.T) {
+	t.Parallel()
+
+	overlapping := "mode: set\n" +
+		"ex.com/p/cmd/a.go:1.1,2.2 3 1\n" +
+		"ex.com/p/cmd/b.go:1.1,2.2 4 1\n" +
+		"ex.com/p/web/c.go:31.2,32.9 2 1\n" +
+		"ex.com/p/web/c.go:32.9,34.3 2 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "cmd/", "-exclude", `(cmd/|c\.go:32:)`, "-total",
+		"-profile", writeProfile(t, overlapping), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Contains(t, stderr.String(),
+		"left out 2 statements in 1 block, and 2 files already excluded")
+
+	// And the pattern that overlapped nothing says nothing about it. The trailing newline is the
+	// assertion: without it, Contains passes just as well when the clause is always appended.
+	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 7 statements in 2 files`+"\n")
+
+	assert.Equal(t, "100.00\n", stdout.String())
+}
+
+// emptyReason blames -exclude for an empty report only when a pattern took statements. One that
+// matched a file declaring none emptied nothing, so the reader is sent to the profile rather than
+// to a pattern that is not the reason.
+func TestRunBlamesTheProfileWhenAPatternTookNoStatements(t *testing.T) {
+	t.Parallel()
+
+	noStatements := "mode: set\nexample.com/p/doc.go:1.1,2.2 0 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", `doc\.go`, "-profile", writeProfile(t, noStatements), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Contains(t, stderr.String(), "no statements to cover")
+	assert.NotContains(t, stderr.String(), "-exclude left nothing to report")
+}
+
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 

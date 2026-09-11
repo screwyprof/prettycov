@@ -23,7 +23,12 @@ LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
 # Counter files from the binary tests, folded into $(COVERAGE) below.
 COVERDATA := .covdata
+
+# main_test.go spawns a binary, so it is tagged and run in a pass of its own. Also in .golangci.yml,
+# which needs the tag to lint the file at all.
+GO_TAGS := integration
 GOBCO_VERSION := v1.3.4
+GREMLINS_VERSION := v0.6.0
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
 # from it. Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
@@ -98,18 +103,28 @@ fmt: require-golangci ## format code
 # The reports depend on the file rather than on `test`, so they rebuild it when a source has
 # changed and reuse it otherwise, instead of re-running the suite to re-read the same numbers.
 #
-# The last step folds in the binary tests: they run a compiled prettycov, so its execution is
-# absent from the suite's own profile. Appending merges, because readers of this format sum blocks
-# they see twice. Guarded — `go test -run` filtered to other tests writes no counters at all.
+# Two passes because the second must run without -cover: under -cover, cmd/go points GOCOVERDIR at
+# a directory of its own and never reads it back, so a spawned binary's counters are discarded
+# (golang/go#66225). Without it the variable is ours.
+#
+# -race on both passes: the forked binary is built without it, but the harness runs its cases in
+# parallel over a shared binary path and coverage directory, and no other target compiles that
+# file at all.
+#
+# The counter check is for tag drift. "integration" lives here, in the build tag and in
+# .golangci.yml, and nothing makes the three agree — without it a mismatch runs no tests, leaves
+# the directory empty, and fails inside covdata naming neither the tag nor the tests.
+#
+# Appending merges, because readers of this format sum blocks they see twice.
 $(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
-	@PRETTYCOV_COVERDIR=$(PWD)/$(COVERDATA) \
-		go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
-	@if [ -n "$$(ls -A $(COVERDATA) 2>/dev/null)" ]; then \
-		go tool covdata textfmt -i=$(COVERDATA) -o=$(COVERDATA)/binary.txt && \
-		tail -n +2 $(COVERDATA)/binary.txt >> $@; \
-	fi
+	@go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
+	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -race -count=1 -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/
+	@test -n "$$(ls -A $(COVERDATA) 2>/dev/null)" || \
+		{ echo "no counters in $(COVERDATA): did the -tags=$(GO_TAGS) pass run any tests?"; exit 1; }
+	@go tool covdata textfmt -i=$(COVERDATA) -o=$(COVERDATA)/binary.txt
+	@tail -n +2 $(COVERDATA)/binary.txt >> $@
 
 # `make test` must always run the suite, so it drops the profile first rather than letting make
 # decide it is up to date.
@@ -157,6 +172,29 @@ cover-branches: ## report conditions never evaluated both ways
 	 for pkg in . ./internal/app; do \
 		(cd "$$tmp" && go run github.com/rillig/gobco@$(GOBCO_VERSION) $$pkg) | grep -v "^ok\b" || true; \
 	 done
+
+# Coverage says a line ran; it cannot say a test would have noticed the line being wrong. Gremlins
+# changes the source — negating conditions, moving boundaries, flipping increments — and reports the
+# mutants the suite failed to kill. A survivor is a line every test executes and none checks.
+#
+# Copied the same way as cover-branches, and for the same reason: gremlins works on its own copy of
+# the module root, so a gitignored _reference/ comes with it and fills /tmp.
+#
+# --timeout-coefficient is the whole difference between a result and a wasted run. Gremlins times
+# each mutant against a multiple of its baseline measurement, and the default left ours ~50ms
+# against a suite needing 400: 105 of 123 mutants timed out and said nothing. At 30 the run takes
+# twelve seconds and every mutant is decided.
+#
+# "Not covered" is worth reading but not chasing: those land on `switch { case <expr>: }` lines and
+# package-level var initialisers, neither of which Go's cover instruments where gremlins looks.
+# cover-branches is the one that answers for those.
+mutate: ## report mutants the tests failed to kill
+	@echo -e "$(OK_COLOR)==> Mutation testing$(NO_COLOR)"
+	@test -n "$(GO_FILES)" || { echo "no Go files; this needs a git checkout"; exit 1; }
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT; \
+	 $(GIT_LS) | tar -cf - -T - | (cd "$$tmp" && tar -xf -); \
+	 (cd "$$tmp" && go run github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VERSION) \
+		unleash --timeout-coefficient=30 .)
 
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
@@ -234,5 +272,5 @@ help: ## show this help
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
-.PHONY: test cover-branches test-cover-txt test-cover-html test-cover-total test-cover-tree
+.PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all install hooks nix-hash release publish clean help

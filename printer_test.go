@@ -98,6 +98,20 @@ func TestDisplayTreeKeepsPrintableUnicode(t *testing.T) {
 	assert.Contains(t, render(t, tree, 2), "héllo-世界")
 }
 
+// Sorting happens on the label as drawn, not as parsed. A replaced rune sorts where the
+// replacement does: "a\x01" precedes "ab" raw and follows it once both are rendered, so sorting
+// before sanitising put the report out of the order of its own visible labels.
+func TestDisplayTreeSortsOnTheLabelAsDrawn(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/a\u0001/x.go", 1, 0),
+		file("m/ab/y.go", 1, 0),
+	}, "", "")
+
+	assert.Equal(t, []string{"m", "ab", "a\ufffd"}, nodeNames(t, tree, prettycov.DepthAll))
+}
+
 // A nil tree is nothing to draw, not a crash. Nothing in the CLI passes one, so only a caller of
 // the library would find this — gobco reported the condition as never once true.
 func TestRowsHandlesANilTree(t *testing.T) {

@@ -1,11 +1,12 @@
 package prettycov
 
 import (
+	"bufio"
 	"cmp"
-	"fmt"
 	"io"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -50,7 +51,13 @@ type Row struct {
 // terminal. DisplayTree is the one that decides how a Row looks.
 func Rows(tree *PathTree, opts Options) []Row {
 	b := rowBuilder{opts: opts}
-	b.walk(tree, 0, " ")
+
+	// One leading space, with room to grow two bytes per level. Deep enough for any real path;
+	// append handles a deeper one correctly if it comes.
+	padding := make([]byte, 1, 128)
+	padding[0] = ' '
+
+	b.walk(tree, 0, padding)
 
 	return b.rows
 }
@@ -58,9 +65,17 @@ func Rows(tree *PathTree, opts Options) []Row {
 // DisplayTree writes tree as an indented report. A collapsed run of directories is the one row it
 // renders as.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
+	buf := bufio.NewWriter(w)
+
 	for _, row := range Rows(tree, opts) {
-		_, _ = fmt.Fprintf(w, "%s%s - %s\n", row.Prefix, row.Label, formatCoverage(row.Coverage, opts))
+		_, _ = buf.WriteString(row.Prefix)
+		_, _ = buf.WriteString(row.Label)
+		_, _ = buf.WriteString(" - ")
+		_, _ = buf.WriteString(formatCoverage(row.Coverage, opts))
+		_ = buf.WriteByte('\n')
 	}
+
+	_ = buf.Flush()
 }
 
 // rowBuilder holds what stays the same for the whole traversal, so the recursion carries only
@@ -101,18 +116,21 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 			label = "/"
 		}
 
-		entries = append(entries, entry{label: label, name: name, node: merged})
+		entries = append(entries, entry{label: sanitize(label), name: name, node: merged})
 	}
 
 	if b.opts.Files {
 		for name, node := range tree.Files {
-			entries = append(entries, entry{label: name, name: name, node: node})
+			entries = append(entries, entry{label: sanitize(name), name: name, node: node})
 		}
 	}
 
 	// Sorted by the label the reader sees rather than by the name it started as, or a merged row
 	// lands where its first component would have put it: "api/errors.go" before "api.go", which
 	// reads out of order because "/" sorts after ".".
+	//
+	// Sanitised above for the same reason, rather than at the row: a replaced rune sorts where the
+	// replacement does, not where the original did. "a\x01" precedes "ab" and draws after it.
 	//
 	// Merging is what makes two labels able to tie, since it renames a row to something a sibling
 	// may already be called: a profile naming "a.go", "a.go/b.go" and "a.go/c.go" gives the bare
@@ -131,7 +149,7 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
 // level 0 means — it is not tracked separately, since a second flag can only drift from it.
-func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
+func (b *rowBuilder) walk(tree *PathTree, level Depth, padding []byte) {
 	if tree == nil || level > b.opts.Depth {
 		return
 	}
@@ -142,14 +160,20 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 		root := level == 0
 
 		b.rows = append(b.rows, Row{
-			Prefix: padding + symbol(root, getBoxType(i, len(entries))),
-			// Sanitised here rather than at the writer, so no consumer of a Row has to remember to.
-			Label:    sanitize(e.label),
+			// string() copies, so the row owns its prefix and padding stays reusable.
+			Prefix:   string(append(padding, symbol(root, getBoxType(i, len(entries)))...)),
+			Label:    e.label,
 			Level:    int(level),
 			Coverage: e.node.Coverage,
 		})
 
-		b.walk(e.node, level+1, padding+symbol(root, childSymbol(i, len(entries))))
+		// Grown for the child and truncated after it, so siblings share one buffer instead of each
+		// concatenating a string. The walk is depth-first, so the child is done with its padding
+		// before the next sibling overwrites it.
+		depth := len(padding)
+		padding = append(padding, symbol(root, childSymbol(i, len(entries)))...)
+		b.walk(e.node, level+1, padding)
+		padding = padding[:depth]
 	}
 }
 
@@ -247,7 +271,7 @@ func formatCoverage(stats CoverageStats, opts Options) string {
 	}
 
 	if opts.Counts {
-		text += fmt.Sprintf("  %d/%d uncovered", stats.Uncovered, stats.Total())
+		text += "  " + strconv.Itoa(stats.Uncovered) + "/" + strconv.Itoa(stats.Total()) + " uncovered"
 	}
 
 	return text
@@ -261,23 +285,6 @@ const (
 	afterLast
 	between
 )
-
-// String renders the glyph for a box type. An unrecognised one is a blank rather than a panic:
-// this draws a report, and nothing here is worth taking the process down for.
-func (b boxType) String() string {
-	switch b {
-	case regular:
-		return "\u251c" // ├
-	case last:
-		return "\u2514" // └
-	case afterLast:
-		return " "
-	case between:
-		return "\u2502" // │
-	}
-
-	return " "
-}
 
 func getBoxType(index int, length int) boxType {
 	if index+1 == length {
@@ -295,10 +302,29 @@ func childSymbol(index int, length int) boxType {
 	return between
 }
 
+// symbol is the glyph that places a row, and the space after it. Constants rather than a glyph
+// concatenated with " ", which allocated on every row, twice. The top row carries none — that is
+// what level 0 means. An unrecognised box type draws blank rather than panicking: this draws a
+// report, and nothing here is worth taking the process down for.
 func symbol(root bool, b boxType) string {
 	if root {
 		return ""
 	}
 
-	return b.String() + " "
+	// blank is the two columns a glyph would have taken: below a last child, and for a box type
+	// nothing recognises.
+	const blank = "  "
+
+	switch b {
+	case regular:
+		return "\u251c " // ├
+	case last:
+		return "\u2514 " // └
+	case afterLast:
+		return blank
+	case between:
+		return "\u2502 " // │
+	}
+
+	return blank
 }
