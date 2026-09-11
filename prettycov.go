@@ -116,9 +116,9 @@ func (b Block) at(file string) (withCol, toLine string) {
 // below it and a report can be checked by adding it up. Whether the file rows are drawn is
 // Options.Files; whether they exist is not a rendering question.
 func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
-	tree := &PathTree{}
+	tree, nodes := &PathTree{}, &arena{}
 	for _, f := range shortenPaths(files, curRoot, newRoot) {
-		tree.add(f.File, f.Coverage)
+		tree.add(f.File, f.Coverage, nodes)
 	}
 
 	rollUp(tree)

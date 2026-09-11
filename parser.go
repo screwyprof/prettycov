@@ -41,6 +41,16 @@ func (s scrubbed) Unwrap() error { return s.err }
 func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 	items := make([]FileCoverage, 0, len(profiles))
 
+	// One backing array for every file's blocks, sized exactly, so a file costs no allocation of
+	// its own. Exact matters: a re-alloc part way would leave the slices already handed out
+	// pointing at the old array.
+	blocks := 0
+	for _, profile := range profiles {
+		blocks += len(profile.Blocks)
+	}
+
+	arena := make([]Block, 0, blocks)
+
 	// Every later sum — per package, then up the tree — adds a subset of these same blocks, so
 	// a running total that stays in range here keeps all of them in range too. cover rejects a
 	// negative NumStmt, so adding one can only grow the total or wrap it past zero.
@@ -49,7 +59,7 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 	for _, profile := range profiles {
 		var covered, uncovered int
 
-		blocks := make([]Block, 0, len(profile.Blocks))
+		start := len(arena)
 
 		for _, block := range profile.Blocks {
 			if total += block.NumStmt; total < 0 {
@@ -66,7 +76,7 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 			covered += stats.Covered
 			uncovered += stats.Uncovered
 
-			blocks = append(blocks, Block{
+			arena = append(arena, Block{
 				Line:     block.StartLine,
 				Col:      block.StartCol,
 				Coverage: stats,
@@ -79,7 +89,8 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 				Covered:   covered,
 				Uncovered: uncovered,
 			},
-			Blocks: blocks,
+			// Capped, so appending to one file's blocks can never reach into the next file's.
+			Blocks: arena[start:len(arena):len(arena)],
 		})
 	}
 
