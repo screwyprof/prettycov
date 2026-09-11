@@ -719,21 +719,27 @@ func TestRunRefusesARootThatNamesNoPackage(t *testing.T) {
 func TestRunIsSilentWhenARootMatched(t *testing.T) {
 	t.Parallel()
 
-	for name, newRoot := range map[string]string{
-		"a package name":      "renamed",
-		"the filesystem root": "/",
-	} {
+	tests := map[string]struct{ oldRoot, newRoot, want string }{
+		"a package name":      {oldRoot: "m", newRoot: "renamed", want: "renamed"},
+		"the filesystem root": {oldRoot: "m", newRoot: "/", want: "/"},
+		// Both halves of the trimming meet here: the guard lets a root through on what is left
+		// after every separator goes, so Shorten has to trim them all too or a root that is in
+		// the profile silently matches nothing and gets reported as a root that is not.
+		"a root written with a separator too many": {oldRoot: "m//", newRoot: "renamed", want: "renamed"},
+	}
+
+	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			code := app.Run([]string{
-				"-old", "m", "-new", newRoot, "-depth", "0",
+				"-old", tc.oldRoot, "-new", tc.newRoot, "-depth", "0",
 				"-profile", writeProfile(t, profile), "-color", "never",
 			}, stdout, stderr)
 
 			assert.Equal(t, codeOK, code)
-			assert.Equal(t, " "+newRoot+" - 60.00\n", stdout.String())
+			assert.Equal(t, " "+tc.want+" - 60.00\n", stdout.String())
 			assert.Empty(t, stderr.String())
 		})
 	}

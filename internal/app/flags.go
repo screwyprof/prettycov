@@ -215,8 +215,11 @@ func parseFlags(args []string) (config, error) {
 	//
 	// Either message quotes what was typed rather than what is left of it, since that is what the
 	// reader has to find on their own command line.
-	// Each guard reads the flags as typed rather than what the other left of them, so neither
-	// depends on having run second and reordering them cannot quietly change what either means.
+	// Each guard reads the flags as typed rather than what the other left of them, so deleting one
+	// cannot change what the other means. The order does still matter, and only for -old=/ with no
+	// -new, which is both mistakes at once: it names no package and it has no target. Refusing it
+	// for the root is the more useful of the two sentences, since supplying -new would not help.
+	// TestRunRefusesARootThatNamesNoPackage pins that, so a swap here is a red test, not a shrug.
 	if cfg.CurrentRoot != "" && strings.Trim(cfg.CurrentRoot, "/") == "" {
 		return cfg, fmt.Errorf("%w: got %s", errRootNamesNoPkg, given(cfg.CurrentRoot, ""))
 	}

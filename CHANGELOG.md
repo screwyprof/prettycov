@@ -60,6 +60,11 @@ tags.
   rename at all. Said rather than refused, because the report is correct and only the labels are
   not what was asked for, which is how `-exclude` treats a pattern that matched nothing.
 
+- `-old` with more than one trailing separator renames again. `-old=$(MODULE)/` where `MODULE`
+  already ends in one spells `-old=example.com/m//`, and only the last separator was trimmed, so
+  the root was matched against a path carrying one separator where it had two and nothing ever
+  matched. A root that is in the profile was reported as a root that is not.
+
 - Rows sort by the label as drawn rather than as parsed. `sanitize` replaces a rune a terminal
   would obey, and the replacement sorts elsewhere than the original, so a package named `a\x01`
   sorted before `ab` and drew after it. Only reachable from a profile carrying a control character

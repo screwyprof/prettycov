@@ -225,6 +225,19 @@ func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 			old: "github.com/o/repo/", replace: "repo", want: "repo/pkg/a.go", wantRenamed: 1,
 		},
 		{
+			// `-old=$(MODULE)/` with MODULE already ending in one. Trimming a single separator left
+			// "github.com/o/repo/" to be matched against a path carrying one separator there, so a
+			// root that is in the profile matched nothing and the CLI called it a root that is not.
+			name: "however many of them there are", file: "github.com/o/repo/pkg/a.go",
+			old: "github.com/o/repo//", replace: "repo", want: "repo/pkg/a.go", wantRenamed: 1,
+		},
+		{
+			// And only the trailing ones: a leading separator is where an absolute path begins, so
+			// trimming it would look for a root the profile does not contain.
+			name: "a leading separator is part of the root", file: "/home/x/pkg/a.go",
+			old: "/home/x", replace: "x", want: "x/pkg/a.go", wantRenamed: 1,
+		},
+		{
 			// A prefix is not a root: "github.com/foo" starts "github.com/foobar" too, and cutting
 			// it there left the unrelated package as "xbar/svc".
 			name: "and only a whole path segment", file: "github.com/foobar/svc/a.go",

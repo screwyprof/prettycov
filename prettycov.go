@@ -163,10 +163,16 @@ func rollUp(node *PathTree) CoverageStats {
 // anywhere rewrote "github.com/rapid/api" to "github.com/rcored/api" for -old=api, and a bare
 // prefix rewrote the unrelated "github.com/foobar" to "xbar" for -old=github.com/foo. An empty
 // oldRoot matches at position 0, so -new alone prepended itself to every path instead of replacing
-// anything. The separator is implied, so a trailing slash on oldRoot is trimmed rather than left
-// to fail every match.
+// anything. The separator is implied, so trailing slashes on oldRoot are trimmed rather than left
+// to fail every match. Every one of them, not the last: `-old=$(MODULE)/` with MODULE already
+// ending in one spells "example.com/m//", and trimming a single separator left "example.com/m/"
+// to be matched against a path that has one separator there, so a root that is in the profile
+// matched nothing and the CLI reported it as a root that is not.
+//
+// Only trailing. A leading separator is part of the root — "/home/x" is where an absolute path
+// begins, and trimming it would rewrite oldRoot to something the profile does not contain.
 func Shorten(files []FileCoverage, oldRoot, newRoot string) ([]FileCoverage, int) {
-	oldRoot = strings.TrimSuffix(oldRoot, "/")
+	oldRoot = strings.TrimRight(oldRoot, "/")
 	if oldRoot == "" || newRoot == "" {
 		return files, 0
 	}
