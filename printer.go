@@ -51,7 +51,8 @@ type Row struct {
 // terminal. DisplayTree is the one that decides how a Row looks.
 func Rows(tree *PathTree, opts Options) []Row {
 	b := rowBuilder{opts: opts}
-	b.walk(tree, 0, " ")
+	// Deep enough for any real path; append handles a deeper one correctly if it comes.
+	b.walk(tree, 0, append(make([]byte, 0, 128), ' '))
 
 	return b.rows
 }
@@ -142,7 +143,7 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
 // level 0 means — it is not tracked separately, since a second flag can only drift from it.
-func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
+func (b *rowBuilder) walk(tree *PathTree, level Depth, padding []byte) {
 	if tree == nil || level > b.opts.Depth {
 		return
 	}
@@ -153,13 +154,20 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding string) {
 		root := level == 0
 
 		b.rows = append(b.rows, Row{
-			Prefix:   padding + symbol(root, getBoxType(i, len(entries))),
+			// string() copies, so the row owns its prefix and padding stays reusable.
+			Prefix:   string(append(padding, symbol(root, getBoxType(i, len(entries)))...)),
 			Label:    e.label,
 			Level:    int(level),
 			Coverage: e.node.Coverage,
 		})
 
-		b.walk(e.node, level+1, padding+symbol(root, childSymbol(i, len(entries))))
+		// Grown for the child and truncated after it, so siblings share one buffer instead of each
+		// concatenating a string. The walk is depth-first, so the child is done with its padding
+		// before the next sibling overwrites it.
+		depth := len(padding)
+		padding = append(padding, symbol(root, childSymbol(i, len(entries)))...)
+		b.walk(e.node, level+1, padding)
+		padding = padding[:depth]
 	}
 }
 
@@ -272,23 +280,6 @@ const (
 	between
 )
 
-// String renders the glyph for a box type. An unrecognised one is a blank rather than a panic:
-// this draws a report, and nothing here is worth taking the process down for.
-func (b boxType) String() string {
-	switch b {
-	case regular:
-		return "\u251c" // ├
-	case last:
-		return "\u2514" // └
-	case afterLast:
-		return " "
-	case between:
-		return "\u2502" // │
-	}
-
-	return " "
-}
-
 func getBoxType(index int, length int) boxType {
 	if index+1 == length {
 		return last
@@ -305,10 +296,29 @@ func childSymbol(index int, length int) boxType {
 	return between
 }
 
+// symbol is the glyph that places a row, and the space after it. Constants rather than a glyph
+// concatenated with " ", which allocated on every row, twice. The top row carries none — that is
+// what level 0 means. An unrecognised box type draws blank rather than panicking: this draws a
+// report, and nothing here is worth taking the process down for.
 func symbol(root bool, b boxType) string {
 	if root {
 		return ""
 	}
 
-	return b.String() + " "
+	// blank is the two columns a glyph would have taken: below a last child, and for a box type
+	// nothing recognises.
+	const blank = "  "
+
+	switch b {
+	case regular:
+		return "\u251c " // ├
+	case last:
+		return "\u2514 " // └
+	case afterLast:
+		return blank
+	case between:
+		return "\u2502 " // │
+	}
+
+	return blank
 }
