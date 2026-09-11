@@ -93,7 +93,7 @@ func TestProcessCountsEachStatementOnce(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process(tc.files, "", "")
+			tree := prettycov.Process(tc.files)
 
 			for path, want := range tc.want {
 				node := tree.Get(path)
@@ -154,10 +154,83 @@ func TestCoverageStatsAdd(t *testing.T) {
 	assert.Equal(t, prettycov.CoverageStats{Covered: 7, Uncovered: 3}, stats, "adding nothing changes nothing")
 }
 
+// The count is the whole reason Shorten is its own step: a root that matches nothing rewrites
+// nothing, and that is indistinguishable from no rename being asked for unless the count says
+// otherwise. Which paths match is the table below; only more than one file can show the counting,
+// and only a rewrite can show that the caller's slice survives it.
+func TestShortenCountsEveryFileItRenamed(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{
+		file("example.com/m/a.go", 1, 0),
+		file("example.com/m/b.go", 1, 0),
+		file("other.com/c.go", 1, 0),
+	}
+
+	shortened, renamed := prettycov.Shorten(files, "example.com/m", "m")
+
+	assert.Equal(t, 2, renamed, "two of the three")
+	assert.Equal(t, "m/a.go", shortened[0].File)
+	assert.Equal(t, "m/b.go", shortened[1].File)
+	assert.Equal(t, "other.com/c.go", shortened[2].File, "and the third is left alone")
+
+	assert.Equal(t, "example.com/m/a.go", files[0].File, "the input is not modified")
+}
+
+// HasRoot answers with a boolean what Shorten answers with a count, so the two have to agree on
+// what a root names — every case here is one Shorten is asserted on above, asked the other way.
+func TestHasRootMatchesTheSameRootsShortenRenames(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{
+		file("github.com/foobar/svc/a.go", 1, 0),
+		file("github.com/o/repo/pkg/b.go", 1, 0),
+	}
+
+	tests := map[string]struct {
+		root string
+		want bool
+	}{
+		"a root the profile holds":          {root: "github.com/o/repo", want: true},
+		"however many trailing separators":  {root: "github.com/o/repo//", want: true},
+		"a root it does not":                {root: "github.com/WRONG", want: false},
+		"not a bare prefix":                 {root: "github.com/foo", want: false},
+		"not a component out of the middle": {root: "repo", want: false},
+		"no root names nothing":             {root: "", want: false},
+		"nor one of only separators":        {root: "//", want: false},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, prettycov.HasRoot(files, tc.root))
+
+			// The agreement itself, not just the two answers: whatever Shorten would rewrite is
+			// what HasRoot has to find, or the CLI reports a root as absent while renaming by it.
+			_, renamed := prettycov.Shorten(files, tc.root, "x")
+			assert.Equal(t, tc.want, renamed > 0, "Shorten disagrees")
+		})
+	}
+}
+
+// Not parallel: AllocsPerRun counts allocations process-wide and panics if asked to do it beside
+// another test.
+//
+//nolint:paralleltest // see above.
+func TestHasRootAllocatesNothing(t *testing.T) {
+	files := []prettycov.FileCoverage{file("m/a.go", 1, 0), file("m/b.go", 1, 0)}
+
+	// One allocation would be the copy Shorten makes, which is the whole reason this exists.
+	assert.Zero(t, testing.AllocsPerRun(100, func() {
+		_ = prettycov.HasRoot(files, "m")
+	}), "HasRoot allocates")
+}
+
 func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 	t.Parallel()
 
-	tree := prettycov.Process([]prettycov.FileCoverage{file("m/pkg/a.go", 1, 1)}, "", "")
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/pkg/a.go", 1, 1)})
 
 	assert.Nil(t, tree.Get("m/absent"))
 	assert.NotNil(t, tree.Get("m/pkg"), "and finds one that is")
@@ -169,45 +242,65 @@ func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 	assert.Nil(t, (*prettycov.PathTree)(nil).Get("m"))
 }
 
-func TestProcessShortensTheRootPath(t *testing.T) {
+// Which paths a root names, and the count that follows from it — a row that rewrites nothing is a
+// row that counts nothing, and stating both together is what stops the two drifting apart.
+//
+// Asserted on the path Shorten returns rather than on a node in the tree built from it: renaming
+// is no longer part of building the tree, and asking Process where a label ended up tested this
+// through an indirection that could only mislead whoever a failure here sends looking.
+func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		file    string
-		old     string
-		replace string
-		want    string
+		name        string
+		file        string
+		old         string
+		replace     string
+		want        string
+		wantRenamed int
 	}{
 		{
 			name: "replaces a leading root", file: "github.com/o/repo/pkg/a.go",
-			old: "github.com/o/repo", replace: "repo", want: "repo/pkg",
+			old: "github.com/o/repo", replace: "repo", want: "repo/pkg/a.go", wantRenamed: 1,
 		},
 		{
 			// "api" appears inside "rapid" first. Replacing the first match anywhere turned
 			// github.com/rapid/api into github.com/rcored/api.
 			name: "only a leading one", file: "github.com/rapid/api/svc/a.go",
-			old: "api", replace: "core", want: "github.com/rapid/api/svc",
+			old: "api", replace: "core", want: "github.com/rapid/api/svc/a.go",
 		},
 		{
 			// The separator is implied, so writing it out changes nothing.
 			name: "a trailing slash on the old root is the same root", file: "github.com/o/repo/pkg/a.go",
-			old: "github.com/o/repo/", replace: "repo", want: "repo/pkg",
+			old: "github.com/o/repo/", replace: "repo", want: "repo/pkg/a.go", wantRenamed: 1,
+		},
+		{
+			// `-old=$(MODULE)/` with MODULE already ending in one. Trimming a single separator left
+			// "github.com/o/repo/" to be matched against a path carrying one separator there, so a
+			// root that is in the profile matched nothing and the CLI called it a root that is not.
+			name: "however many of them there are", file: "github.com/o/repo/pkg/a.go",
+			old: "github.com/o/repo//", replace: "repo", want: "repo/pkg/a.go", wantRenamed: 1,
+		},
+		{
+			// And only the trailing ones: a leading separator is where an absolute path begins, so
+			// trimming it would look for a root the profile does not contain.
+			name: "a leading separator is part of the root", file: "/home/x/pkg/a.go",
+			old: "/home/x", replace: "x", want: "x/pkg/a.go", wantRenamed: 1,
 		},
 		{
 			// A prefix is not a root: "github.com/foo" starts "github.com/foobar" too, and cutting
 			// it there left the unrelated package as "xbar/svc".
 			name: "and only a whole path segment", file: "github.com/foobar/svc/a.go",
-			old: "github.com/foo", replace: "x", want: "github.com/foobar/svc",
+			old: "github.com/foo", replace: "x", want: "github.com/foobar/svc/a.go",
 		},
 		{
 			// An empty old root matches at position 0, so this used to prepend rather than replace.
 			name: "no old root means no rewrite", file: "github.com/o/repo/pkg/a.go",
-			old: "", replace: "repo", want: "github.com/o/repo/pkg",
+			old: "", replace: "repo", want: "github.com/o/repo/pkg/a.go",
 		},
 		{
 			name: "no new root means no rewrite", file: "github.com/o/repo/pkg/a.go",
-			old: "github.com/o/repo", replace: "", want: "github.com/o/repo/pkg",
+			old: "github.com/o/repo", replace: "", want: "github.com/o/repo/pkg/a.go",
 		},
 	}
 
@@ -215,9 +308,10 @@ func TestProcessShortensTheRootPath(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process([]prettycov.FileCoverage{file(tc.file, 1, 1)}, tc.old, tc.replace)
+			shortened, renamed := prettycov.Shorten([]prettycov.FileCoverage{file(tc.file, 1, 1)}, tc.old, tc.replace)
 
-			assert.NotNil(t, tree.Get(tc.want), "want a node at %q", tc.want)
+			assert.Equal(t, tc.want, shortened[0].File)
+			assert.Equal(t, tc.wantRenamed, renamed)
 		})
 	}
 }
@@ -252,7 +346,8 @@ func TestProcessCleansPaths(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process(tc.files, "zz", tc.newRoot)
+			shortened, _ := prettycov.Shorten(tc.files, "zz", tc.newRoot)
+			tree := prettycov.Process(shortened)
 
 			assert.Equal(t, tc.want, prettycov.Rows(tree, prettycov.Options{})[0].Label)
 		})
@@ -291,7 +386,8 @@ func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process(tc.files, "foo", tc.newRoot)
+			shortened, _ := prettycov.Shorten(tc.files, "foo", tc.newRoot)
+			tree := prettycov.Process(shortened)
 			rows := prettycov.Rows(tree, prettycov.Options{})
 
 			labels := make([]string, 0, len(rows))
@@ -318,7 +414,7 @@ func TestPathTreeKeepsFilesAndDirectoriesApart(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/x/own.go", 1, 1),
 		file("m/x/sub/s.go", 1, 1),
-	}, "", "")
+	})
 
 	pkg := tree.Get("m/x")
 	require.NotNil(t, pkg)
@@ -336,7 +432,7 @@ func TestPathTreeSplitsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		file("m/a.go", 5, 0),
 		file("m/a.go/b.go", 0, 7),
-	}, "", "")
+	})
 
 	m := tree.Get("m")
 	require.NotNil(t, m)
@@ -346,14 +442,16 @@ func TestPathTreeSplitsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	assert.Equal(t, 12, m.Coverage.Total(), "and m is exactly the two of them")
 }
 
-// Process must not write through the slice it is handed.
+// Process must not write through the slice it is handed, which it documents and a caller reusing
+// the parse for a second report relies on. Handed the slice directly: with Shorten in between this
+// asserted on a slice Process never saw, so it held even when Process rewrote every path it got.
 func TestProcessDoesNotModifyItsInput(t *testing.T) {
 	t.Parallel()
 
 	files := []prettycov.FileCoverage{file("example.com/m/pkg/a.go", 1, 1)}
 	before := files[0].File
 
-	prettycov.Process(files, "example.com/m", "m")
+	prettycov.Process(files)
 
 	assert.Equal(t, before, files[0].File, "Process rewrote the caller's slice")
 }
@@ -390,7 +488,7 @@ func TestProcessMakesEveryParentTheSumOfItsChildren(t *testing.T) {
 		return sum
 	}
 
-	tree := prettycov.Process(files, "", "")
+	tree := prettycov.Process(files)
 
 	assert.Equal(t, 568, walk("", tree), "the profile's own total")
 }

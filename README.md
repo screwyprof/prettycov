@@ -77,8 +77,11 @@ Turn on the two flags that say more, and go a level deeper:
 | `-version` | print the version and exit. Also `prettycov version` |
 | `-help` \| `-h` | print the flags with an example apiece. Also `prettycov help` |
 
-Exit codes are `0`, `1` when `-fail-under` was not met, and `2` when prettycov could not run at all —
-distinct, so a CI step can tell a missing profile from a failed gate.
+Exit codes are `0`, `1` when `-fail-under` was not met, and `2` when prettycov could not do what was
+asked — distinct, so a CI step can tell a bad invocation from a failed gate.
+
+`-old` that matches no path in the profile is a `2` and prints no report. An `-exclude` that matches
+nothing says so on stderr and exits `0`.
 
 ## What a percentage will not tell you
 

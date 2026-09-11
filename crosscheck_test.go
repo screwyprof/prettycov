@@ -33,7 +33,7 @@ func TestRowsReconcileAgainstTheProfile(t *testing.T) {
 					t.Parallel()
 
 					// Built once: neither the tree nor the totals depend on the depth being drawn.
-					tree := prettycov.Process(files, "", "")
+					tree := prettycov.Process(files)
 					totals := nodeTotals(files)
 
 					// Every level, because depth decides which rows exist and the guards that went

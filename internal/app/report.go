@@ -27,31 +27,43 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 		return exitFailed
 	}
 
+	// Asked before any flag is judged. A profile with nothing in it has nothing for a pattern or a
+	// root to match, so every one of them would be reported stale — a good `-old=$(MODULE)` named
+	// as the fault when the profile is what is empty, and exit 2 where the gate below says 1.
+	if !anyStatements(items) {
+		return refuseEmpty(cfg, "no statements to cover", stderr)
+	}
+
 	kept, excluded := prettycov.Exclude(items, cfg.Exclude)
 	reportExclusions(excluded, stderr)
 
-	tree := prettycov.Process(kept, cfg.CurrentRoot, cfg.NewRoot)
+	shortened, renamed := prettycov.Shorten(kept, cfg.CurrentRoot, cfg.NewRoot)
 
-	// Settled once here, so the tree and -total cannot answer it differently. Refused rather than
-	// drawn, because an empty report exits 0 and turns a coverage gate into a green no-op. With
-	// -fail-under it is a failed gate instead: exit 2 would read as "prettycov could not run"
-	// when the truth is that coverage was too low.
-	if _, ok := tree.Coverage.Percentage(); !ok {
-		// The same sentence either way, so an empty report reads the same whichever flags asked
-		// for it. The gate adds what it wanted; it cannot say what emptied the report, and being
-		// told to check `go test -coverprofile` for a report your own pattern emptied is the
-		// confusion emptyReason exists to prevent.
-		reason := emptyReason(excluded)
-
-		if cfg.FailUnder != nil {
-			_, _ = fmt.Fprintf(stderr, "%s, wanted at least %.2f%%\n", reason, *cfg.FailUnder)
-
-			return exitBelow
-		}
-
-		_, _ = fmt.Fprintln(stderr, reason)
-
+	// A root that matched nothing did not rename, which is the argument mistake parseFlags refuses
+	// -old alone for — found a step later only because the profile is what answers it. No report
+	// with it, as for any other argument mistake: the labels would not be the ones asked for.
+	//
+	// -exclude is not held to this. A rename transforms the output, so one that does not happen
+	// leaves a report nobody asked for; a pattern is a filter, and "drop this if it is here" is a
+	// reasonable thing to write. A defensive `-exclude='\.pb\.go$'`, or one config shared by
+	// several repositories, is right to match nothing in a repository that generates nothing —
+	// .gitignore, codecov's ignore list and golangci-lint's exclusions all take the same view.
+	// It still says so on stderr, which is how a typo shows up.
+	if reportRename(cfg, items, renamed, stderr) {
 		return exitFailed
+	}
+
+	tree := prettycov.Process(shortened)
+
+	// Settled once here, so the tree and -total cannot answer it differently.
+	//
+	// -exclude is named without asking which flag did it. Three things make that safe together: the
+	// profile held statements or the guard above would have returned, only Exclude takes any away,
+	// and ParseProfile refuses a profile whose counts overflow — which is Percentage's other way of
+	// answering !ok, and the one that would put a message here about a flag nobody passed. So there
+	// is no other way to arrive, and weighing the exclusions could only reach the same answer.
+	if _, ok := tree.Coverage.Percentage(); !ok {
+		return refuseEmpty(cfg, "-exclude left nothing to report", stderr)
 	}
 
 	if cfg.Total {
@@ -70,17 +82,66 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	return checkThreshold(cfg.FailUnder, tree, stderr)
 }
 
-// emptyReason blames -exclude when it is what took the statements out, and the profile otherwise.
-// Statements rather than surviving files: a leftover file declaring none would otherwise send the
-// reader to check `go test -coverprofile` for a report a pattern emptied.
-func emptyReason(excluded []prettycov.Exclusion) string {
-	for _, ex := range excluded {
-		if ex.Statements > 0 {
-			return "-exclude left nothing to report"
+// reportRename reports whether -old named a package the profile does not hold — a typo, or a module
+// path that has moved — and says so. parseFlags has already refused a root that names no package at
+// all; this is one that names the wrong one, which only the matching can catch.
+//
+// Asked of the whole profile rather than of what survived -exclude. Shorten runs on what is left,
+// so a pattern that took every file under a perfectly good root would otherwise be reported as a
+// bad root — sending someone to fix a flag that is already right, which is the confusion the
+// overlap branch in reportExclusions exists to prevent.
+func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stderr io.Writer) bool {
+	// A root alone is refused by parseFlags, which TestRunRefusesHalfARename drives end to end, so
+	// a root that is set means a target came with it. Testing NewRoot here as well would be a guard
+	// no invocation can reach, and an uncoverable branch in a tool that reports coverage.
+	//
+	// renamed is a shortcut, not a second reason: Exclude only drops files, never renames them, so
+	// anything it left that matched the root is in the profile too and HasRoot would agree. It
+	// keeps even that scan off the path where the rename worked, which is every run not a mistake.
+	if cfg.CurrentRoot == "" || renamed > 0 {
+		return false
+	}
+
+	if prettycov.HasRoot(items, cfg.CurrentRoot) {
+		return false
+	}
+
+	_, _ = fmt.Fprintf(stderr, "-old %q matched nothing, so no label was shortened\n", cfg.CurrentRoot)
+
+	return true
+}
+
+// anyStatements reports whether the profile holds anything to cover. Statements rather than files:
+// cmd/cover emits blocks declaring none, so a profile can name files and still be empty.
+func anyStatements(files []prettycov.FileCoverage) bool {
+	for _, f := range files {
+		if f.Coverage.Total() > 0 {
+			return true
 		}
 	}
 
-	return "no statements to cover"
+	return false
+}
+
+// refuseEmpty says why there is nothing to report and grades the absence.
+//
+// Refused rather than drawn, because an empty report exits 0 and turns a coverage gate into a green
+// no-op. With -fail-under it is a failed gate instead: exit 2 would read as "prettycov could not
+// run" when the truth is that coverage was too low.
+//
+// The reason is the caller's, and the gate only adds what it wanted — being told to check
+// `go test -coverprofile` for a report your own pattern emptied is the confusion it exists to
+// prevent.
+func refuseEmpty(cfg config, reason string, stderr io.Writer) int {
+	if cfg.FailUnder != nil {
+		_, _ = fmt.Fprintf(stderr, "%s, wanted at least %.2f%%\n", reason, *cfg.FailUnder)
+
+		return exitBelow
+	}
+
+	_, _ = fmt.Fprintln(stderr, reason)
+
+	return exitFailed
 }
 
 // showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
@@ -95,7 +156,12 @@ func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) i
 }
 
 // reportExclusions says what each pattern took out, on stderr so the report itself stays pipeable.
-// Always, not behind a verbose flag: exclusion moves the denominator.
+// Not behind a verbose flag: exclusion moves the denominator. The one run it says nothing on is an
+// empty profile, which showReport answers before it gets here — there every pattern took nothing,
+// so the accounting is a column of zeroes under a line already saying why.
+//
+// A pattern that matched nothing is said, not refused: see showReport for why -old is and this is
+// not.
 func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
 	for _, ex := range excluded {
 		// Distinct from matching nothing: the pattern works, an earlier one just got there first.

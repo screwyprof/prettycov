@@ -114,9 +114,12 @@ func (b Block) at(file string) (withCol, toLine string) {
 // The profile's files are the leaves, so a directory's total is exactly the sum of what hangs
 // below it and a report can be checked by adding it up. Whether the file rows are drawn is
 // Options.Files; whether they exist is not a rendering question.
-func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
+//
+// Renaming a root is Shorten's, not this. It used to happen here, where a caller could not see
+// whether it had done anything: a root naming no package rewrote nothing and said nothing.
+func Process(files []FileCoverage) *PathTree {
 	tree, nodes := &PathTree{}, &arena{}
-	for _, f := range shortenPaths(files, curRoot, newRoot) {
+	for _, f := range files {
 		tree.add(f.File, f.Coverage, nodes)
 	}
 
@@ -145,27 +148,78 @@ func rollUp(node *PathTree) CoverageStats {
 	return node.Coverage
 }
 
-// shortenPaths rewrites the leading oldRoot of each path to newRoot. It has to be leading, and it
-// has to end on a separator: replacing the first match anywhere rewrote "github.com/rapid/api" to
-// "github.com/rcored/api" for -old=api, and a bare prefix rewrote the unrelated
-// "github.com/foobar" to "xbar" for -old=github.com/foo. An empty oldRoot matches at position 0,
-// so -new alone prepended itself to every path instead of replacing anything. The separator is
-// implied, so a trailing slash on oldRoot is trimmed rather than left to fail every match.
-func shortenPaths(items []FileCoverage, oldRoot, newRoot string) []FileCoverage {
-	oldRoot = strings.TrimSuffix(oldRoot, "/")
+// Shorten rewrites the leading oldRoot of each path to newRoot, and reports how many it renamed.
+// The files argument is never modified.
+//
+// Either root empty means no rename was asked for, and then the files are returned as they are —
+// the same slice, not a copy, so writing to it writes to the caller's. A rename returns a new one.
+//
+// The count is the point of it being its own step. A root that names no package in the profile —
+// a typo, a module path that moved — matches nothing and rewrites nothing, which looks exactly
+// like asking for no rename at all. Only the code doing the matching can tell those apart, and
+// the CLI says so.
+//
+// The prefix has to be leading, and it has to end on a separator: replacing the first match
+// anywhere rewrote "github.com/rapid/api" to "github.com/rcored/api" for -old=api, and a bare
+// prefix rewrote the unrelated "github.com/foobar" to "xbar" for -old=github.com/foo. An empty
+// oldRoot matches at position 0, so -new alone prepended itself to every path instead of replacing
+// anything. The separator is implied, so trailing slashes on oldRoot are trimmed rather than left
+// to fail every match. Every one of them, not the last: `-old=$(MODULE)/` with MODULE already
+// ending in one spells "example.com/m//", and trimming a single separator left "example.com/m/"
+// to be matched against a path that has one separator there, so a root that is in the profile
+// matched nothing and the CLI reported it as a root that is not.
+//
+// Only trailing. A leading separator is part of the root — "/home/x" is where an absolute path
+// begins, and trimming it would rewrite oldRoot to something the profile does not contain.
+func Shorten(files []FileCoverage, oldRoot, newRoot string) ([]FileCoverage, int) {
+	oldRoot = strings.TrimRight(oldRoot, "/")
 	if oldRoot == "" || newRoot == "" {
-		return items
+		return files, 0
 	}
 
-	shortened := make([]FileCoverage, len(items))
+	shortened := make([]FileCoverage, len(files))
+	renamed := 0
 
-	for i, item := range items {
-		if rest, found := strings.CutPrefix(item.File, oldRoot); found && strings.HasPrefix(rest, "/") {
+	for i, item := range files {
+		if rest, ok := under(item.File, oldRoot); ok {
 			item.File = newRoot + rest
+			renamed++
 		}
 
 		shortened[i] = item
 	}
 
-	return shortened
+	return shortened, renamed
+}
+
+// HasRoot reports whether any file sits under root, by the rule Shorten renames by.
+//
+// Shorten answers the same question with a count, but only as a by-product of building the renamed
+// slice: asking it costs a copy of every FileCoverage, thrown away for a number that is only ever
+// compared against zero. This stops at the first file that matches and allocates nothing.
+//
+// Exported for that one caller, rather than spelled out again where it is needed, so the rule for
+// what a root names lives beside the code that acts on it. Two copies would be two chances to
+// disagree, and the one that reports would be the one that starts lying.
+func HasRoot(files []FileCoverage, root string) bool {
+	root = strings.TrimRight(root, "/")
+	if root == "" {
+		return false
+	}
+
+	for _, item := range files {
+		if _, ok := under(item.File, root); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// under returns the part of path below root, and whether it is below it at all. The one place the
+// rule is written: leading, and ending on a separator, for the reasons Shorten sets out.
+func under(path, root string) (string, bool) {
+	rest, found := strings.CutPrefix(path, root)
+
+	return rest, found && strings.HasPrefix(rest, "/")
 }

@@ -52,7 +52,7 @@ func TestTreePropertiesHoldForAnyProfile(t *testing.T) {
 			// Printed only when the test fails, which is when the shape is the whole question.
 			t.Log(profilePaths(files))
 
-			tree := prettycov.Process(files, "", "")
+			tree := prettycov.Process(files)
 			totals := nodeTotals(files)
 
 			for _, withFiles := range []bool{false, true} {

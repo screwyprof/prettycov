@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -27,6 +28,7 @@ var (
 	errTwoProfiles     = errors.New("profile given twice")
 	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
 	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
+	errRootNamesNoPkg  = errors.New("-old names no package")
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -199,6 +201,27 @@ func parseFlags(args []string) (config, error) {
 	// that silently does nothing is a mistake nobody is told about. `-new=.` alone looks like it
 	// shortens every label and does not, and an unset `-old=$(MODULE)` leaves the report full of
 	// paths its author thought were gone.
+	// Two ways to ask for a rename and not get one, and they are different mistakes, so they get
+	// different sentences. Telling someone "one alone does nothing" when they passed both sends
+	// them to supply a flag they already supplied.
+	//
+	// A root of nothing but separators names no package: the same TrimRight Shorten uses leaves
+	// nothing to match on, so -old=/ and -old=// would rewrite nothing and say nothing.
+	// `-old=$(MODULE)/` with MODULE unset spells the first of those.
+	//
+	// Only the old root is trimmed, as in Shorten, which uses the new one raw as the replacement.
+	// -new=/ is a working target — it renders the tree under the filesystem root — so trimming
+	// both here would refuse a rename that works.
+	//
+	// Either message quotes what was typed rather than what is left of it, since that is what the
+	// reader has to find on their own command line.
+	//
+	// Order matters for -old=/ with no -new, which is both mistakes at once. Naming the root is
+	// the more useful of the two, since supplying -new would not help; the tests pin it.
+	if cfg.CurrentRoot != "" && strings.TrimRight(cfg.CurrentRoot, "/") == "" {
+		return cfg, fmt.Errorf("%w: got %s", errRootNamesNoPkg, given(cfg.CurrentRoot, ""))
+	}
+
 	if (cfg.CurrentRoot == "") != (cfg.NewRoot == "") {
 		return cfg, fmt.Errorf("%w: got %s", errHalfARename, given(cfg.CurrentRoot, cfg.NewRoot))
 	}
@@ -206,14 +229,19 @@ func parseFlags(args []string) (config, error) {
 	return cfg, nil
 }
 
-// given names whichever half was passed, so the message points at the flag that is there rather
-// than the one that is not.
+// given spells out a flag and the value it was handed, preferring -old when there is one: for half
+// a rename that is whichever half was passed, so the message points at the flag that is there
+// rather than the one that is not, and for a root that names no package it is always -old, since
+// that is the only one the trim looks at.
+// Quoted, as reportRename and every -exclude message quote theirs. A root is a value the reader
+// typed, so it can be empty-looking or carry a control byte: -old=" " printed as a trailing space
+// nobody can see, and an escape went to the terminal raw.
 func given(oldRoot, newRoot string) string {
 	if oldRoot != "" {
-		return "-old=" + oldRoot
+		return fmt.Sprintf("-old=%q", oldRoot)
 	}
 
-	return "-new=" + newRoot
+	return fmt.Sprintf("-new=%q", newRoot)
 }
 
 // profilePath settles which profile to read. Naming it both ways is a mistake rather than a

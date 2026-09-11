@@ -465,7 +465,7 @@ func TestRunExcludesPackages(t *testing.T) {
 			// checkThreshold already refuses rather than passing silently.
 			// The gate says what it wanted; it cannot say what emptied the report, so the reason
 			// is the same sentence either way. Being sent to check `go test -coverprofile` for a
-			// report your own pattern emptied is what emptyReason exists to prevent, and the
+			// report your own pattern emptied is what naming -exclude here prevents, and the
 			// gated path used to do exactly that.
 			name: "excluding everything cannot pass a gate",
 			args: []string{"-exclude", "example.com", "-fail-under", "0"}, wantCode: codeBelow,
@@ -560,6 +560,41 @@ func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
 }
 
+// A pattern that matched nothing is said and not refused, unlike a root that did. prettycov has no
+// history, so it cannot tell a pattern that rotted from one written to be conditional — and "drop
+// this if it is here" is a reasonable thing to write. A defensive `-exclude=\.pb\.go$`, or one
+// config shared across repositories, is right to match nothing where nothing is generated. A root
+// has no such case: it either names this profile's packages or the labels are wrong.
+func TestRunSaysWhenAnExcludePatternMatchedNothing(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "absent", "-depth", "0",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code, "a filter that had nothing to drop did its job")
+	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+	assert.Equal(t, " m - 60.00\n", stdout.String(), "and the report is drawn")
+}
+
+// A stale pattern beside a wrong root: the root decides the exit, the pattern is still reported.
+func TestRunRefusesOnTheRootNotThePattern(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "absent", "-old", "example.com/WRONG", "-new", "w",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
+	assert.Contains(t, stderr.String(), `-old "example.com/WRONG" matched nothing`)
+	assert.Empty(t, stdout.String())
+}
+
 // A coordinate takes one block, and the report says "block" so a reader is not told a file went.
 func TestRunExcludesOneBlockByCoordinate(t *testing.T) {
 	t.Parallel()
@@ -630,9 +665,8 @@ func TestRunReportsOverlapAlongsideWhatAPatternTook(t *testing.T) {
 	assert.Equal(t, "100.00\n", stdout.String())
 }
 
-// emptyReason blames -exclude for an empty report only when a pattern took statements. One that
-// matched a file declaring none emptied nothing, so the reader is sent to the profile rather than
-// to a pattern that is not the reason.
+// A pattern that matched a file declaring no statements emptied nothing, so the reader is sent to
+// the profile rather than to a pattern that is not the reason — the report was empty before it ran.
 func TestRunBlamesTheProfileWhenAPatternTookNoStatements(t *testing.T) {
 	t.Parallel()
 
@@ -648,15 +682,87 @@ func TestRunBlamesTheProfileWhenAPatternTookNoStatements(t *testing.T) {
 	assert.NotContains(t, stderr.String(), "-exclude left nothing to report")
 }
 
+// A profile with nothing in it has nothing for a flag to match, so judging one against it reports
+// every pattern and every root as stale — naming a good `-old=$(MODULE)` as the fault when the
+// profile is what is empty, and exiting 2 where the gate says 1.
+func TestRunDoesNotBlameFlagsForAnEmptyProfile(t *testing.T) {
+	t.Parallel()
+
+	// A file declaring no statements, not a bare header: the profile has to hold something for the
+	// question "does anything here have statements" to be asked of it at all. With no files the
+	// answer is no whichever way the test is written, and a guard that accepted a file of nothing
+	// would go unnoticed.
+	empty := "mode: set\nexample.com/p/doc.go:1.1,2.2 0 0\n"
+
+	tests := map[string][]string{
+		"a root the profile does not hold": {"-old", "example.com/WRONG", "-new", "w"},
+		"a pattern that matches nothing":   {"-exclude", `pb\.go`},
+		"no flags at all":                  nil,
+	}
+
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run(append(args,
+				"-fail-under", "80", "-profile", writeProfile(t, empty), "-color", "never",
+			), stdout, stderr)
+
+			assert.Equal(t, codeBelow, code, "an empty profile is a failed gate, not a bad invocation")
+			assert.Equal(t, "no statements to cover, wanted at least 80.00%\n", stderr.String())
+			assert.Empty(t, stdout.String())
+		})
+	}
+}
+
 // -old and -new are one rename between them. Alone, either silently did nothing: `-new=.` looks
 // like it shortens every label, and an unset `-old=$(MODULE)` leaves the report full of paths its
 // author believed were gone.
 func TestRunRefusesHalfARename(t *testing.T) {
 	t.Parallel()
 
+	tests := map[string]struct {
+		args []string
+		want string
+	}{
+		// The whole message, not its shared prefix: naming which half was given is the only thing
+		// `given` does, and a prefix assertion holds just as well when it names the wrong one.
+		"old without new": {
+			args: []string{"-old", "example.com/p"},
+			want: `one alone does nothing: got -old="example.com/p"`,
+		},
+		"new without old": {
+			args: []string{"-new", "p"},
+			want: `one alone does nothing: got -new="p"`,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run(append(tc.args, "-profile", writeProfile(t, profile)), stdout, stderr)
+
+			assert.Equal(t, codeFailed, code)
+			assert.Empty(t, stdout.String(), "nothing on stdout for an argument error")
+			assert.Contains(t, stderr.String(), tc.want)
+		})
+	}
+}
+
+// A different mistake, so a different sentence. -old=/ names no package, and both flags may well
+// have been given — telling the reader "one alone does nothing" sends them to supply a flag they
+// already supplied. `-old=$(MODULE)/` with MODULE unset spells this, and with both unset it is
+// -old=/ with no -new at all.
+func TestRunRefusesARootThatNamesNoPackage(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string][]string{
-		"old without new": {"-old", "example.com/p"},
-		"new without old": {"-new", "p"},
+		"one separator, with a target":    {"-old", "/", "-new", "x"},
+		"several separators":              {"-old", "//", "-new", "x"},
+		"one separator, without a target": {"-old", "/"},
 	}
 
 	for name, args := range tests {
@@ -667,10 +773,84 @@ func TestRunRefusesHalfARename(t *testing.T) {
 			code := app.Run(append(args, "-profile", writeProfile(t, profile)), stdout, stderr)
 
 			assert.Equal(t, codeFailed, code)
-			assert.Empty(t, stdout.String(), "nothing on stdout for an argument error")
-			assert.Contains(t, stderr.String(), "-old and -new rename a root package together")
+			assert.Empty(t, stdout.String())
+			assert.Contains(t, stderr.String(), `-old names no package: got -old="`+args[1]+`"`)
 		})
 	}
+}
+
+// A rename that lands says nothing at all, and the label it lands on is the new root verbatim.
+//
+// "/" is one of those: only the old root is trimmed before the guard asks whether one was given,
+// the new one being the replacement, used raw. It renders the tree under the filesystem root. A
+// guard made symmetrical would refuse it, and until now nothing would have noticed.
+func TestRunIsSilentWhenARootMatched(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct{ oldRoot, newRoot, want string }{
+		"a package name":      {oldRoot: "m", newRoot: "renamed", want: "renamed"},
+		"the filesystem root": {oldRoot: "m", newRoot: "/", want: "/"},
+		// Both halves of the trimming meet here: the guard lets a root through on what is left
+		// after every separator goes, so Shorten has to trim them all too or a root that is in
+		// the profile silently matches nothing and gets reported as a root that is not.
+		"a root written with a separator too many": {oldRoot: "m//", newRoot: "renamed", want: "renamed"},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{
+				"-old", tc.oldRoot, "-new", tc.newRoot, "-depth", "0",
+				"-profile", writeProfile(t, profile), "-color", "never",
+			}, stdout, stderr)
+
+			assert.Equal(t, codeOK, code)
+			assert.Equal(t, " "+tc.want+" - 60.00\n", stdout.String())
+			assert.Empty(t, stderr.String())
+		})
+	}
+}
+
+// A root that names no package in the profile rewrites nothing, which looks exactly like asking
+// for no rename at all. parseFlags catches a root that is empty; only the matching can catch one
+// that is merely wrong, so it is refused a step later rather than differently.
+func TestRunRefusesARootThatMatchedNothing(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-old", "example.com/WRONG", "-new", "w", "-depth", "0",
+		"-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Contains(t, stderr.String(), `-old "example.com/WRONG" matched nothing`)
+	assert.Empty(t, stdout.String(), "and no report goes out under the labels it was not given")
+}
+
+// Shorten runs on what -exclude left, so a pattern that took every file under a perfectly good
+// root would report the root as wrong — sending someone to fix a flag that is already right. The
+// question is asked of the whole profile instead.
+func TestRunDoesNotBlameTheRootForWhatExcludeTook(t *testing.T) {
+	t.Parallel()
+
+	// A file outside the root, so taking everything under it still leaves a report standing. With a
+	// profile entirely under m/ the run ends in "-exclude left nothing to report", and the silence
+	// below holds for that reason rather than the one being tested — which is what it did.
+	twoRoots := "mode: set\nm/a.go:1.1,2.2 5 1\nother/b.go:1.1,2.2 5 1\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-old", "m", "-new", "x", "-exclude", "^m/", "-depth", "0",
+		"-profile", writeProfile(t, twoRoots), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code, "the root is fine, so the report is drawn")
+	assert.Equal(t, " other - 100.00\n", stdout.String())
+	assert.NotContains(t, stderr.String(), "matched nothing, so no label was shortened")
+	assert.Contains(t, stderr.String(), `-exclude "^m/" left out`, "and -exclude still says what it took")
 }
 
 func TestRunPrintsOnlyTheTotal(t *testing.T) {

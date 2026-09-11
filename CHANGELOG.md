@@ -49,7 +49,32 @@ tags.
   together, so one without the other did nothing and said nothing — `-new=.` looks like it shortens
   every label, and an unset `-old=$(MODULE)` leaves the report full of paths its author believed
   were gone. Exit 2, as for any other argument mistake. The same reasoning already refuses an empty
-  `-exclude`.
+  `-exclude`. A root of nothing but separators counts as absent — `-old=$(MODULE)/` with `MODULE`
+  unset is `-old=/`, which named no package and left the report exactly as it was. That gets its own
+  message — ``-old names no package: got -old="/"`` — because both flags may well have been given, and
+  "one alone does nothing" would send the reader to supply a flag they already supplied.
+
+- **Breaking:** `-old` that matches no path in the profile exits 2 and says why — `-old
+  "github.com/WRONG/module" matched nothing, so no label was shortened`. Every released version
+  printed the unshortened report and exited 0 with nothing on stderr at all. The rename did
+  not happen, so the labels are not the ones asked for; that is the argument mistake `-old` alone is
+  already refused for, found a step later only because the profile is what answers it. Nothing goes
+  to stdout, as for any other argument mistake.
+
+  `-exclude` is unchanged: a pattern that matches nothing still says so and still exits 0. A rename
+  transforms the output, so one that does not happen leaves a report nobody asked for. A pattern is
+  a filter, and prettycov has no history to tell one that rotted from one written to be conditional
+  — a defensive `-exclude='\.pb\.go$'`, or one config shared across repositories, is right to match
+  nothing where nothing is generated.
+
+  A profile with no statements is answered before `-old` is judged, so it stays `no statements to
+  cover` — exit 1 under `-fail-under`, 2 without. Nothing can match an empty profile, so judging a
+  root against one blamed a flag that was fine.
+
+- `-old` with more than one trailing separator renames again. `-old=$(MODULE)/` where `MODULE`
+  already ends in one spells `-old=example.com/m//`, and only the last separator was trimmed, so
+  the root was matched against a path carrying one separator where it had two and nothing ever
+  matched. A root that is in the profile was reported as a root that is not.
 
 - Rows sort by the label as drawn rather than as parsed. `sanitize` replaces a rune a terminal
   would obey, and the replacement sorts elsewhere than the original, so a package named `a\x01`
@@ -57,6 +82,17 @@ tags.
   in a path.
 
 ### Go API
+
+- **Breaking:** `Process` no longer renames a root — it takes only the files, and `Shorten` is the
+  step that renames and reports how many paths it rewrote. Renaming inside `Process` gave a caller
+  no way to see whether it had done anything, so a root naming a package the profile does not hold
+  rewrote nothing and said nothing. Callers that passed `Process(files, "", "")` drop the two
+  arguments; callers that renamed put `Shorten` in front of it.
+
+- `HasRoot` reports whether any file sits under a root, by the rule `Shorten` renames by. `Shorten`
+  answers the same question with a count, but only as a by-product of building the renamed slice,
+  so asking it costs a copy of every `FileCoverage` for a number that is compared against zero.
+  `HasRoot` stops at the first match and allocates nothing.
 
 - `FileCoverage.Blocks` holds each block's start position and statements. Optional — a
   `FileCoverage` built by a caller may leave it empty, and only `Exclude` reads it.

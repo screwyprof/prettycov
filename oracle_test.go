@@ -31,7 +31,7 @@ func TestProcessMatchesProfileTotals(t *testing.T) {
 			files, err := prettycov.ParseProfile(profile)
 			require.NoError(t, err)
 
-			tree := prettycov.Process(files, "", "")
+			tree := prettycov.Process(files)
 
 			for dir, want := range oracleTotals(t, profile) {
 				node := tree.Get(dir)
