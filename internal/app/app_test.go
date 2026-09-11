@@ -622,6 +622,11 @@ func TestRunReportsOverlapAlongsideWhatAPatternTook(t *testing.T) {
 	assert.Equal(t, codeOK, code)
 	assert.Contains(t, stderr.String(),
 		"left out 2 statements in 1 block, and 2 files already excluded")
+
+	// And the pattern that overlapped nothing says nothing about it. The trailing newline is the
+	// assertion: without it, Contains passes just as well when the clause is always appended.
+	assert.Contains(t, stderr.String(), `-exclude "cmd/" left out 7 statements in 2 files`+"\n")
+
 	assert.Equal(t, "100.00\n", stdout.String())
 }
 
