@@ -91,6 +91,11 @@ than `pgxdb/pgxdb.go`, six statements against four. Sorting by the percentage po
 row is smallest, not at the one worth opening; the uncovered count is what to act on. That is what
 `-counts` is for.
 
+Coverage is also a weak predictor of whether a suite catches bugs once suite size is controlled for
+([Inozemtseva & Holmes, ICSE 2014](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf));
+what predicts it is how much the tests assert, which no profile can see. Treat `-fail-under` as a
+floor, not a goal.
+
 ## Reading the report
 
 **A run of directories that each hold nothing but the next one is one row.** Otherwise every report
@@ -182,7 +187,8 @@ profile on disk: `go tool cover -html` and anything else reading the file still 
 it, and changing your mind costs a re-render rather than a re-run.
 
 Excluding here gives the same total as narrowing `-coverpkg` — one package's coverage never enters
-another's ratio — and leaves `-coverpkg` a single pattern:
+another's ratio — and leaves `-coverpkg` a single pattern, rather than a `go list | grep -v` package
+list that can drift from the build it feeds:
 
 ```make
 COVERAGE_EXCLUDE := migrator|testcfg|cmd|web/config
