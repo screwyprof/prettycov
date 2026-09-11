@@ -625,6 +625,24 @@ func TestRunReportsOverlapAlongsideWhatAPatternTook(t *testing.T) {
 	assert.Equal(t, "100.00\n", stdout.String())
 }
 
+// emptyReason blames -exclude for an empty report only when a pattern took statements. One that
+// matched a file declaring none emptied nothing, so the reader is sent to the profile rather than
+// to a pattern that is not the reason.
+func TestRunBlamesTheProfileWhenAPatternTookNoStatements(t *testing.T) {
+	t.Parallel()
+
+	noStatements := "mode: set\nexample.com/p/doc.go:1.1,2.2 0 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", `doc\.go`, "-profile", writeProfile(t, noStatements), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Contains(t, stderr.String(), "no statements to cover")
+	assert.NotContains(t, stderr.String(), "-exclude left nothing to report")
+}
+
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 
