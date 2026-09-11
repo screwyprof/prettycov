@@ -51,8 +51,13 @@ type Row struct {
 // terminal. DisplayTree is the one that decides how a Row looks.
 func Rows(tree *PathTree, opts Options) []Row {
 	b := rowBuilder{opts: opts}
-	// Deep enough for any real path; append handles a deeper one correctly if it comes.
-	b.walk(tree, 0, append(make([]byte, 0, 128), ' '))
+
+	// One leading space, with room to grow two bytes per level. Deep enough for any real path;
+	// append handles a deeper one correctly if it comes.
+	padding := make([]byte, 1, 128)
+	padding[0] = ' '
+
+	b.walk(tree, 0, padding)
 
 	return b.rows
 }
@@ -61,7 +66,6 @@ func Rows(tree *PathTree, opts Options) []Row {
 // renders as.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
 	buf := bufio.NewWriter(w)
-	defer func() { _ = buf.Flush() }()
 
 	for _, row := range Rows(tree, opts) {
 		_, _ = buf.WriteString(row.Prefix)
@@ -70,6 +74,8 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
 		_, _ = buf.WriteString(formatCoverage(row.Coverage, opts))
 		_ = buf.WriteByte('\n')
 	}
+
+	_ = buf.Flush()
 }
 
 // rowBuilder holds what stays the same for the whole traversal, so the recursion carries only

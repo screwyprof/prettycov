@@ -49,7 +49,7 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 		blocks += len(profile.Blocks)
 	}
 
-	arena := make([]Block, 0, blocks)
+	slab := make([]Block, 0, blocks)
 
 	// Every later sum — per package, then up the tree — adds a subset of these same blocks, so
 	// a running total that stays in range here keeps all of them in range too. cover rejects a
@@ -57,9 +57,9 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 	var total int
 
 	for _, profile := range profiles {
-		var covered, uncovered int
+		var file CoverageStats
 
-		start := len(arena)
+		start := len(slab)
 
 		for _, block := range profile.Blocks {
 			if total += block.NumStmt; total < 0 {
@@ -73,10 +73,9 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 				stats = CoverageStats{Covered: block.NumStmt}
 			}
 
-			covered += stats.Covered
-			uncovered += stats.Uncovered
+			file.Add(stats)
 
-			arena = append(arena, Block{
+			slab = append(slab, Block{
 				Line:     block.StartLine,
 				Col:      block.StartCol,
 				Coverage: stats,
@@ -84,13 +83,10 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 		}
 
 		items = append(items, FileCoverage{
-			File: profile.FileName,
-			Coverage: CoverageStats{
-				Covered:   covered,
-				Uncovered: uncovered,
-			},
+			File:     profile.FileName,
+			Coverage: file,
 			// Capped, so appending to one file's blocks can never reach into the next file's.
-			Blocks: arena[start:len(arena):len(arena)],
+			Blocks: slab[start:len(slab):len(slab)],
 		})
 	}
 
