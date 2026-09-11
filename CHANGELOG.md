@@ -54,8 +54,9 @@ tags.
   message — ``-old names no package: got -old="/"`` — because both flags may well have been given, and
   "one alone does nothing" would send the reader to supply a flag they already supplied.
 
-- **Breaking:** `-old` that matches no path in the profile exits 2 rather than warning and carrying
-  on — `-old "github.com/WRONG/module" matched nothing, so no label was shortened`. The rename did
+- **Breaking:** `-old` that matches no path in the profile exits 2 and says why — `-old
+  "github.com/WRONG/module" matched nothing, so no label was shortened`. Every released version
+  printed the unshortened report and exited 0 with nothing on stderr at all. The rename did
   not happen, so the labels are not the ones asked for; that is the argument mistake `-old` alone is
   already refused for, found a step later only because the profile is what answers it. Nothing goes
   to stdout, as for any other argument mistake.
