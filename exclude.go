@@ -61,15 +61,10 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 	}
 
 	kept := make([]FileCoverage, 0, len(items))
-	// Reused rather than allocated per file: it says which patterns took the path, so the ones that
-	// did not can still be asked about the blocks inside.
-	tookPath := make([]bool, len(patterns))
 
 	for _, item := range items {
-		clear(tookPath)
-
-		if chargeFile(dropped, patterns, item, tookPath) {
-			noteBlocksAlreadyGone(dropped, patterns, item, tookPath)
+		if chargeFile(dropped, patterns, item) {
+			noteBlocksAlreadyGone(dropped, patterns, item)
 
 			continue
 		}
@@ -87,20 +82,21 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 // deleting it — and the day the path pattern narrows, the block silently returns to the
 // denominator. Patterns that took the path are skipped: a path is a prefix of every coordinate in
 // its file, so they would be charged twice for the same match.
-func noteBlocksAlreadyGone(
-	dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage, tookPath []bool,
-) {
-	for i, re := range patterns {
-		if tookPath[i] {
-			continue
-		}
+func noteBlocksAlreadyGone(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage) {
+	for _, block := range item.Blocks {
+		withCol, toLine := block.at(item.File)
 
-		for _, block := range item.Blocks {
-			if block.names(re, item.File) {
+		for i, re := range patterns {
+			if !re.MatchString(item.File) && names(re, withCol, toLine) {
 				dropped[i].OverlappedBlocks++
 			}
 		}
 	}
+}
+
+// names reports whether the pattern picks out a block at either spelling of its position.
+func names(re *regexp.Regexp, withCol, toLine string) bool {
+	return re.MatchString(withCol) || re.MatchString(toLine)
 }
 
 // chargeFile asks every pattern about the path and reports whether the file goes whole.
@@ -109,17 +105,13 @@ func noteBlocksAlreadyGone(
 // pattern already took is still a working pattern, and reporting it as if it matched nothing reads
 // as a typo. First match wins for the statements, so the totals still add up to what left the
 // report.
-func chargeFile(
-	dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage, tookPath []bool,
-) bool {
+func chargeFile(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage) bool {
 	charged := -1
 
 	for i, re := range patterns {
 		if !re.MatchString(item.File) {
 			continue
 		}
-
-		tookPath[i] = true
 
 		if charged >= 0 {
 			dropped[i].OverlappedFiles++
@@ -155,9 +147,10 @@ func chargeBlocks(
 
 	for _, block := range item.Blocks {
 		charged := -1
+		withCol, toLine := block.at(item.File)
 
 		for i, re := range patterns {
-			if !block.names(re, item.File) {
+			if !names(re, withCol, toLine) {
 				continue
 			}
 
@@ -174,8 +167,7 @@ func chargeBlocks(
 
 		if charged < 0 {
 			blocks = append(blocks, block)
-			left.Covered += block.Coverage.Covered
-			left.Uncovered += block.Coverage.Uncovered
+			left.Add(block.Coverage)
 		}
 	}
 
@@ -183,7 +175,7 @@ func chargeBlocks(
 	case len(blocks) == len(item.Blocks):
 		return item, true
 	// Not len(blocks) == 0: cmd/cover emits blocks declaring no statements, and one of those left
-	// behind kept the file alive as a row reading "n/a", which is a row about nothing.
+	// behind kept a file in the report that the patterns had taken everything from.
 	case left.Total() == 0:
 		return FileCoverage{}, false
 	default:

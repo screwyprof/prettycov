@@ -41,6 +41,9 @@ tags.
 - `FileCoverage.Blocks` holds each block's start position and statements. Optional — a
   `FileCoverage` built by a caller may leave it empty, and only `Exclude` reads it.
 
+- `CoverageStats.Add` takes in another's statements, which every roll-up in the package was
+  spelling out two fields at a time.
+
 - **Breaking:** `Exclusion.Overlapped` is now a method, and the counts behind it are
   `OverlappedFiles` and `OverlappedBlocks`. `Exclusion` also gains `Blocks`.
 

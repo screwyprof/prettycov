@@ -2,7 +2,6 @@ package prettycov
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -19,6 +18,13 @@ type CoverageStats struct {
 //
 // No overflow check: this is the raw sum, and Percentage is what refuses one that has wrapped.
 func (c CoverageStats) Total() int { return c.Covered + c.Uncovered }
+
+// Add takes in another node's statements. Both sides move together or the percentage is drawn from
+// counts that were never summed the same way.
+func (c *CoverageStats) Add(other CoverageStats) {
+	c.Covered += other.Covered
+	c.Uncovered += other.Uncovered
+}
 
 // Percentage reports the share of statements covered. The bool is false when there are none to
 // cover, which is not 0% — there is nothing to report.
@@ -94,17 +100,13 @@ type Block struct {
 // matches a pattern against both, so "a.go:3$" anchors on line 3 rather than never matching: the
 // column is what a reader leaves off, and a pattern ending at the line has nowhere to stop without
 // this.
+//
+// Neither spelling depends on the pattern, so callers build them once per block and ask every
+// pattern about the pair.
 func (b Block) at(file string) (withCol, toLine string) {
 	toLine = file + ":" + strconv.Itoa(b.Line)
 
 	return toLine + ":" + strconv.Itoa(b.Col), toLine
-}
-
-// names reports whether the pattern picks out this block, by either spelling of its position.
-func (b Block) names(re *regexp.Regexp, file string) bool {
-	withCol, toLine := b.at(file)
-
-	return re.MatchString(withCol) || re.MatchString(toLine)
 }
 
 // Process turns per-file coverage into a tree in which every node reports its own statements plus
@@ -135,9 +137,7 @@ func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
 func rollUp(node *PathTree) CoverageStats {
 	for _, below := range []map[string]*PathTree{node.Files, node.Children} {
 		for _, child := range below {
-			rolled := rollUp(child)
-			node.Coverage.Covered += rolled.Covered
-			node.Coverage.Uncovered += rolled.Uncovered
+			node.Coverage.Add(rollUp(child))
 		}
 	}
 
