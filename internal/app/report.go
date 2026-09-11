@@ -114,8 +114,17 @@ func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
 			continue
 		}
 
-		_, _ = fmt.Fprintf(stderr, "-exclude %q left out %s in %s\n",
-			ex.Pattern, plural(ex.Statements, "statement"), units(ex.Files, ex.Blocks))
+		// Charged and overlapping at once: say both. Reporting only what it took reads as a pattern
+		// barely earning its keep, and deleting it gives back everything an earlier pattern happens
+		// to be covering for it — which is the same trap the message above exists to avoid, sprung
+		// on a pattern that did take something.
+		overlap := ""
+		if ex.Overlapped() > 0 {
+			overlap = ", and " + units(ex.OverlappedFiles, ex.OverlappedBlocks) + " already excluded"
+		}
+
+		_, _ = fmt.Fprintf(stderr, "-exclude %q left out %s in %s%s\n",
+			ex.Pattern, plural(ex.Statements, "statement"), units(ex.Files, ex.Blocks), overlap)
 	}
 }
 

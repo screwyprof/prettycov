@@ -38,6 +38,18 @@ tags.
 - `-exclude` reporting says which unit it took: `left out 1 statement in 1 block` where a
   coordinate matched, `in 1 file` where a path did.
 
+- A pattern that took something and also matched what an earlier pattern had already taken says
+  both — `left out 2 statements in 1 block, and 2 files already excluded`. Only the overlap was
+  reported before, and only when the pattern was charged nothing, so a pattern covering for an
+  earlier one looked like it barely earned its keep.
+
+### Fixed
+
+- Rows sort by the label as drawn rather than as parsed. `sanitize` replaces a rune a terminal
+  would obey, and the replacement sorts elsewhere than the original, so a package named `a\x01`
+  sorted before `ab` and drew after it. Only reachable from a profile carrying a control character
+  in a path.
+
 ### Go API
 
 - `FileCoverage.Blocks` holds each block's start position and statements. Optional — a

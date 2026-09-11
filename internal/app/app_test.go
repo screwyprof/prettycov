@@ -600,6 +600,31 @@ func TestRunReportsFilesAndBlocksTakenByOnePattern(t *testing.T) {
 	assert.Equal(t, "100.00\n", stdout.String())
 }
 
+// A pattern can take something and still be covering for an earlier one. Saying only what it took
+// reads as barely earning its keep, and deleting it hands back the files the earlier pattern is
+// holding — the trap the overlap count exists to prevent, sprung on a pattern that did take
+// something.
+func TestRunReportsOverlapAlongsideWhatAPatternTook(t *testing.T) {
+	t.Parallel()
+
+	overlapping := "mode: set\n" +
+		"ex.com/p/cmd/a.go:1.1,2.2 3 1\n" +
+		"ex.com/p/cmd/b.go:1.1,2.2 4 1\n" +
+		"ex.com/p/web/c.go:31.2,32.9 2 1\n" +
+		"ex.com/p/web/c.go:32.9,34.3 2 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", "cmd/", "-exclude", `(cmd/|c\.go:32:)`, "-total",
+		"-profile", writeProfile(t, overlapping), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Contains(t, stderr.String(),
+		"left out 2 statements in 1 block, and 2 files already excluded")
+	assert.Equal(t, "100.00\n", stdout.String())
+}
+
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 
