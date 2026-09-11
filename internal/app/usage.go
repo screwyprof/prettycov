@@ -22,6 +22,8 @@ Fail when total coverage is below a threshold, for CI:
 	prettycov -fail-under=80
 Stop counting code you never meant to test, one pattern per flag:
 	prettycov -exclude='/cmd/' -exclude='\.pb\.go$'
+Or one block, by the position the profile gives it:
+	prettycov -exclude='version\.go:32'
 Show the statement counts behind each percentage:
 	prettycov -counts
 Show the files too, not only the packages:

@@ -10,6 +10,35 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Added
+
+- `-exclude` takes blocks as well as files. A pattern matching a block's `file:line:col` —
+  `-exclude='version\.go:32'` — drops that block alone, where before the smallest thing you could
+  stop counting was a whole file. The toolchain has no `//go:cover ignore` comment: golang/go#53271
+  was declined, on the grounds that a tool reporting the uncovered lines should filter them itself.
+
+  The path is tried first, so a pattern naming a file or a package behaves exactly as it did. A path
+  holds no colon, so neither kind can be mistaken for the other.
+
+  The position is the block's start, which `cmd/cover` opens just after the brace — `if !ok {` on
+  line 32 owns the `return` on line 33 — so it is read from the profile, not off the source. The
+  column is optional.
+
+### Changed
+
+- `-exclude` reporting says which unit it took: `left out 1 statement in 1 block` where a
+  coordinate matched, `in 1 file` where a path did.
+
+### Go API
+
+- `FileCoverage.Blocks` holds each block's start position and statements. Optional — a
+  `FileCoverage` built by a caller may leave it empty, and only `Exclude` reads it.
+
+- **Breaking:** `Exclusion.Overlapped` is now a method, and the counts behind it are
+  `OverlappedFiles` and `OverlappedBlocks`. `Exclusion` also gains `Blocks`.
+
 ## [0.9.0] — 2026-09-10
 
 ### Changed
@@ -331,6 +360,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[Unreleased]: https://github.com/screwyprof/prettycov/compare/v0.9.0...HEAD
 [0.9.0]: https://github.com/screwyprof/prettycov/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/screwyprof/prettycov/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/screwyprof/prettycov/compare/v0.7.0...v0.7.1

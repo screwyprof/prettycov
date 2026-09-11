@@ -109,7 +109,9 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	})
 	// Repeatable: assigning instead of appending would silently apply only the last pattern.
 	// Compiled here so a bad one is a flag error rather than a panic later.
-	set.Func("exclude", "omit files whose path matches this `regexp`; repeatable", func(s string) error {
+	const excludeUsage = "omit files whose path, or blocks whose file:line:col, match this `regexp`; repeatable"
+
+	set.Func("exclude", excludeUsage, func(s string) error {
 		re, err := prettycov.ParseExclude(s)
 		if err != nil {
 			//nolint:wrapcheck // the flag package already prefixes the flag name and the value.

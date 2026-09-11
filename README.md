@@ -70,7 +70,7 @@ Turn on the two flags that say more, and go a level deeper:
 | `-counts` | show `uncovered/total` statements beside each percentage |
 | `-total` | print only the number, for a Makefile or a badge |
 | `-fail-under=N` | exit 1 when total coverage is below N, so prettycov can gate CI |
-| `-exclude=REGEXP` | leave out files whose path matches, before anything is totalled. Repeatable |
+| `-exclude=REGEXP` | leave out files whose path matches, or blocks whose `file:line:col` matches, before anything is totalled. Repeatable |
 | `-old=PATH -new=PATH` | shorten a long root package path in the labels |
 | `-color=auto` \| `always` \| `never` | when to colour |
 | `-profile=PATH` | which profile to read. Also accepted as the sole positional argument |
@@ -159,6 +159,25 @@ including nothing, which is how you spot a typo:
  ├ scraper - 94.95
  └ web - 93.41
 ```
+
+A pattern matching `file:line:col` takes one block instead of a whole file. The toolchain has no
+`//go:cover ignore` comment — [golang/go#53271](https://github.com/golang/go/issues/53271) was
+declined, with the answer that a tool reporting the uncovered lines should filter them instead — so
+this is how a single unreachable statement stops being counted without dropping the file it lives
+in:
+
+```shell
+❯ prettycov -exclude='httpkit\.go:62' -counts
+-exclude "httpkit\\.go:62" left out 1 statement in 1 block
+ github.com/screwyprof/delegator - 91.77  33/401 uncovered
+ ├ pkg - 94.12  7/119 uncovered
+ ├ scraper - 88.00  18/150 uncovered
+ └ web - 93.94  8/132 uncovered
+```
+
+The position is the block's start, which `cmd/cover` opens just after the brace — `if !ok {` on line
+32 owns the `return` on line 33 — so read it from the profile rather than off the source. The column
+is optional, and only tells two blocks opening on one line apart.
 
 The accounting goes to stderr, so the report itself stays pipeable. It filters the report, not the
 profile on disk: `go tool cover -html` and anything else reading the file still sees everything in

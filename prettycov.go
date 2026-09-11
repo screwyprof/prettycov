@@ -2,6 +2,7 @@ package prettycov
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -72,6 +73,26 @@ func (p Percentage) String() string {
 type FileCoverage struct {
 	File     string
 	Coverage CoverageStats
+	// Blocks is where the file's statements are, in the order the profile listed them. Optional:
+	// a FileCoverage assembled by a caller may leave it empty. Coverage is the sum and stays the
+	// authority; only Exclude reads this.
+	Blocks []Block
+}
+
+// Block is one of a file's basic blocks: where it starts, and the statements it holds. Exactly one
+// side of Coverage is non-zero — a block is run or not run, never partly.
+//
+// The position is where cmd/cover opens the block, which is not where a reader would point:
+// `if !ok {` on line 32 owns the `return` on line 33.
+type Block struct {
+	Line, Col int
+	Coverage  CoverageStats
+}
+
+// at names the block the way a compiler names a position, which is the form -exclude matches
+// against and the form a jump-to-line tool reads.
+func (b Block) at(file string) string {
+	return file + ":" + strconv.Itoa(b.Line) + ":" + strconv.Itoa(b.Col)
 }
 
 // Process turns per-file coverage into a tree in which every node reports its own statements plus
