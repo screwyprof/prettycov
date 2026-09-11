@@ -579,6 +579,27 @@ func TestRunExcludesOneBlockByCoordinate(t *testing.T) {
 	assert.Equal(t, "100.00\n", stdout.String(), "the uncovered block left the denominator with it")
 }
 
+// One pattern can reach both: `a\.go$` takes the file, `b\.go:32` takes a block of another, and
+// neither count may be dropped from the message.
+func TestRunReportsFilesAndBlocksTakenByOnePattern(t *testing.T) {
+	t.Parallel()
+
+	both := "mode: set\n" +
+		"ex.com/p/app/a.go:1.1,2.2 4 1\n" +
+		"ex.com/p/app/b.go:31.2,32.9 2 1\n" +
+		"ex.com/p/app/b.go:32.9,34.3 1 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", `(a\.go$|b\.go:32:)`, "-total",
+		"-profile", writeProfile(t, both), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Contains(t, stderr.String(), "left out 5 statements in 1 file and 1 block")
+	assert.Equal(t, "100.00\n", stdout.String())
+}
+
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 
