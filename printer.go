@@ -1,6 +1,7 @@
 package prettycov
 
 import (
+	"bufio"
 	"cmp"
 	"fmt"
 	"io"
@@ -58,8 +59,15 @@ func Rows(tree *PathTree, opts Options) []Row {
 // DisplayTree writes tree as an indented report. A collapsed run of directories is the one row it
 // renders as.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
+	buf := bufio.NewWriter(w)
+	defer func() { _ = buf.Flush() }()
+
 	for _, row := range Rows(tree, opts) {
-		_, _ = fmt.Fprintf(w, "%s%s - %s\n", row.Prefix, row.Label, formatCoverage(row.Coverage, opts))
+		_, _ = buf.WriteString(row.Prefix)
+		_, _ = buf.WriteString(row.Label)
+		_, _ = buf.WriteString(" - ")
+		_, _ = buf.WriteString(formatCoverage(row.Coverage, opts))
+		_ = buf.WriteByte('\n')
 	}
 }
 
