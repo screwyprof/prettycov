@@ -538,12 +538,8 @@ func TestRunAppliesEveryExcludePattern(t *testing.T) {
 	assert.Contains(t, stderr.String(), `-exclude "testutil" left out 10 statements in 1 file`)
 }
 
-// A pattern that matched nothing did nothing, which is an argument mistake found a step later than
-// the rest because only the profile can answer it. `-exclude` outlives the generated file it was
-// written for, and a warning on stderr is what scrolls past in CI while the build stays green.
-//
-// No report with it: the other argument mistakes print none either, and one that goes out anyway is
-// one a CI step keeps publishing while the flag rots.
+// A pattern that matched nothing did nothing, which is an argument mistake — found a step later
+// than the rest only because the profile is what answers it. No report with it, as for any other.
 func TestRunRefusesAnExcludePatternThatMatchedNothing(t *testing.T) {
 	t.Parallel()
 
@@ -785,9 +781,6 @@ func TestRunIsSilentWhenARootMatched(t *testing.T) {
 // A root that names no package in the profile rewrites nothing, which looks exactly like asking
 // for no rename at all. parseFlags catches a root that is empty; only the matching can catch one
 // that is merely wrong, so it is refused a step later rather than differently.
-//
-// This is the likely way to get one: `-old=$(MODULE)` in a Makefile survives the repository being
-// renamed and the module moving, then quietly stops doing anything.
 func TestRunRefusesARootThatMatchedNothing(t *testing.T) {
 	t.Parallel()
 

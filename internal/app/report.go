@@ -33,15 +33,9 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	shortened, renamed := prettycov.Shorten(kept, cfg.CurrentRoot, cfg.NewRoot)
 	staleRoot := reportRename(cfg, items, renamed, stderr)
 
-	// A flag that matched nothing did nothing, and a flag that did nothing is an argument mistake
-	// — the same one parseFlags refuses -old alone for, found a step later because only the profile
-	// can answer it. Exit 2, and no report: the other argument mistakes print none either, and a
-	// report that goes out anyway is one a CI step keeps publishing while the flag rots.
-	//
-	// The likely way to get here is a root or a pattern that was right once. `-old=$(MODULE)` in a
-	// Makefile survives the repository being renamed and the module moving; `-exclude` outlives the
-	// generated file it was written for. Both then quietly stop doing anything, and a warning on
-	// stderr is what scrolls past in CI while the build stays green.
+	// A flag that matched nothing did nothing, which is the argument mistake parseFlags refuses
+	// -old alone for — found a step later only because the profile is what answers it. No report
+	// with it, as for any other argument mistake.
 	//
 	// Both are asked before either refuses, so a run with two stale flags names both rather than
 	// sending the reader back for the second after they fix the first.

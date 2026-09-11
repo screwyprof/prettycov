@@ -57,14 +57,8 @@ tags.
 - **Breaking:** a flag that matched nothing exits 2 rather than warning and carrying on. Two of
   them: `-old` naming a root the profile does not hold — `-old "github.com/WRONG/module" matched
   nothing, so no label was shortened` — and `-exclude` whose pattern hits no file. Both did nothing,
-  and a flag that does nothing is the argument mistake `-old` alone is already refused for, found a
-  step later because only the profile can answer it. Nothing goes to stdout, as for any other
-  argument mistake.
-
-  The likely way to get either is a flag that was right once: `-old=$(MODULE)` survives the
-  repository being renamed and the module moving, and an `-exclude` outlives the generated file it
-  was written for. As warnings they scroll past in CI while the build stays green, publishing a
-  report under labels nobody asked for, or one whose denominator quietly grew back.
+  which is the argument mistake `-old` alone is already refused for, found a step later only because
+  the profile is what answers it. Nothing goes to stdout, as for any other argument mistake.
 
   A pattern beaten to every file by an *earlier* pattern still exits 0. It is doing its job, and
   deleting it is what would break; telling it apart from a typo is why that message is separate.
