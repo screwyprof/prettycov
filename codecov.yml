@@ -3,8 +3,8 @@
 # ordinary build produces one — checked with and without .git, and through nix — so no test can
 # reach it, and removing the guard would trade an impossible case for a nil dereference.
 #
-# At ~256 lines that single statement is 0.4%, and the default patch target is the project average,
-# so it fails every patch check on its own. The threshold below is that slack and nothing more.
+# At 381 statements that one is 0.26%, and the default patch target is the project average, so it
+# fails every patch check on its own. The threshold below covers that.
 #
 # The project target below is a fixed 99%, which replaces the comparison against the base commit
 # rather than adding to it: the check passes at anything at or above it, so a drop from 99.44% to
@@ -14,8 +14,12 @@
 # into each piece (golang/go#80974), inflating every figure this repository reported until 0.4.1
 # pinned 1.26. A fixed target rather than a baseline is what let that correction land — 99.36%
 # against a 99.61% baseline measured on 1.27, a real decrease and the point of the change. It stays
-# until the fix reaches a 1.27 release and the pin comes off, so the same move in reverse does not
-# fail here either. Remove it then, and threshold: 0% against the base commit means something again.
+# until the fix ships and the pin comes off, so the same move in reverse does not fail here either.
+# Remove it then, and threshold: 0% against the base commit means something again.
+#
+# Not 1.27: the fix is milestoned Go 1.28, and 1.27.0 and 1.27.1 both shipped with the bug. go.mod
+# says 1.26 and every workflow reads its version from there, so nothing here moves until that line
+# does.
 coverage:
   status:
     project:
