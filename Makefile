@@ -98,18 +98,27 @@ fmt: require-golangci ## format code
 # The reports depend on the file rather than on `test`, so they rebuild it when a source has
 # changed and reuse it otherwise, instead of re-running the suite to re-read the same numbers.
 #
-# The last step folds in the binary tests: they run a compiled prettycov, so its execution is
-# absent from the suite's own profile. Appending merges, because readers of this format sum blocks
-# they see twice. Guarded — `go test -run` filtered to other tests writes no counters at all.
+# Two passes, because one flag cannot be both on and off. The first is every in-process test, with
+# -short leaving out the ones that spawn a compiled prettycov. The second runs exactly those, and
+# runs them WITHOUT -cover: under -cover, cmd/go claims GOCOVERDIR for a directory of its own and
+# then never reads it, so a child's counters are collected and binned. Without it the variable is
+# ours and the child writes where we say.
+#
+# That is the whole reason for two invocations. It also keeps GOCOVERDIR used as the toolchain
+# documents it rather than smuggled through a private variable — see golang/go#66225, and lazygit,
+# which hit the same collision and called its workaround hacky in writing.
+#
+# -race only on the first pass: the second forks a binary built without it, so the detector would
+# watch the harness and nothing else, for four times the wall clock.
+#
+# Appending merges, because readers of this format sum blocks they see twice.
 $(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
-	@PRETTYCOV_COVERDIR=$(PWD)/$(COVERDATA) \
-		go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
-	@if [ -n "$$(ls -A $(COVERDATA) 2>/dev/null)" ]; then \
-		go tool covdata textfmt -i=$(COVERDATA) -o=$(COVERDATA)/binary.txt && \
-		tail -n +2 $(COVERDATA)/binary.txt >> $@; \
-	fi
+	@go test -race -count=1 -timeout=120s -short -cover -covermode atomic -coverprofile=$@ ./...
+	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -count=1 -timeout=120s ./cmd/prettycov/
+	@go tool covdata textfmt -i=$(COVERDATA) -o=$(COVERDATA)/binary.txt
+	@tail -n +2 $(COVERDATA)/binary.txt >> $@
 
 # `make test` must always run the suite, so it drops the profile first rather than letting make
 # decide it is up to date.
