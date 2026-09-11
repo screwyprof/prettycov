@@ -91,13 +91,6 @@ than `pgxdb/pgxdb.go`, six statements against four. Sorting by the percentage po
 row is smallest, not at the one worth opening; the uncovered count is what to act on. That is what
 `-counts` is for.
 
-It is worth knowing this before gating on a percentage at all. The studies that looked
-([Inozemtseva & Holmes, ICSE 2014](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf))
-found coverage a weak predictor of whether a suite catches bugs once test-suite size is controlled
-for; what predicts it is how much the tests *assert*, which no coverage profile can see. Teams that
-mandate a figure tend to land exactly on it and stop. Coverage is good at one thing — showing where
-the untested code is — so treat `-fail-under` as a floor, not a goal.
-
 ## Reading the report
 
 **A run of directories that each hold nothing but the next one is one row.** Otherwise every report
@@ -117,8 +110,7 @@ the package did and not a second for the file. A row's label is a property of th
 
 ## Just the number
 
-`-total` prints the total percentage and nothing else, so a Makefile or a badge can read it. It
-replaces the recipe every project ends up writing:
+`-total` prints the total percentage and nothing else, so a Makefile or a badge can read it:
 
 ```make
 COVERAGE := $(shell go tool cover -func coverage.out | awk 'END{print $$NF}')   # 91.5%
@@ -165,11 +157,8 @@ including nothing, which is how you spot a typo:
  └ web - 93.41
 ```
 
-A pattern matching `file:line:col` takes one block instead of a whole file. The toolchain has no
-`//go:cover ignore` comment — [golang/go#53271](https://github.com/golang/go/issues/53271) was
-declined, with the answer that a tool reporting the uncovered lines should filter them instead — so
-this is how a single unreachable statement stops being counted without dropping the file it lives
-in:
+A pattern matching `file:line:col` takes one block instead of a whole file, so a single unreachable
+statement stops being counted without dropping the file it lives in:
 
 ```shell
 ❯ prettycov -exclude='httpkit\.go:62' -counts
@@ -192,11 +181,8 @@ The accounting goes to stderr, so the report itself stays pipeable. It filters t
 profile on disk: `go tool cover -html` and anything else reading the file still sees everything in
 it, and changing your mind costs a re-render rather than a re-run.
 
-That is the difference from narrowing `-coverpkg`, which is the other place a project can draw this
-line. Excluding a package there means it is never instrumented, so the decision is baked into the
-run and usually arrives as a `go list | grep -v` package list that can disagree with the build it
-feeds. Doing it here gives the same total — one package's coverage never enters another's ratio —
-and leaves `-coverpkg` a single pattern:
+Excluding here gives the same total as narrowing `-coverpkg` — one package's coverage never enters
+another's ratio — and leaves `-coverpkg` a single pattern:
 
 ```make
 COVERAGE_EXCLUDE := migrator|testcfg|cmd|web/config
