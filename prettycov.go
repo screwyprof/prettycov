@@ -135,10 +135,12 @@ func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
 // copy this used to return doubled a node count that the profile's files, now leaves of their own,
 // had already multiplied several times over.
 func rollUp(node *PathTree) CoverageStats {
-	for _, below := range []map[string]*PathTree{node.Files, node.Children} {
-		for _, child := range below {
-			node.Coverage.Add(rollUp(child))
-		}
+	for _, file := range node.Files {
+		node.Coverage.Add(rollUp(file))
+	}
+
+	for _, child := range node.Children {
+		node.Coverage.Add(rollUp(child))
 	}
 
 	return node.Coverage
