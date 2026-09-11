@@ -28,6 +28,7 @@ COVERDATA := .covdata
 # which needs the tag to lint the file at all.
 GO_TAGS := integration
 GOBCO_VERSION := v1.3.4
+GREMLINS_VERSION := v0.6.0
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
 # from it. Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
@@ -163,6 +164,29 @@ cover-branches: ## report conditions never evaluated both ways
 		(cd "$$tmp" && go run github.com/rillig/gobco@$(GOBCO_VERSION) $$pkg) | grep -v "^ok\b" || true; \
 	 done
 
+# Coverage says a line ran; it cannot say a test would have noticed the line being wrong. Gremlins
+# changes the source — negating conditions, moving boundaries, flipping increments — and reports the
+# mutants the suite failed to kill. A survivor is a line every test executes and none checks.
+#
+# Copied the same way as cover-branches, and for the same reason: gremlins works on its own copy of
+# the module root, so a gitignored _reference/ comes with it and fills /tmp.
+#
+# --timeout-coefficient is the whole difference between a result and a wasted run. Gremlins times
+# each mutant against a multiple of its baseline measurement, and the default left ours ~50ms
+# against a suite needing 400: 105 of 123 mutants timed out and said nothing. At 30 the run takes
+# twelve seconds and every mutant is decided.
+#
+# "Not covered" is worth reading but not chasing: those land on `switch { case <expr>: }` lines and
+# package-level var initialisers, neither of which Go's cover instruments where gremlins looks.
+# cover-branches is the one that answers for those.
+mutate: ## report mutants the tests failed to kill
+	@echo -e "$(OK_COLOR)==> Mutation testing$(NO_COLOR)"
+	@test -n "$(GO_FILES)" || { echo "no Go files; this needs a git checkout"; exit 1; }
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT; \
+	 $(GIT_LS) | tar -cf - -T - | (cd "$$tmp" && tar -xf -); \
+	 (cd "$$tmp" && go run github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VERSION) \
+		unleash --timeout-coefficient=30 .)
+
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
 test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
@@ -239,5 +263,5 @@ help: ## show this help
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
-.PHONY: test cover-branches test-cover-txt test-cover-html test-cover-total test-cover-tree
+.PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all install hooks nix-hash release publish clean help
