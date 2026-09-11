@@ -26,6 +26,7 @@ var (
 	errTooManyProfiles = errors.New("want at most one profile path")
 	errTwoProfiles     = errors.New("profile given twice")
 	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
+	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
 )
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -194,7 +195,25 @@ func parseFlags(args []string) (config, error) {
 		return cfg, err
 	}
 
+	// Refused rather than ignored, for the reason ParseExclude refuses the empty pattern: a flag
+	// that silently does nothing is a mistake nobody is told about. `-new=.` alone looks like it
+	// shortens every label and does not, and an unset `-old=$(MODULE)` leaves the report full of
+	// paths its author thought were gone.
+	if (cfg.CurrentRoot == "") != (cfg.NewRoot == "") {
+		return cfg, fmt.Errorf("%w: got %s", errHalfARename, given(cfg.CurrentRoot, cfg.NewRoot))
+	}
+
 	return cfg, nil
+}
+
+// given names whichever half was passed, so the message points at the flag that is there rather
+// than the one that is not.
+func given(oldRoot, newRoot string) string {
+	if oldRoot != "" {
+		return "-old=" + oldRoot
+	}
+
+	return "-new=" + newRoot
 }
 
 // profilePath settles which profile to read. Naming it both ways is a mistake rather than a

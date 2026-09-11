@@ -648,6 +648,31 @@ func TestRunBlamesTheProfileWhenAPatternTookNoStatements(t *testing.T) {
 	assert.NotContains(t, stderr.String(), "-exclude left nothing to report")
 }
 
+// -old and -new are one rename between them. Alone, either silently did nothing: `-new=.` looks
+// like it shortens every label, and an unset `-old=$(MODULE)` leaves the report full of paths its
+// author believed were gone.
+func TestRunRefusesHalfARename(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string][]string{
+		"old without new": {"-old", "example.com/p"},
+		"new without old": {"-new", "p"},
+	}
+
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run(append(args, "-profile", writeProfile(t, profile)), stdout, stderr)
+
+			assert.Equal(t, codeFailed, code)
+			assert.Empty(t, stdout.String(), "nothing on stdout for an argument error")
+			assert.Contains(t, stderr.String(), "-old and -new rename a root package together")
+		})
+	}
+}
+
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 

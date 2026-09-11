@@ -45,6 +45,12 @@ tags.
 
 ### Fixed
 
+- **Breaking:** `-old` or `-new` alone is refused rather than ignored. They rename a root package
+  together, so one without the other did nothing and said nothing — `-new=.` looks like it shortens
+  every label, and an unset `-old=$(MODULE)` leaves the report full of paths its author believed
+  were gone. Exit 2, as for any other argument mistake. The same reasoning already refuses an empty
+  `-exclude`.
+
 - Rows sort by the label as drawn rather than as parsed. `sanitize` replaces a rune a terminal
   would obey, and the replacement sorts elsewhere than the original, so a package named `a\x01`
   sorted before `ab` and drew after it. Only reachable from a profile carrying a control character
