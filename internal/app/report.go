@@ -101,21 +101,35 @@ func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
 		// Distinct from matching nothing: the pattern works, an earlier one just got there first.
 		// Saying "matched nothing" here sends someone to fix a pattern that is already right, and
 		// deleting it stops working the day such a file lands outside the earlier pattern's reach.
-		if ex.Files == 0 && ex.Overlapped > 0 {
+		if ex.Files == 0 && ex.Blocks == 0 && ex.Overlapped() > 0 {
 			_, _ = fmt.Fprintf(stderr, "-exclude %q took nothing out, %s already excluded\n",
-				ex.Pattern, plural(ex.Overlapped, "file"))
+				ex.Pattern, units(ex.OverlappedFiles, ex.OverlappedBlocks))
 
 			continue
 		}
 
-		if ex.Files == 0 {
+		if ex.Files == 0 && ex.Blocks == 0 {
 			_, _ = fmt.Fprintf(stderr, "-exclude %q matched nothing\n", ex.Pattern)
 
 			continue
 		}
 
 		_, _ = fmt.Fprintf(stderr, "-exclude %q left out %s in %s\n",
-			ex.Pattern, plural(ex.Statements, "statement"), plural(ex.Files, "file"))
+			ex.Pattern, plural(ex.Statements, "statement"), units(ex.Files, ex.Blocks))
+	}
+}
+
+// units names a count of files and a count of blocks. A pattern can reach both at once — one that
+// takes whole files and blocks out of others is unlikely but legal — so both are said when both
+// happened rather than reporting whichever came first.
+func units(files, blocks int) string {
+	switch {
+	case blocks == 0:
+		return plural(files, "file")
+	case files == 0:
+		return plural(blocks, "block")
+	default:
+		return plural(files, "file") + " and " + plural(blocks, "block")
 	}
 }
 

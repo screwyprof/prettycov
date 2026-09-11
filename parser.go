@@ -49,16 +49,28 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 	for _, profile := range profiles {
 		var covered, uncovered int
 
+		blocks := make([]Block, 0, len(profile.Blocks))
+
 		for _, block := range profile.Blocks {
 			if total += block.NumStmt; total < 0 {
 				return nil, fmt.Errorf("%w: statement counts overflow", ErrInvalidProfile)
 			}
 
+			// A block is run or not run, never partly: Count is how many times the whole of it
+			// executed, so its statements are all covered or all uncovered.
+			stats := CoverageStats{Uncovered: block.NumStmt}
 			if block.Count > 0 {
-				covered += block.NumStmt
-			} else {
-				uncovered += block.NumStmt
+				stats = CoverageStats{Covered: block.NumStmt}
 			}
+
+			covered += stats.Covered
+			uncovered += stats.Uncovered
+
+			blocks = append(blocks, Block{
+				Line:     block.StartLine,
+				Col:      block.StartCol,
+				Coverage: stats,
+			})
 		}
 
 		items = append(items, FileCoverage{
@@ -67,6 +79,7 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 				Covered:   covered,
 				Uncovered: uncovered,
 			},
+			Blocks: blocks,
 		})
 	}
 

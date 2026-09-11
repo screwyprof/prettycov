@@ -2,6 +2,7 @@ package prettycov
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -17,6 +18,13 @@ type CoverageStats struct {
 //
 // No overflow check: this is the raw sum, and Percentage is what refuses one that has wrapped.
 func (c CoverageStats) Total() int { return c.Covered + c.Uncovered }
+
+// Add takes in another node's statements. Both sides move together or the percentage is drawn from
+// counts that were never summed the same way.
+func (c *CoverageStats) Add(other CoverageStats) {
+	c.Covered += other.Covered
+	c.Uncovered += other.Uncovered
+}
 
 // Percentage reports the share of statements covered. The bool is false when there are none to
 // cover, which is not 0% — there is nothing to report.
@@ -72,6 +80,33 @@ func (p Percentage) String() string {
 type FileCoverage struct {
 	File     string
 	Coverage CoverageStats
+	// Blocks is where the file's statements are, in the order the profile listed them. Optional:
+	// a FileCoverage assembled by a caller may leave it empty. Coverage is the sum and stays the
+	// authority; only Exclude reads this.
+	Blocks []Block
+}
+
+// Block is one of a file's basic blocks: where it starts, and the statements it holds. Exactly one
+// side of Coverage is non-zero — a block is run or not run, never partly.
+//
+// The position is where cmd/cover opens the block, which is not where a reader would point:
+// `if !ok {` on line 32 owns the `return` on line 33.
+type Block struct {
+	Line, Col int
+	Coverage  CoverageStats
+}
+
+// at names the block the way a compiler names a position, and again without the column. -exclude
+// matches a pattern against both, so "a.go:3$" anchors on line 3 rather than never matching: the
+// column is what a reader leaves off, and a pattern ending at the line has nowhere to stop without
+// this.
+//
+// Neither spelling depends on the pattern, so callers build them once per block and ask every
+// pattern about the pair.
+func (b Block) at(file string) (withCol, toLine string) {
+	toLine = file + ":" + strconv.Itoa(b.Line)
+
+	return toLine + ":" + strconv.Itoa(b.Col), toLine
 }
 
 // Process turns per-file coverage into a tree in which every node reports its own statements plus
@@ -102,9 +137,7 @@ func Process(files []FileCoverage, curRoot, newRoot string) *PathTree {
 func rollUp(node *PathTree) CoverageStats {
 	for _, below := range []map[string]*PathTree{node.Files, node.Children} {
 		for _, child := range below {
-			rolled := rollUp(child)
-			node.Coverage.Covered += rolled.Covered
-			node.Coverage.Uncovered += rolled.Uncovered
+			node.Coverage.Add(rollUp(child))
 		}
 	}
 

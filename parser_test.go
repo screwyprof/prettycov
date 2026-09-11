@@ -161,3 +161,29 @@ func writeProfile(t *testing.T, content string) string {
 
 	return path
 }
+
+// Positions are what -exclude matches a coordinate against, and the sum of the blocks has to be
+// the file's Coverage or the two disagree about the same profile.
+func TestParseProfileKeepsBlockPositions(t *testing.T) {
+	t.Parallel()
+
+	profile := "mode: atomic\n" +
+		"m/a.go:31.2,32.9 2 1\n" +
+		"m/a.go:32.9,34.3 1 0\n"
+
+	items, err := prettycov.ParseProfile(writeProfile(t, profile))
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	assert.Equal(t, []prettycov.Block{
+		{Line: 31, Col: 2, Coverage: prettycov.CoverageStats{Covered: 2}},
+		{Line: 32, Col: 9, Coverage: prettycov.CoverageStats{Uncovered: 1}},
+	}, items[0].Blocks)
+
+	var sum prettycov.CoverageStats
+	for _, b := range items[0].Blocks {
+		sum.Add(b.Coverage)
+	}
+
+	assert.Equal(t, items[0].Coverage, sum)
+}

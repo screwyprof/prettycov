@@ -560,6 +560,46 @@ func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 	assert.Contains(t, stderr.String(), `-exclude "absent" matched nothing`)
 }
 
+// A coordinate takes one block, and the report says "block" so a reader is not told a file went.
+func TestRunExcludesOneBlockByCoordinate(t *testing.T) {
+	t.Parallel()
+
+	twoBlocks := "mode: set\n" +
+		"ex.com/p/app/version.go:31.2,32.9 2 1\n" +
+		"ex.com/p/app/version.go:32.9,34.3 1 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", `version\.go:32`, "-total",
+		"-profile", writeProfile(t, twoBlocks), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Contains(t, stderr.String(), `-exclude "version\\.go:32" left out 1 statement in 1 block`)
+	assert.Equal(t, "100.00\n", stdout.String(), "the uncovered block left the denominator with it")
+}
+
+// One pattern can reach both: `a\.go$` takes the file, `b\.go:32` takes a block of another, and
+// neither count may be dropped from the message.
+func TestRunReportsFilesAndBlocksTakenByOnePattern(t *testing.T) {
+	t.Parallel()
+
+	both := "mode: set\n" +
+		"ex.com/p/app/a.go:1.1,2.2 4 1\n" +
+		"ex.com/p/app/b.go:31.2,32.9 2 1\n" +
+		"ex.com/p/app/b.go:32.9,34.3 1 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-exclude", `(a\.go$|b\.go:32:)`, "-total",
+		"-profile", writeProfile(t, both), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Contains(t, stderr.String(), "left out 5 statements in 1 file and 1 block")
+	assert.Equal(t, "100.00\n", stdout.String())
+}
+
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 

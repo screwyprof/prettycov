@@ -49,8 +49,7 @@ func (n *PathTree) add(file string, stats CoverageStats) {
 	// Accumulated, not assigned, so a file named twice adds up rather than keeping the last one.
 	// ParseProfile cannot deliver that — x/tools keys profiles by filename and merges their blocks
 	// — so this is for a caller handing Process a slice of its own.
-	leaf.Coverage.Covered += stats.Covered
-	leaf.Coverage.Uncovered += stats.Uncovered
+	leaf.Coverage.Add(stats)
 }
 
 // child returns the node called name in the given map, creating both if this is the first time it
