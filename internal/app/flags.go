@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -199,7 +200,14 @@ func parseFlags(args []string) (config, error) {
 	// that silently does nothing is a mistake nobody is told about. `-new=.` alone looks like it
 	// shortens every label and does not, and an unset `-old=$(MODULE)` leaves the report full of
 	// paths its author thought were gone.
-	if (cfg.CurrentRoot == "") != (cfg.NewRoot == "") {
+	// Separators stripped before asking whether a root was given, because a string of them names
+	// no package: shortenPaths drops the trailing one and then matches a prefix that is not there,
+	// so -old=/ and -old=// both left the report exactly as it was. `-old=$(MODULE)/` with MODULE
+	// unset spells the first of those, which is the mistake this whole check exists to catch.
+	//
+	// The message quotes what was typed, not what is left of it, since that is what the reader has
+	// to find on their own command line.
+	if (strings.Trim(cfg.CurrentRoot, "/") == "") != (cfg.NewRoot == "") {
 		return cfg, fmt.Errorf("%w: got %s", errHalfARename, given(cfg.CurrentRoot, cfg.NewRoot))
 	}
 

@@ -654,21 +654,43 @@ func TestRunBlamesTheProfileWhenAPatternTookNoStatements(t *testing.T) {
 func TestRunRefusesHalfARename(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string][]string{
-		"old without new": {"-old", "example.com/p"},
-		"new without old": {"-new", "p"},
+	tests := map[string]struct {
+		args []string
+		want string
+	}{
+		// The whole message, not its shared prefix: naming which half was given is the only thing
+		// `given` does, and a prefix assertion holds just as well when it names the wrong one.
+		"old without new": {
+			args: []string{"-old", "example.com/p"},
+			want: "one alone does nothing: got -old=example.com/p",
+		},
+		"new without old": {
+			args: []string{"-new", "p"},
+			want: "one alone does nothing: got -new=p",
+		},
+		// A root of nothing but separators names no package, and shortenPaths left the report
+		// exactly as it was. `-old=$(MODULE)/` with MODULE unset spells the first of these, which
+		// is the mistake the whole check exists to catch.
+		"a root that is only a separator": {
+			args: []string{"-old", "/", "-new", "x"},
+			want: "one alone does nothing: got -old=/",
+		},
+		"a root that is only separators": {
+			args: []string{"-old", "//", "-new", "x"},
+			want: "one alone does nothing: got -old=//",
+		},
 	}
 
-	for name, args := range tests {
+	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-			code := app.Run(append(args, "-profile", writeProfile(t, profile)), stdout, stderr)
+			code := app.Run(append(tc.args, "-profile", writeProfile(t, profile)), stdout, stderr)
 
 			assert.Equal(t, codeFailed, code)
 			assert.Empty(t, stdout.String(), "nothing on stdout for an argument error")
-			assert.Contains(t, stderr.String(), "-old and -new rename a root package together")
+			assert.Contains(t, stderr.String(), tc.want)
 		})
 	}
 }

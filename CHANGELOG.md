@@ -49,7 +49,8 @@ tags.
   together, so one without the other did nothing and said nothing — `-new=.` looks like it shortens
   every label, and an unset `-old=$(MODULE)` leaves the report full of paths its author believed
   were gone. Exit 2, as for any other argument mistake. The same reasoning already refuses an empty
-  `-exclude`.
+  `-exclude`. A root of nothing but separators counts as absent — `-old=$(MODULE)/` with `MODULE`
+  unset is `-old=/`, which named no package and left the report exactly as it was.
 
 - Rows sort by the label as drawn rather than as parsed. `sanitize` replaces a rune a terminal
   would obey, and the replacement sorts elsewhere than the original, so a package named `a\x01`
