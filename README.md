@@ -159,21 +159,21 @@ mocks, a migrator you never intended to cover. Patterns are unanchored and match
 short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out:
 
 ```shell
-❯ prettycov -exclude='/store/' -exclude='\.pb\.go$'
+❯ prettycov -exclude='/store/' -exclude='/bind/'
 -exclude "/store/" left out 92 statements in 4 files
--exclude "\\.pb\\.go$" left out 31 statements in 2 files
- github.com/screwyprof/delegator - 93.87
+-exclude "/bind/" left out 18 statements in 1 file
+ github.com/screwyprof/delegator - 94.52
  ├ pkg - 93.33
  ├ scraper - 94.95
- └ web - 93.41
+ └ web - 95.89
 ```
 
 A pattern that matched nothing is a typo, so it exits 2 and the report is not drawn:
 
 ```shell
-❯ prettycov -exclude='/store/' -exclude='\.pd\.go$'
+❯ prettycov -exclude='/store/' -exclude='\.pb\.go$'
 -exclude "/store/" left out 92 statements in 4 files
--exclude "\\.pd\\.go$" matched nothing
+-exclude "\\.pb\\.go$" matched nothing
 ```
 
 A pattern matching `file:line:col` takes one block instead of a whole file. The toolchain has no

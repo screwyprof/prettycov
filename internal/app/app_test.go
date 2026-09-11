@@ -834,12 +834,19 @@ func TestRunRefusesARootThatMatchedNothing(t *testing.T) {
 func TestRunDoesNotBlameTheRootForWhatExcludeTook(t *testing.T) {
 	t.Parallel()
 
+	// A file outside the root, so taking everything under it still leaves a report standing. With a
+	// profile entirely under m/ the run ends in "-exclude left nothing to report", and the silence
+	// below holds for that reason rather than the one being tested — which is what it did.
+	twoRoots := "mode: set\nm/a.go:1.1,2.2 5 1\nother/b.go:1.1,2.2 5 1\n"
+
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-	app.Run([]string{
-		"-old", "m", "-new", "x", "-exclude", "^m/",
-		"-profile", writeProfile(t, profile), "-color", "never",
+	code := app.Run([]string{
+		"-old", "m", "-new", "x", "-exclude", "^m/", "-depth", "0",
+		"-profile", writeProfile(t, twoRoots), "-color", "never",
 	}, stdout, stderr)
 
+	assert.Equal(t, codeOK, code, "the root is fine, so the report is drawn")
+	assert.Equal(t, " other - 100.00\n", stdout.String())
 	assert.NotContains(t, stderr.String(), "matched nothing, so no label was shortened")
 	assert.Contains(t, stderr.String(), `-exclude "^m/" left out`, "and -exclude still says what it took")
 }
