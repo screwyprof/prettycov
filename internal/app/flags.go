@@ -26,42 +26,28 @@ const defaultDepth prettycov.Depth = 1
 var (
 	errTooManyProfiles = errors.New("want at most one profile path")
 	errTwoProfiles     = errors.New("profile given twice")
-	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
+	errBadPercentage   = errors.New("want a percentage from 0 to 100")
 	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
 	errRootNamesNoPkg  = errors.New("-old names no package")
-	errBadHideCovered  = errors.New("want a percentage from 0 to 100")
 )
 
-// hideCovered reads -hide-covered, which is a boolean that also takes a value: bare it means 100,
-// and -hide-covered=90 means 90. IsBoolFlag is what lets the flag package accept the bare form
-// without eating the profile path behind it, and the value form still arrives here through Set.
-type hideCovered struct{ at **float64 }
-
-func (h hideCovered) String() string { return "" }
-
-// IsBoolFlag is read by the flag package, not by us.
-func (h hideCovered) IsBoolFlag() bool { return true }
-
-func (h hideCovered) Set(s string) error {
-	// "true" is what the flag package passes for the bare form, having seen IsBoolFlag.
-	if s == "true" {
-		at := 100.0
-		*h.at = &at
-
-		return nil
-	}
-
+// parsePercentage reads a threshold both -fail-under and -hide-covered accept. ParseFloat alone
+// would take "nan", and every comparison against NaN is false, so a gate would pass at any coverage
+// and a filter would hide nothing, each saying nothing about it. Infinities and out-of-range values
+// are the same kind of mistake: a threshold that cannot mean what it says.
+//
+// One rule for both flags. Two copies drift, and the day one message is improved the other is still
+// asserted on by string.
+func parsePercentage(s string) (float64, error) {
 	pct, err := strconv.ParseFloat(s, 64)
 	if err != nil || math.IsNaN(pct) || pct < 0 || pct > 100 {
 		// The flag package prefixes this with the flag name and the offending value, so wrapping
 		// would print that value twice.
-		//nolint:wrapcheck // see above.
-		return errBadHideCovered
+		//nolint:wrapcheck // a sentinel of this package's own, phrased for the flag package.
+		return 0, errBadPercentage
 	}
 
-	*h.at = &pct
-
-	return nil
+	return pct, nil
 }
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
@@ -162,25 +148,39 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	// A pointer, not a float with a default: zero is a legitimate threshold — it asks only that
 	// the profile hold some statements — so the value cannot say whether the flag was given.
 	set.Func("fail-under", "exit 1 when total coverage is below this `percentage`", func(s string) error {
-		// ParseFloat alone would take "nan", and `total < NaN` is false, so the gate would pass
-		// at any coverage and say nothing. Infinities and out-of-range values are the same kind
-		// of mistake: a threshold that cannot mean what it says.
-		pct, err := strconv.ParseFloat(s, 64)
-		if err != nil || math.IsNaN(pct) || pct < 0 || pct > 100 {
-			// The flag package prefixes this with the flag name and the offending value, so
-			// wrapping would print that value twice.
-			//nolint:wrapcheck // see above.
-			return errBadFailUnder
+		pct, err := parsePercentage(s)
+		if err != nil {
+			//nolint:wrapcheck // parsePercentage returns a sentinel phrased for the flag package.
+			return err
 		}
 
 		cfg.FailUnder = &pct
 
 		return nil
 	})
-	// A pointer for the reason -fail-under is one: 0 is a legitimate threshold, so the value cannot
-	// say whether the flag was given.
-	set.Var(hideCovered{at: &cfg.HideCovered}, "hide-covered",
-		"hide subtrees covered to this `percentage` or above (default 100 when given bare)")
+	// BoolFunc, not Func: it is what lets -hide-covered stand bare without eating the profile path
+	// behind it, and it passes "true" for that form. A pointer for the reason -fail-under is one —
+	// 0 is a legitimate threshold, so the value cannot say whether the flag was given.
+	set.BoolFunc("hide-covered",
+		"hide subtrees covered to this `percentage` or above (default 100 when given bare)",
+		func(s string) error {
+			if s == "true" {
+				at := 100.0
+				cfg.HideCovered = &at
+
+				return nil
+			}
+
+			pct, err := parsePercentage(s)
+			if err != nil {
+				//nolint:wrapcheck // parsePercentage returns a sentinel phrased for the flag package.
+				return err
+			}
+
+			cfg.HideCovered = &pct
+
+			return nil
+		})
 	set.BoolVar(&cfg.Counts, "counts", false, "show uncovered/total statements after each percentage")
 	set.BoolVar(&cfg.Files, "files", false, "show the profile's files, not only its packages")
 	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")

@@ -30,12 +30,15 @@ tags.
   float64's mantissa.
 
   Like `-depth` and `-files` it shapes the report and never the measurement, so `-total` and
-  `-fail-under` read the same with it as without. When it takes the whole report — nothing in the
-  profile is below the bar — it says so on stderr rather than printing nothing at all.
+  `-fail-under` read the same with it as without. When it takes every row a depth draws it says so
+  on stderr rather than printing nothing at all.
 
 ### Go API
 
 - `Options.HideCovered` is the threshold, nil for the whole report.
+
+- `DisplayTree` returns the number of rows it drew, so a caller can tell an empty report from a full
+  one without building every row a second time to ask. Callers ignoring the result are unaffected.
 
 ## [0.10.0] — 2026-09-11
 

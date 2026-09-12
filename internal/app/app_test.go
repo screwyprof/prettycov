@@ -1134,69 +1134,79 @@ func TestRunHideCovered(t *testing.T) {
 			assert.Empty(t, stderr.String(), "a display flag says nothing, as -depth does not")
 
 			// The measurement is untouched whatever was drawn.
-			total, gate := &bytes.Buffer{}, &bytes.Buffer{}
+			total := &bytes.Buffer{}
 			require.Equal(t, codeOK, app.Run(append(tc.args,
-				"-total", "-profile", path, "-color", "never"), total, gate))
+				"-total", "-profile", path, "-color", "never"), total, io.Discard))
 			assert.Equal(t, "92.86\n", total.String())
 		})
 	}
 }
 
-// The threshold can take the whole report. The exit code is unchanged, but a command that prints
-// nothing reads as one that failed, so it says which flag emptied it.
-func TestRunSaysWhenHideCoveredTookEverything(t *testing.T) {
+// The threshold can take every row a depth draws. The exit code is unchanged, but a command that
+// prints nothing reads as one that failed, so it says which flag emptied it — and does not claim
+// the profile holds nothing below the bar, which the deeper run here disproves.
+func TestRunSaysWhenHideCoveredTookEveryRow(t *testing.T) {
 	t.Parallel()
 
-	// Every package above the bar, or there is something left to draw and the report is not empty.
-	allAbove := "mode: set\nm/a/a.go:1.1,2.2 9 1\nm/b/b.go:1.1,2.2 1 1\n"
+	// lo/ is at 0.00, so there is plenty below the bar; the shallow depth is what stops it drawing.
+	holdsWork := "mode: set\nm/hi/a.go:1.1,2.2 9 1\nm/lo/b.go:1.1,2.2 1 0\n"
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
-		"-hide-covered=40", "-profile", writeProfile(t, allAbove), "-color", "never",
+		"-hide-covered=80", "-depth", "0", "-profile", writeProfile(t, holdsWork), "-color", "never",
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
 	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "-hide-covered=40 hid the whole report; nothing is below it")
+	assert.Contains(t, stderr.String(), "-hide-covered=80 hid every row this depth draws")
+	assert.NotContains(t, stderr.String(), "nothing is below",
+		"the profile holds a package at 0.00; only this depth hides it")
+
+	// And the deeper run proves it.
+	deep, deepErr := &bytes.Buffer{}, &bytes.Buffer{}
+	require.Equal(t, codeOK, app.Run([]string{
+		"-hide-covered=80", "-depth", "max", "-profile", writeProfile(t, holdsWork), "-color", "never",
+	}, deep, deepErr))
+	assert.Equal(t, " m - 90.00\n └ lo - 0.00\n", deep.String())
+	assert.Empty(t, deepErr.String())
 }
 
-func TestRunRefusesABadHideCovered(t *testing.T) {
+// The ends of the range are thresholds, not errors: 100 is the bare form written out, and 0 asks
+// for everything with a percentage to go. The rejections and the boundaries they bound belong in
+// one table, as -fail-under's are — both flags read the same percentage now.
+func TestRunHideCoveredPercentage(t *testing.T) {
 	t.Parallel()
 
-	for name, value := range map[string]string{
-		"over a hundred": "101", "negative": "-5", "not a number": "abc", "NaN": "nan",
-	} {
+	tests := map[string]struct {
+		value    string
+		wantCode int
+	}{
+		"over a hundred": {value: "101", wantCode: codeFailed},
+		"negative":       {value: "-5", wantCode: codeFailed},
+		"not a number":   {value: "abc", wantCode: codeFailed},
+		"NaN":            {value: "nan", wantCode: codeFailed},
+		"a hundred":      {value: "100", wantCode: codeOK},
+		"zero":           {value: "0", wantCode: codeOK},
+	}
+
+	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			code := app.Run([]string{
-				"-hide-covered=" + value, "-profile", writeProfile(t, profile), "-color", "never",
+				"-hide-covered=" + tc.value, "-profile", writeProfile(t, profile), "-color", "never",
 			}, stdout, stderr)
 
-			assert.Equal(t, codeFailed, code)
-			assert.Empty(t, stdout.String())
-			assert.Contains(t, stderr.String(), "want a percentage from 0 to 100")
-		})
-	}
-}
+			assert.Equal(t, tc.wantCode, code)
 
-// The ends of the range are thresholds, not errors: 100 is the bare form written out, and 0 asks
-// for everything with a percentage to go. Nothing pinned either, so tightening a bound to < or >
-// would have gone unnoticed.
-func TestRunAcceptsTheEndsOfTheHideCoveredRange(t *testing.T) {
-	t.Parallel()
+			if tc.wantCode == codeFailed {
+				assert.Empty(t, stdout.String())
+				assert.Contains(t, stderr.String(), "want a percentage from 0 to 100")
 
-	for _, value := range []string{"0", "100"} {
-		t.Run(value, func(t *testing.T) {
-			t.Parallel()
+				return
+			}
 
-			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-			code := app.Run([]string{
-				"-hide-covered=" + value, "-profile", writeProfile(t, profile), "-color", "never",
-			}, stdout, stderr)
-
-			assert.Equal(t, codeOK, code)
 			assert.NotContains(t, stderr.String(), "want a percentage")
 		})
 	}

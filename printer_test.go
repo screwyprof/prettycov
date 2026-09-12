@@ -657,30 +657,14 @@ func TestDisplayTreeHideCovered(t *testing.T) {
 
 			tree := prettycov.Process(files)
 
-			var buf bytes.Buffer
-			prettycov.DisplayTree(&buf, tree, prettycov.Options{
+			got := renderOpts(t, tree, prettycov.Options{
 				Depth: prettycov.DepthAll, HideCovered: tc.hide,
 			})
 
-			assert.Equal(t, tc.want, buf.String())
+			assert.Equal(t, tc.want, got)
 			assert.Equal(t, 21, tree.Coverage.Total(), "the tree keeps every statement it had")
 		})
 	}
-}
-
-// 100 asks whether an uncovered statement is left, not whether the ratio prints as 100. Percentage
-// renders 99.99 for a node one short precisely so a report cannot claim a completeness it lacks.
-func TestDisplayTreeHideCoveredDoesNotHideAlmostCovered(t *testing.T) {
-	t.Parallel()
-
-	tree := prettycov.Process([]prettycov.FileCoverage{file("m/nearly/a.go", 73999, 1)})
-
-	var buf bytes.Buffer
-	prettycov.DisplayTree(&buf, tree, prettycov.Options{
-		Depth: prettycov.DepthAll, HideCovered: at(100),
-	})
-
-	assert.Equal(t, " m/nearly - 99.99\n", buf.String())
 }
 
 // A package with nothing to cover has no percentage, so it is not "covered" and stays. Hiding it
@@ -693,12 +677,11 @@ func TestDisplayTreeHideCoveredKeepsAPackageWithNoStatements(t *testing.T) {
 		file("m/real/a.go", 2, 0),
 	})
 
-	var buf bytes.Buffer
-	prettycov.DisplayTree(&buf, tree, prettycov.Options{
+	got := renderOpts(t, tree, prettycov.Options{
 		Depth: prettycov.DepthAll, HideCovered: at(100),
 	})
 
-	assert.Equal(t, " m - 100.00\n └ doc - n/a\n", buf.String())
+	assert.Equal(t, " m - 100.00\n └ doc - n/a\n", got)
 }
 
 // The threshold is inclusive, and whether a file counts depends on whether -files draws it.
@@ -735,12 +718,11 @@ func TestDisplayTreeHideCoveredAtTheThreshold(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			var buf bytes.Buffer
-			prettycov.DisplayTree(&buf, prettycov.Process(files), prettycov.Options{
+			got := renderOpts(t, prettycov.Process(files), prettycov.Options{
 				Depth: prettycov.DepthAll, Files: tc.files, HideCovered: at(90),
 			})
 
-			assert.Equal(t, tc.want, buf.String())
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -754,12 +736,11 @@ func TestDisplayTreeHideCoveredHidesFiles(t *testing.T) {
 		file("m/pkg/todo.go", 0, 1),
 	})
 
-	var buf bytes.Buffer
-	prettycov.DisplayTree(&buf, tree, prettycov.Options{
+	got := renderOpts(t, tree, prettycov.Options{
 		Depth: prettycov.DepthAll, Files: true, HideCovered: at(100),
 	})
 
-	assert.Equal(t, " m/pkg - 75.00\n └ todo.go - 0.00\n", buf.String())
+	assert.Equal(t, " m/pkg - 75.00\n └ todo.go - 0.00\n", got)
 }
 
 // At 100 the test is "is an uncovered statement left", not "does the ratio reach 100", and the two
@@ -777,12 +758,11 @@ func TestDisplayTreeHideCoveredTrustsTheCountNotTheRatio(t *testing.T) {
 	require.True(t, ok)
 	require.InDelta(t, 100.0, pct.Float(), 0, "the ratio really does round to 100")
 
-	var buf bytes.Buffer
-	prettycov.DisplayTree(&buf, tree, prettycov.Options{
+	got := renderOpts(t, tree, prettycov.Options{
 		Depth: prettycov.DepthAll, HideCovered: at(100),
 	})
 
-	assert.Equal(t, " m/huge - 99.99\n", buf.String(), "one uncovered statement is still one to do")
+	assert.Equal(t, " m/huge - 99.99\n", got, "one uncovered statement is still one to do")
 }
 
 // -hide-covered judges what the report draws, not what the tree holds. -depth is a filter too, so
@@ -831,12 +811,11 @@ func TestDisplayTreeHideCoveredJudgesWhatIsDrawn(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			var buf bytes.Buffer
-			prettycov.DisplayTree(&buf, prettycov.Process(files), prettycov.Options{
+			got := renderOpts(t, prettycov.Process(files), prettycov.Options{
 				Depth: tc.depth, Files: tc.files, HideCovered: at(90),
 			})
 
-			assert.Equal(t, tc.want, buf.String())
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }

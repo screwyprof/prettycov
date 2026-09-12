@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"strconv"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -82,17 +81,21 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 		HideCovered: cfg.HideCovered,
 	}
 
-	// -hide-covered can take the whole report, when nothing in the profile is below the threshold.
-	// That is the honest answer and the exit code is unchanged, but a command that prints nothing
-	// reads as one that failed, so it says which flag emptied it and what to read that as.
-	if cfg.HideCovered != nil && len(prettycov.Rows(tree, opts)) == 0 {
-		_, _ = fmt.Fprintf(stderr, "-hide-covered=%s hid the whole report; nothing is below it\n",
-			strconv.FormatFloat(*cfg.HideCovered, 'f', -1, 64))
-
-		return checkThreshold(cfg.FailUnder, tree, stderr)
+	// -hide-covered can take the whole report, when this depth draws nothing below the threshold.
+	// The exit code is unchanged and the report is correct, but a command that prints nothing reads
+	// as one that failed, so it says which flag emptied it.
+	//
+	// It does not say the profile holds nothing below the bar, which would often be false: -depth
+	// decides what is drawn as much as this does, so `-depth=0 -hide-covered=80` empties a report
+	// over a package at 0.00 that a deeper one would show.
+	//
+	// Naming the flag without checking it was given, and reading the threshold through the pointer,
+	// because nothing else can arrive here: the profile holds statements or refuseEmpty returned
+	// above, and a tree with statements has a top row that -depth always draws. Testing for the
+	// flag as well would be a guard no invocation can reach.
+	if prettycov.DisplayTree(stdout, tree, opts) == 0 {
+		_, _ = fmt.Fprintf(stderr, "-hide-covered=%v hid every row this depth draws\n", *cfg.HideCovered)
 	}
-
-	prettycov.DisplayTree(stdout, tree, opts)
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
 }
