@@ -22,8 +22,8 @@ tags.
   `-hide-covered=90` moves the bar. A subtree goes when every row *drawn* beneath it is at the bar
   or above, so the flag is a conjunction with `-depth` and `-files`: a row those already cut cannot
   be the reason its parent stays, and raising the depth brings a branch back as soon as there is
-  something under it worth reading. Below 100 it does hide misses along with the rows: at 90 on
-  that profile, 64 of 126 uncovered statements stop being drawn.
+  something under it worth reading. Below 100 it hides misses along with the rows: at 90 on that
+  profile, 9 of the 34 uncovered statements stop being drawn.
 
   At 100 the test is whether an uncovered statement is left rather than whether the ratio reaches
   100, which are different questions once the counts are large enough for the miss to fall below

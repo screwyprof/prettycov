@@ -116,12 +116,12 @@ the package did and not a second for the file. A row's label is a property of th
 
 ## Leave out what is finished
 
-`-hide-covered` drops a subtree when it and everything inside it is fully covered, so what is left
-is what there is still work in. On delegator at `-depth=max` that is 18 rows down to 12:
+`-hide-covered` drops a subtree when it and everything drawn inside it is fully covered, so what is
+left is what there is still work in. On delegator at `-depth=max` that is 18 rows down to 12:
 
 ```shell
 ❯ prettycov -hide-covered -depth=max
- delegator - 91.54
+ github.com/screwyprof/delegator - 91.54
  ├ pkg - 93.33
  │ ├ httpkit - 96.30
  │ ├ logger - 92.50
@@ -138,29 +138,46 @@ is what there is still work in. On delegator at `-depth=max` that is 18 rows dow
 It pays where a remaining gap is hardest to find and does nothing where gaps are everywhere: across
 two repositories at `-depth=max -files`, gin has 42 of 54 rows fully covered and dive has 1 of 100.
 
-`-hide-covered=90` moves the bar. A subtree goes when every row drawn beneath it is at the bar or
-above — which makes it a conjunction with `-depth` and `-files`, since a row those already cut
-cannot be the reason its parent stays. Raising the depth brings a branch back the moment there is
-something under it worth reading:
+`-hide-covered=90` moves the bar. A subtree goes when every row *drawn* beneath it is at the bar or
+above, which makes it a conjunction with `-depth` and `-files`: a row those already cut cannot be
+the reason its parent stays, and a collapsed run costs one level here because it is one row there.
 
 ```shell
 ❯ prettycov -hide-covered=90 -files -depth=2
- github.com/screwyprof/delegator - 94.01
- ├ scraper - 90.00
- │ └ store - 77.97
- └ web - 95.15
-   └ handler - 89.66
-
-❯ prettycov -hide-covered=90 -files -depth=3
- github.com/screwyprof/delegator - 94.01
- ├ pkg - 96.41
- │ └ logger - 96.88
- │   └ logger.go - 86.67      ← the reason pkg/ is worth drawing at all
- ...
+ github.com/screwyprof/delegator - 91.54
+ ├ pkg - 93.33
+ │ └ pgxdb/pgxdb.go - 75.00
+ ├ scraper - 88.00
+ │ └ store - 74.51
+ └ web - 93.94
+   └ handler - 87.23
 ```
 
-Below 100 it does hide misses along with the rows, which is the point and worth knowing: at 90 on
-the profile above, 64 of 126 uncovered statements stop being drawn.
+Raising the depth brings a branch back the moment there is something under it worth reading —
+`logger` returns at `-depth=3`, because the `logger.go` at 86.67 that justifies it is only a row
+there:
+
+```shell
+❯ prettycov -hide-covered=90 -files -depth=3
+ github.com/screwyprof/delegator - 91.54
+ ├ pkg - 93.33
+ │ ├ logger - 92.50
+ │ │ └ logger.go - 86.67
+ │ └ pgxdb/pgxdb.go - 75.00
+ ├ scraper - 88.00
+ │ └ store - 74.51
+ │   └ pgxstore/store.go - 72.34
+ └ web - 93.94
+   └ handler - 87.23
+     ├ bind/bind.go - 83.33
+     └ tezos_get_delegations.go - 89.66
+```
+
+Below 100 it hides misses along with the rows, which is the point and worth knowing: at 90 on this
+profile, 9 of the 34 uncovered statements stop being drawn.
+
+`-hide-covered=false` turns it off, and the threshold needs `=` — `-hide-covered 90` reads 90 as
+the profile path.
 
 Like `-depth` and `-files`, it shapes the report and never the measurement — `-total` and
 `-fail-under` read the same with it as without. That is what separates it from `-exclude`, which
