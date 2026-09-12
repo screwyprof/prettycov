@@ -28,7 +28,7 @@ Show the statement counts behind each percentage:
 	prettycov -counts
 Show the files too, not only the packages:
 	prettycov -files -depth=max
-Leave out what is finished, or anything already above a bar:
+Leave out what is finished, or anything already above a bar (the bar needs '='):
 	prettycov -hide-covered -depth=max
 	prettycov -hide-covered=90 -depth=max
 Print just the number, for a Makefile or a badge:

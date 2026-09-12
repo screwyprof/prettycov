@@ -215,8 +215,13 @@ func (b *rowBuilder) allCovered(node *PathTree, level Depth) bool {
 		return true
 	}
 
-	for _, child := range node.Children {
-		if !b.allCovered(child, level+1) {
+	// Collapsed the way visible collapses, so a level here is a row there. A run of directories
+	// each holding nothing but the next is one row, and walking it a node at a time spent the
+	// budget several levels early — the recursion then stopped above rows the report does draw and
+	// called the subtree covered. Single-child directories are the norm in Go, so that hid real
+	// gaps: `chain/inner` over a `low` at 0.00 went at -depth=2, which draws it.
+	for name, child := range node.Children {
+		if _, merged := collapse(name, child, b.opts.Files); !b.allCovered(merged, level+1) {
 			return false
 		}
 	}

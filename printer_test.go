@@ -819,3 +819,51 @@ func TestDisplayTreeHideCoveredJudgesWhatIsDrawn(t *testing.T) {
 		})
 	}
 }
+
+// A collapsed run is one row, so it must cost one level here too. allCovered walked the tree a node
+// at a time while the report draws a merged run as a single row, so below the first collapse the
+// budget ran out early and a subtree was called covered without the rows it actually draws being
+// looked at. Single-child directories are the norm in Go — internal/app, a module path prefix — so
+// this hid real gaps at any finite depth.
+func TestDisplayTreeHideCoveredSpendsALevelPerRowNotPerNode(t *testing.T) {
+	t.Parallel()
+
+	// chain/ holds only inner/, so the two draw as one row and low/ sits one level below it.
+	files := []prettycov.FileCoverage{
+		file("m/ok/a.go", 1, 0),
+		file("m/chain/inner/good.go", 9, 0),
+		file("m/chain/inner/low/b.go", 0, 1),
+	}
+
+	tree := prettycov.Process(files)
+
+	// What the depth draws with no hiding at all: low/ at 0.00 is one of the rows.
+	require.Equal(t, " m - 90.91\n ├ chain/inner - 90.00\n │ └ low - 0.00\n └ ok - 100.00\n",
+		renderOpts(t, tree, prettycov.Options{Depth: 2}))
+
+	// So hiding at 90 may take ok/ and nothing else.
+	assert.Equal(t, " m - 90.91\n └ chain/inner - 90.00\n   └ low - 0.00\n",
+		renderOpts(t, tree, prettycov.Options{Depth: 2, HideCovered: at(90)}))
+}
+
+// The invariant the empty-report message rests on: a tree with statements always draws a row unless
+// -hide-covered took it, so that message can name the flag and read its threshold without asking.
+func TestDisplayTreeAlwaysDrawsARowWithoutHideCovered(t *testing.T) {
+	t.Parallel()
+
+	for name, files := range map[string][]prettycov.FileCoverage{
+		"one bare file":       {file("a.go", 1, 0)},
+		"one deep file":       {file("m/x/y/z/a.go", 0, 1)},
+		"two top-level":       {file("a/x.go", 1, 0), file("b/y.go", 0, 1)},
+		"the filesystem root": {file("/home/x/a.go", 1, 0)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, depth := range []prettycov.Depth{0, 1, prettycov.DepthAll} {
+				assert.NotEmpty(t, prettycov.Rows(prettycov.Process(files), prettycov.Options{Depth: depth}),
+					"depth %v", depth)
+			}
+		})
+	}
+}

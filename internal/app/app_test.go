@@ -1187,6 +1187,10 @@ func TestRunHideCoveredPercentage(t *testing.T) {
 		"NaN":            {value: "nan", wantCode: codeFailed},
 		"a hundred":      {value: "100", wantCode: codeOK},
 		"zero":           {value: "0", wantCode: codeOK},
+		// BoolFunc advertises the flag as boolean, so these two are its own contract: "true" is
+		// the bare form written out and "false" is the only way a shell variable says "not now".
+		"true":  {value: "true", wantCode: codeOK},
+		"false": {value: "false", wantCode: codeOK},
 	}
 
 	for name, tc := range tests {

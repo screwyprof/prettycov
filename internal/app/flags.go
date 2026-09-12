@@ -164,9 +164,18 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	set.BoolFunc("hide-covered",
 		"hide subtrees covered to this `percentage` or above (default 100 when given bare)",
 		func(s string) error {
-			if s == "true" {
+			// "true" and "false" are what the flag package passes for the bare form and for
+			// -hide-covered=false, which is how a shell variable spells "not this run" and the
+			// only way to turn a bool flag off. Refusing it for not being a percentage would be
+			// the flag contradicting the contract BoolFunc advertises for it.
+			switch s {
+			case "true":
 				at := 100.0
 				cfg.HideCovered = &at
+
+				return nil
+			case "false":
+				cfg.HideCovered = nil
 
 				return nil
 			}
