@@ -138,10 +138,29 @@ is what there is still work in. On delegator at `-depth=max` that is 18 rows dow
 It pays where a remaining gap is hardest to find and does nothing where gaps are everywhere: across
 two repositories at `-depth=max -files`, gin has 42 of 54 rows fully covered and dive has 1 of 100.
 
-`-hide-covered=90` moves the bar. A subtree goes only when *everything* inside it is at the bar or
-above, so a package reading 91% that holds one at 88% still appears — otherwise the flag would hide
-the branch you asked to see. Below 100 it does hide misses along with the rows, which is the point
-and worth knowing: at 90 on the profile above, 64 of 126 uncovered statements stop being drawn.
+`-hide-covered=90` moves the bar. A subtree goes when every row drawn beneath it is at the bar or
+above — which makes it a conjunction with `-depth` and `-files`, since a row those already cut
+cannot be the reason its parent stays. Raising the depth brings a branch back the moment there is
+something under it worth reading:
+
+```shell
+❯ prettycov -hide-covered=90 -files -depth=2
+ github.com/screwyprof/delegator - 94.01
+ ├ scraper - 90.00
+ │ └ store - 77.97
+ └ web - 95.15
+   └ handler - 89.66
+
+❯ prettycov -hide-covered=90 -files -depth=3
+ github.com/screwyprof/delegator - 94.01
+ ├ pkg - 96.41
+ │ └ logger - 96.88
+ │   └ logger.go - 86.67      ← the reason pkg/ is worth drawing at all
+ ...
+```
+
+Below 100 it does hide misses along with the rows, which is the point and worth knowing: at 90 on
+the profile above, 64 of 126 uncovered statements stop being drawn.
 
 Like `-depth` and `-files`, it shapes the report and never the measurement — `-total` and
 `-fail-under` read the same with it as without. That is what separates it from `-exclude`, which

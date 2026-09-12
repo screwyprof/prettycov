@@ -112,7 +112,7 @@ type entry struct {
 // between runs. Files are simply not enumerated when they are not being shown, so they cost no
 // level and no glyph rather than being filtered out later: without that the last package under a
 // directory would draw the branch glyph of a middle one whenever a file sorted after it.
-func (b *rowBuilder) visible(tree *PathTree) []entry {
+func (b *rowBuilder) visible(tree *PathTree, level Depth) []entry {
 	entries := make([]entry, 0, len(tree.Children)+len(tree.Files))
 
 	for name, node := range tree.Children {
@@ -120,7 +120,7 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 
 		// Asked of the node the row draws, which is the one collapse merged to, so a run judged
 		// here is judged by the number the reader would have seen.
-		if b.hidden(merged) {
+		if b.hidden(merged, level) {
 			continue
 		}
 
@@ -139,7 +139,7 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 
 	if b.opts.Files {
 		for name, node := range tree.Files {
-			if b.hidden(node) {
+			if b.hidden(node, level) {
 				continue
 			}
 
@@ -169,39 +169,53 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 	return entries
 }
 
-// hidden reports whether a node and everything below it is covered to the threshold, so leaving it
-// out takes away no row a reader asked to see. Never, when -hide-covered was not given.
+// hidden reports whether a node says nothing the report was asked to show: it is at the bar, and so
+// is every row drawn beneath it. Never, when -hide-covered was not given.
 //
-// The whole subtree, not the node: coverage is not monotonic downwards below 100. The delegator
-// profile is 91.54% and holds a package at 88%, so judging the top row alone at a threshold of 90
-// hid the one branch with work left in it, and the report came out empty. At 100 the two readings
-// agree — a node with no uncovered statement has no descendant with one — which is why the default
-// could not show this.
-func (b *rowBuilder) hidden(node *PathTree) bool {
+// What is drawn, not what the tree holds. -depth is a filter as much as this is, so the two compose:
+// a row -depth already cut cannot be the reason its parent survives. Judging the whole subtree kept
+// `pkg - 95.35` above `logger - 93.94` at -depth=2, two rows both above the bar, explained only by a
+// logger.go at 86.67 that the depth had already removed. Draw the file and the branch comes back.
+//
+// The subtree, not the node alone: coverage is not monotonic downwards below 100, so a package at
+// 91 can hold one at 88. Judging the top row by itself hid the branch with the work in it.
+func (b *rowBuilder) hidden(node *PathTree, level Depth) bool {
 	if b.opts.HideCovered == nil {
 		return false
 	}
 
-	return b.allCovered(node)
+	return b.allCovered(node, level)
 }
 
-// allCovered walks down until it finds something still worth drawing. Quadratic in the worst case,
-// since an ancestor re-walks what its child just did; reports run to hundreds of rows, and the
-// alternative is a second pass carrying state that only this flag reads.
-func (b *rowBuilder) allCovered(node *PathTree) bool {
+// allCovered walks down until it finds a drawn row still worth reading, stopping where -depth does.
+// Quadratic in the worst case, since an ancestor re-walks what its child just did; reports run to
+// hundreds of rows, and the alternative is a second pass carrying state only this flag reads.
+func (b *rowBuilder) allCovered(node *PathTree, level Depth) bool {
 	if !b.atOrAbove(node.Coverage) {
 		return false
 	}
 
+	// Past the last level the report draws, so nothing below can speak for itself.
+	if level >= b.opts.Depth {
+		return true
+	}
+
 	for _, child := range node.Children {
-		if !b.allCovered(child) {
+		if !b.allCovered(child, level+1) {
 			return false
 		}
 	}
 
-	for _, file := range node.Files {
-		if !b.allCovered(file) {
-			return false
+	// Files are only rows when -files asks for them, and a row that is never drawn cannot justify
+	// its parent — the same reason the depth cut-off above exists.
+	//
+	// Graded directly rather than recursed into: add only ever puts a leaf in Files, so a file has
+	// nothing below it to ask about, and passing it a level would be arithmetic no test could reach.
+	if b.opts.Files {
+		for _, file := range node.Files {
+			if !b.atOrAbove(file.Coverage) {
+				return false
+			}
 		}
 	}
 
@@ -238,7 +252,7 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding []byte) {
 		return
 	}
 
-	entries := b.visible(tree)
+	entries := b.visible(tree, level)
 
 	for i, e := range entries {
 		root := level == 0

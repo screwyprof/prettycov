@@ -701,28 +701,48 @@ func TestDisplayTreeHideCoveredKeepsAPackageWithNoStatements(t *testing.T) {
 	assert.Equal(t, " m - 100.00\n └ doc - n/a\n", buf.String())
 }
 
-// The threshold is inclusive, and it is asked of every file too — both packages here are at exactly
-// 90.00, and only the one with nothing left inside it goes.
+// The threshold is inclusive, and whether a file counts depends on whether -files draws it.
+//
+// even/ and mixed/ both read exactly 90.00. mixed/ holds a file with nothing covered; even/ does
+// not. Without -files neither file is a row, so both packages say nothing and go. With -files the
+// one holding work has something to show and comes back, carrying only that file.
 func TestDisplayTreeHideCoveredAtTheThreshold(t *testing.T) {
 	t.Parallel()
 
 	files := []prettycov.FileCoverage{
-		// One file at 90.00: the package and its only file are both at the bar.
-		file("m/even/a.go", 9, 1),
-		// Also 90.00, but it is nine covered statements beside one file with none.
-		file("m/mixed/big.go", 9, 0),
-		file("m/mixed/small.go", 0, 1),
-		// Below the bar, so it stays and keeps the report from emptying.
-		file("m/under/c.go", 8, 2),
+		file("m/even/a.go", 9, 1),      // 90.00, and its only file is 90.00 too
+		file("m/mixed/big.go", 9, 0),   // 100.00
+		file("m/mixed/small.go", 0, 1), // 0.00, so mixed/ is 90.00 over a file with nothing
+		file("m/done/x.go", 5, 0),      // finished, two files so the run does not collapse
+		file("m/done/y.go", 5, 0),
+		file("m/under/c.go", 8, 2), // 80.00, below the bar at every setting
 	}
 
-	var buf bytes.Buffer
-	prettycov.DisplayTree(&buf, prettycov.Process(files), prettycov.Options{
-		Depth: prettycov.DepthAll, HideCovered: at(90),
-	})
+	tests := map[string]struct {
+		files bool
+		want  string
+	}{
+		"files undrawn, so a file cannot speak for its package": {
+			want: " m - 90.00\n └ under - 80.00\n",
+		},
+		"files drawn, so the package over one with work returns": {
+			files: true,
+			want:  " m - 90.00\n ├ mixed - 90.00\n │ └ small.go - 0.00\n └ under/c.go - 80.00\n",
+		},
+	}
 
-	assert.Equal(t, " m - 86.67\n ├ mixed - 90.00\n └ under - 80.00\n", buf.String(),
-		"even/ is at the bar with nothing under it; mixed/ is at the bar over a file that is not")
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var buf bytes.Buffer
+			prettycov.DisplayTree(&buf, prettycov.Process(files), prettycov.Options{
+				Depth: prettycov.DepthAll, Files: tc.files, HideCovered: at(90),
+			})
+
+			assert.Equal(t, tc.want, buf.String())
+		})
+	}
 }
 
 // A file is hidden the way a package is, so -files does not bring back what -hide-covered took.
@@ -763,4 +783,60 @@ func TestDisplayTreeHideCoveredTrustsTheCountNotTheRatio(t *testing.T) {
 	})
 
 	assert.Equal(t, " m/huge - 99.99\n", buf.String(), "one uncovered statement is still one to do")
+}
+
+// -hide-covered judges what the report draws, not what the tree holds. -depth is a filter too, so
+// the two compose: a row the depth limit already cut cannot be the reason a parent survives.
+//
+// pkg/ reads 95.35 and holds logger/ at 93.94, which holds logger.go at 86.67. With the files
+// undrawn and the depth short, every row on that branch is above the bar, so the branch says
+// nothing and goes. scraper/store at 77.78 is below it and stays at every depth.
+func TestDisplayTreeHideCoveredJudgesWhatIsDrawn(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{
+		file("m/pkg/logger/logger.go", 13, 2), // 86.67, below the bar but three levels down
+		file("m/pkg/logger/other.go", 18, 0),  // so logger/ itself reads 93.94
+		file("m/pkg/done/d.go", 10, 0),        // finished, hidden at every depth
+		file("m/scraper/store/s.go", 7, 2),    // 77.78, below the bar
+	}
+
+	tests := map[string]struct {
+		depth prettycov.Depth
+		files bool
+		want  string
+	}{
+		"one level draws only what is below the bar": {
+			depth: 1,
+			want:  " m - 92.31\n └ scraper/store - 77.78\n",
+		},
+		"two levels still cut logger.go off, so its branch says nothing": {
+			depth: 2,
+			want:  " m - 92.31\n └ scraper/store - 77.78\n",
+		},
+		// -files alone does not bring it back: the files sit a level below the cut too.
+		"files drawn but still below the cut": {
+			depth: 2, files: true,
+			want: " m - 92.31\n └ scraper/store/s.go - 77.78\n",
+		},
+		// With the depth to draw the file, the branch has something to show and comes back.
+		"the file is drawn and the branch it explains returns": {
+			depth: prettycov.DepthAll, files: true,
+			want: " m - 92.31\n ├ pkg - 95.35\n │ └ logger - 93.94\n" +
+				" │   └ logger.go - 86.67\n └ scraper/store/s.go - 77.78\n",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var buf bytes.Buffer
+			prettycov.DisplayTree(&buf, prettycov.Process(files), prettycov.Options{
+				Depth: tc.depth, Files: tc.files, HideCovered: at(90),
+			})
+
+			assert.Equal(t, tc.want, buf.String())
+		})
+	}
 }
