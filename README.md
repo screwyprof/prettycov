@@ -67,6 +67,7 @@ Turn on the two flags that say more, and go a level deeper:
 | --- | --- |
 | `-depth=N` \| `max` | how many levels to show below the top row, the way `tree -L` counts them. Default 1; `max` goes all the way down, which beats guessing a number that is wrong in both directions |
 | `-files` | draw the profile's files as well as its packages |
+| `-hide-covered[=N]` | leave out subtrees with nothing left to do — fully covered, or at `N`% and above. Shapes the report only |
 | `-counts` | show `uncovered/total` statements beside each percentage |
 | `-total` | print only the number, for a Makefile or a badge |
 | `-fail-under=N` | exit 1 when total coverage is below N, so prettycov can gate CI |
@@ -112,6 +113,39 @@ than its visible children; `du` behaves the same way, and `du -a` is its `-files
 than `tzkt` above an identical `client.go`. That row is the package's, so it costs the one level
 the package did and not a second for the file. A row's label is a property of the node, so raising
 `-depth` adds rows below rather than renaming the ones already drawn.
+
+## Leave out what is finished
+
+`-hide-covered` drops a subtree when it and everything inside it is fully covered, so what is left
+is what there is still work in. On delegator at `-depth=max` that is 18 rows down to 12:
+
+```shell
+❯ prettycov -hide-covered -depth=max
+ delegator - 91.54
+ ├ pkg - 93.33
+ │ ├ httpkit - 96.30
+ │ ├ logger - 92.50
+ │ └ pgxdb - 75.00
+ ├ scraper - 88.00
+ │ └ store - 74.51
+ │   └ pgxstore - 72.34
+ └ web - 93.94
+   ├ handler - 87.23
+   │ └ bind - 83.33
+   └ store/pgxstore - 95.12
+```
+
+It pays where a remaining gap is hardest to find and does nothing where gaps are everywhere: across
+two repositories at `-depth=max -files`, gin has 42 of 54 rows fully covered and dive has 1 of 100.
+
+`-hide-covered=90` moves the bar. A subtree goes only when *everything* inside it is at the bar or
+above, so a package reading 91% that holds one at 88% still appears — otherwise the flag would hide
+the branch you asked to see. Below 100 it does hide misses along with the rows, which is the point
+and worth knowing: at 90 on the profile above, 64 of 126 uncovered statements stop being drawn.
+
+Like `-depth` and `-files`, it shapes the report and never the measurement — `-total` and
+`-fail-under` read the same with it as without. That is what separates it from `-exclude`, which
+takes files out before anything is totalled.
 
 ## Just the number
 

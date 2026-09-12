@@ -613,3 +613,154 @@ func TestPercentageReportsNothingToCover(t *testing.T) {
 	assert.False(t, ok)
 	assert.Zero(t, pct.Float())
 }
+
+func at(pct float64) *float64 { return &pct }
+
+// -hide-covered shapes the report and never the measurement, and it prunes a subtree only when
+// there is nothing left to do anywhere inside it.
+func TestDisplayTreeHideCovered(t *testing.T) {
+	t.Parallel()
+
+	// done/ is finished; work/ is not, and work/deep hides below a parent that is itself above 90.
+	files := []prettycov.FileCoverage{
+		file("m/done/a.go", 4, 0),
+		file("m/done/sub/b.go", 6, 0),
+		file("m/work/c.go", 9, 0),
+		file("m/work/deep/d.go", 1, 1),
+	}
+
+	tests := map[string]struct {
+		hide *float64
+		want string
+	}{
+		"unset draws everything": {want: "" +
+			" m - 95.24\n ├ done - 100.00\n │ └ sub - 100.00\n └ work - 90.91\n   └ deep - 50.00\n"},
+
+		// done/ and its subtree go; the glyph on work/ becomes the last-child one, which it would
+		// not if the hidden rows were dropped after the tree was drawn.
+		"bare hides what is finished": {hide: at(100), want: "" +
+			" m - 95.24\n └ work - 90.91\n   └ deep - 50.00\n"},
+
+		// work/ is 90.91, at or above the threshold, but holds deep/ at 50. Judging the parent
+		// alone hid the one branch with work in it and left an empty report.
+		"a threshold keeps a parent that holds a lower child": {hide: at(90), want: "" +
+			" m - 95.24\n └ work - 90.91\n   └ deep - 50.00\n"},
+
+		// Everything is above 40, so there is nothing the flag was asked to show. showReport says
+		// so rather than leaving a reader wondering whether it crashed.
+		"a threshold under everything empties the report": {hide: at(40), want: ""},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process(files)
+
+			var buf bytes.Buffer
+			prettycov.DisplayTree(&buf, tree, prettycov.Options{
+				Depth: prettycov.DepthAll, HideCovered: tc.hide,
+			})
+
+			assert.Equal(t, tc.want, buf.String())
+			assert.Equal(t, 21, tree.Coverage.Total(), "the tree keeps every statement it had")
+		})
+	}
+}
+
+// 100 asks whether an uncovered statement is left, not whether the ratio prints as 100. Percentage
+// renders 99.99 for a node one short precisely so a report cannot claim a completeness it lacks.
+func TestDisplayTreeHideCoveredDoesNotHideAlmostCovered(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/nearly/a.go", 73999, 1)})
+
+	var buf bytes.Buffer
+	prettycov.DisplayTree(&buf, tree, prettycov.Options{
+		Depth: prettycov.DepthAll, HideCovered: at(100),
+	})
+
+	assert.Equal(t, " m/nearly - 99.99\n", buf.String())
+}
+
+// A package with nothing to cover has no percentage, so it is not "covered" and stays. Hiding it
+// would answer a different question — whether an empty package is worth drawing — with this flag.
+func TestDisplayTreeHideCoveredKeepsAPackageWithNoStatements(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/doc/doc.go", 0, 0),
+		file("m/real/a.go", 2, 0),
+	})
+
+	var buf bytes.Buffer
+	prettycov.DisplayTree(&buf, tree, prettycov.Options{
+		Depth: prettycov.DepthAll, HideCovered: at(100),
+	})
+
+	assert.Equal(t, " m - 100.00\n └ doc - n/a\n", buf.String())
+}
+
+// The threshold is inclusive, and it is asked of every file too — both packages here are at exactly
+// 90.00, and only the one with nothing left inside it goes.
+func TestDisplayTreeHideCoveredAtTheThreshold(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{
+		// One file at 90.00: the package and its only file are both at the bar.
+		file("m/even/a.go", 9, 1),
+		// Also 90.00, but it is nine covered statements beside one file with none.
+		file("m/mixed/big.go", 9, 0),
+		file("m/mixed/small.go", 0, 1),
+		// Below the bar, so it stays and keeps the report from emptying.
+		file("m/under/c.go", 8, 2),
+	}
+
+	var buf bytes.Buffer
+	prettycov.DisplayTree(&buf, prettycov.Process(files), prettycov.Options{
+		Depth: prettycov.DepthAll, HideCovered: at(90),
+	})
+
+	assert.Equal(t, " m - 86.67\n ├ mixed - 90.00\n └ under - 80.00\n", buf.String(),
+		"even/ is at the bar with nothing under it; mixed/ is at the bar over a file that is not")
+}
+
+// A file is hidden the way a package is, so -files does not bring back what -hide-covered took.
+func TestDisplayTreeHideCoveredHidesFiles(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/pkg/done.go", 3, 0),
+		file("m/pkg/todo.go", 0, 1),
+	})
+
+	var buf bytes.Buffer
+	prettycov.DisplayTree(&buf, tree, prettycov.Options{
+		Depth: prettycov.DepthAll, Files: true, HideCovered: at(100),
+	})
+
+	assert.Equal(t, " m/pkg - 75.00\n └ todo.go - 0.00\n", buf.String())
+}
+
+// At 100 the test is "is an uncovered statement left", not "does the ratio reach 100", and the two
+// are not the same question. 2^56-1 covered beside one uncovered divides to exactly 100.0 in
+// float64 — the miss is below the mantissa — so a ratio comparison hides a package that still has
+// work in it. Percentage already renders this 99.99 for the same reason.
+func TestDisplayTreeHideCoveredTrustsTheCountNotTheRatio(t *testing.T) {
+	t.Parallel()
+
+	const covered = 1<<56 - 1
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/huge/a.go", covered, 1)})
+
+	pct, ok := tree.Coverage.Percentage()
+	require.True(t, ok)
+	require.InDelta(t, 100.0, pct.Float(), 0, "the ratio really does round to 100")
+
+	var buf bytes.Buffer
+	prettycov.DisplayTree(&buf, tree, prettycov.Options{
+		Depth: prettycov.DepthAll, HideCovered: at(100),
+	})
+
+	assert.Equal(t, " m/huge - 99.99\n", buf.String(), "one uncovered statement is still one to do")
+}

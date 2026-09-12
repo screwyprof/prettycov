@@ -23,6 +23,18 @@ type Options struct {
 	// Counts writes uncovered/total statements after each percentage, which hides size on its own.
 	Counts bool
 
+	// HideCovered leaves out every subtree covered to this percentage or above, so what is left is
+	// what there is still work in. Nil is the whole report; the CLI's -hide-covered defaults it to
+	// 100, where nothing hidden holds an uncovered statement and absence means "nothing to do here".
+	//
+	// A threshold below 100 hides misses along with the rows — at 90 on the delegator profile, 64
+	// of 126 — which is the caller's to decide and worth knowing. Said here rather than refused:
+	// -fail-under already takes a number, and this one only shapes the report.
+	//
+	// Shaping, never measuring. The tree keeps every statement it had, so -total, -fail-under and
+	// the top row read the same with this set as without — as with Depth, which hides far more.
+	HideCovered *float64
+
 	// Files draws the profile's files as well as its packages, as entries of the package holding
 	// them the way tree -L counts a directory's, so a package's own files and its subpackages
 	// appear side by side and every parent is the sum of what is drawn beneath it. A file costs a
@@ -106,6 +118,12 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 	for name, node := range tree.Children {
 		label, merged := collapse(name, node, b.opts.Files)
 
+		// Asked of the node the row draws, which is the one collapse merged to, so a run judged
+		// here is judged by the number the reader would have seen.
+		if b.hidden(merged) {
+			continue
+		}
+
 		// The filesystem root is the one node with no name of its own: an absolute path splits to
 		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
 		// there is something below to fold. When there is not — a root holding two files — the
@@ -121,6 +139,10 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 
 	if b.opts.Files {
 		for name, node := range tree.Files {
+			if b.hidden(node) {
+				continue
+			}
+
 			entries = append(entries, entry{label: sanitize(name), name: name, node: node})
 		}
 	}
@@ -145,6 +167,68 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 	})
 
 	return entries
+}
+
+// hidden reports whether a node and everything below it is covered to the threshold, so leaving it
+// out takes away no row a reader asked to see. Never, when -hide-covered was not given.
+//
+// The whole subtree, not the node: coverage is not monotonic downwards below 100. The delegator
+// profile is 91.54% and holds a package at 88%, so judging the top row alone at a threshold of 90
+// hid the one branch with work left in it, and the report came out empty. At 100 the two readings
+// agree — a node with no uncovered statement has no descendant with one — which is why the default
+// could not show this.
+func (b *rowBuilder) hidden(node *PathTree) bool {
+	if b.opts.HideCovered == nil {
+		return false
+	}
+
+	return b.allCovered(node)
+}
+
+// allCovered walks down until it finds something still worth drawing. Quadratic in the worst case,
+// since an ancestor re-walks what its child just did; reports run to hundreds of rows, and the
+// alternative is a second pass carrying state that only this flag reads.
+func (b *rowBuilder) allCovered(node *PathTree) bool {
+	if !b.atOrAbove(node.Coverage) {
+		return false
+	}
+
+	for _, child := range node.Children {
+		if !b.allCovered(child) {
+			return false
+		}
+	}
+
+	for _, file := range node.Files {
+		if !b.allCovered(file) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// atOrAbove grades one node's counts against the threshold.
+//
+// At 100 the question is whether an uncovered statement is left, not whether the ratio reaches 100:
+// Percentage renders 99.99 for a node one statement short precisely so a report cannot claim a
+// completeness it does not have, and a float ratio of a large enough count rounds to 100 anyway.
+// Below 100 it is the ratio, unrounded, as -fail-under compares it.
+//
+// A node with nothing to cover has no percentage and stays. Whether an empty package is worth
+// drawing is a different question from whether a covered one is, and answering both with one flag
+// would hide a package whose tests were deleted along with the ones that never needed any.
+func (b *rowBuilder) atOrAbove(stats CoverageStats) bool {
+	pct, ok := stats.Percentage()
+	if !ok {
+		return false
+	}
+
+	if *b.opts.HideCovered >= 100 {
+		return stats.Uncovered == 0
+	}
+
+	return pct.Float() >= *b.opts.HideCovered
 }
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what

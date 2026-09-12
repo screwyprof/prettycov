@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"strconv"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -72,12 +73,26 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 
 	// The destination is asked about here and nowhere earlier: parsing argv is too early to know
 	// where the report goes, and no other flag needs to.
-	prettycov.DisplayTree(stdout, tree, prettycov.Options{
-		Depth:  cfg.Depth,
-		Color:  cfg.Color.palette(stdout),
-		Counts: cfg.Counts,
-		Files:  cfg.Files,
-	})
+	// checkThreshold below reads the tree, not the rows, so -hide-covered cannot move the gate.
+	opts := prettycov.Options{
+		Depth:       cfg.Depth,
+		Color:       cfg.Color.palette(stdout),
+		Counts:      cfg.Counts,
+		Files:       cfg.Files,
+		HideCovered: cfg.HideCovered,
+	}
+
+	// -hide-covered can take the whole report, when nothing in the profile is below the threshold.
+	// That is the honest answer and the exit code is unchanged, but a command that prints nothing
+	// reads as one that failed, so it says which flag emptied it and what to read that as.
+	if cfg.HideCovered != nil && len(prettycov.Rows(tree, opts)) == 0 {
+		_, _ = fmt.Fprintf(stderr, "-hide-covered=%s hid the whole report; nothing is below it\n",
+			strconv.FormatFloat(*cfg.HideCovered, 'f', -1, 64))
+
+		return checkThreshold(cfg.FailUnder, tree, stderr)
+	}
+
+	prettycov.DisplayTree(stdout, tree, opts)
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
 }

@@ -10,6 +10,32 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Added
+
+- `-hide-covered` leaves out subtrees with nothing left to do, so what is left is what there is
+  still work in. On the delegator profile at `-depth=max` that is 18 rows down to 12. It pays where
+  a remaining gap is hardest to find and does nothing where gaps are everywhere: at `-depth=max
+  -files`, gin has 42 of 54 rows fully covered, dive 1 of 100.
+
+  `-hide-covered=90` moves the bar. A subtree goes only when everything inside it is at the bar or
+  above — a package reading 91% that holds one at 88% still appears, or the flag would hide the
+  branch it was asked to show. Below 100 it does hide misses along with the rows: at 90 on that
+  profile, 64 of 126 uncovered statements stop being drawn.
+
+  At 100 the test is whether an uncovered statement is left rather than whether the ratio reaches
+  100, which are different questions once the counts are large enough for the miss to fall below
+  float64's mantissa.
+
+  Like `-depth` and `-files` it shapes the report and never the measurement, so `-total` and
+  `-fail-under` read the same with it as without. When it takes the whole report — nothing in the
+  profile is below the bar — it says so on stderr rather than printing nothing at all.
+
+### Go API
+
+- `Options.HideCovered` is the threshold, nil for the whole report.
+
 ## [0.10.0] — 2026-09-11
 
 ### Added
@@ -424,6 +450,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[Unreleased]: https://github.com/screwyprof/prettycov/compare/v0.10.0...HEAD
 [0.10.0]: https://github.com/screwyprof/prettycov/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/screwyprof/prettycov/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/screwyprof/prettycov/compare/v0.7.1...v0.8.0

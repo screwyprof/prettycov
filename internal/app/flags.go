@@ -29,7 +29,40 @@ var (
 	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
 	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
 	errRootNamesNoPkg  = errors.New("-old names no package")
+	errBadHideCovered  = errors.New("want a percentage from 0 to 100")
 )
+
+// hideCovered reads -hide-covered, which is a boolean that also takes a value: bare it means 100,
+// and -hide-covered=90 means 90. IsBoolFlag is what lets the flag package accept the bare form
+// without eating the profile path behind it, and the value form still arrives here through Set.
+type hideCovered struct{ at **float64 }
+
+func (h hideCovered) String() string { return "" }
+
+// IsBoolFlag is read by the flag package, not by us.
+func (h hideCovered) IsBoolFlag() bool { return true }
+
+func (h hideCovered) Set(s string) error {
+	// "true" is what the flag package passes for the bare form, having seen IsBoolFlag.
+	if s == "true" {
+		at := 100.0
+		*h.at = &at
+
+		return nil
+	}
+
+	pct, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsNaN(pct) || pct < 0 || pct > 100 {
+		// The flag package prefixes this with the flag name and the offending value, so wrapping
+		// would print that value twice.
+		//nolint:wrapcheck // see above.
+		return errBadHideCovered
+	}
+
+	*h.at = &pct
+
+	return nil
+}
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
 // at the first non-flag argument, so `prettycov cov.out -depth=2` would otherwise parse no flags
@@ -69,6 +102,7 @@ type config struct {
 	Color       colorMode
 	Exclude     []*regexp.Regexp
 	FailUnder   *float64
+	HideCovered *float64
 	Counts      bool
 	Files       bool
 	Total       bool
@@ -143,6 +177,10 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 
 		return nil
 	})
+	// A pointer for the reason -fail-under is one: 0 is a legitimate threshold, so the value cannot
+	// say whether the flag was given.
+	set.Var(hideCovered{at: &cfg.HideCovered}, "hide-covered",
+		"hide subtrees covered to this `percentage` or above (default 100 when given bare)")
 	set.BoolVar(&cfg.Counts, "counts", false, "show uncovered/total statements after each percentage")
 	set.BoolVar(&cfg.Files, "files", false, "show the profile's files, not only its packages")
 	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")
