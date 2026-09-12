@@ -26,10 +26,29 @@ const defaultDepth prettycov.Depth = 1
 var (
 	errTooManyProfiles = errors.New("want at most one profile path")
 	errTwoProfiles     = errors.New("profile given twice")
-	errBadFailUnder    = errors.New("want a percentage from 0 to 100")
+	errBadPercentage   = errors.New("want a percentage from 0 to 100")
 	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
 	errRootNamesNoPkg  = errors.New("-old names no package")
 )
+
+// parsePercentage reads a threshold both -fail-under and -hide-covered accept. ParseFloat alone
+// would take "nan", and every comparison against NaN is false, so a gate would pass at any coverage
+// and a filter would hide nothing, each saying nothing about it. Infinities and out-of-range values
+// are the same kind of mistake: a threshold that cannot mean what it says.
+//
+// One rule for both flags. Two copies drift, and the day one message is improved the other is still
+// asserted on by string.
+func parsePercentage(s string) (float64, error) {
+	pct, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsNaN(pct) || pct < 0 || pct > 100 {
+		// The flag package prefixes this with the flag name and the offending value, so wrapping
+		// would print that value twice.
+		//nolint:wrapcheck // a sentinel of this package's own, phrased for the flag package.
+		return 0, errBadPercentage
+	}
+
+	return pct, nil
+}
 
 // parseInterspersed lets flags appear on either side of the profile path. The flag package stops
 // at the first non-flag argument, so `prettycov cov.out -depth=2` would otherwise parse no flags
@@ -69,6 +88,7 @@ type config struct {
 	Color       colorMode
 	Exclude     []*regexp.Regexp
 	FailUnder   *float64
+	HideCovered *float64
 	Counts      bool
 	Files       bool
 	Total       bool
@@ -128,21 +148,57 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	// A pointer, not a float with a default: zero is a legitimate threshold — it asks only that
 	// the profile hold some statements — so the value cannot say whether the flag was given.
 	set.Func("fail-under", "exit 1 when total coverage is below this `percentage`", func(s string) error {
-		// ParseFloat alone would take "nan", and `total < NaN` is false, so the gate would pass
-		// at any coverage and say nothing. Infinities and out-of-range values are the same kind
-		// of mistake: a threshold that cannot mean what it says.
-		pct, err := strconv.ParseFloat(s, 64)
-		if err != nil || math.IsNaN(pct) || pct < 0 || pct > 100 {
-			// The flag package prefixes this with the flag name and the offending value, so
-			// wrapping would print that value twice.
-			//nolint:wrapcheck // see above.
-			return errBadFailUnder
+		pct, err := parsePercentage(s)
+		if err != nil {
+			//nolint:wrapcheck // parsePercentage returns a sentinel phrased for the flag package.
+			return err
 		}
 
 		cfg.FailUnder = &pct
 
 		return nil
 	})
+	// BoolFunc, not Func: it is what lets -hide-covered stand bare without eating the profile path
+	// behind it, and it passes "true" for that form. A pointer for the reason -fail-under is one —
+	// 0 is a legitimate threshold, so the value cannot say whether the flag was given.
+	set.BoolFunc("hide-covered",
+		// No backquoted operand: PrintDefaults would render "-hide-covered percentage", the same
+		// shape as -fail-under two lines up, and that one is a Func which does take the space form.
+		// Here `-hide-covered 90` reads 90 as the profile path, so the help says "=" instead.
+		"hide subtrees covered to a percentage or above, as -hide-covered=90; bare means 100",
+		func(s string) error {
+			// BoolFunc advertises the flag as boolean, so every spelling ParseBool takes is part of
+			// its contract: "true" is what the bare form passes, and "false" — however a shell
+			// happens to capitalise it — is how `-hide-covered=$HIDE` says "not this run".
+			// Recognising two of the twelve and calling the rest "not a percentage" would have the
+			// flag arguing with its own usage line.
+			//
+			// Except "0" and "1", which are the one place the two vocabularies collide. They stay
+			// percentages, because the value this flag documents is a percentage and both are in
+			// range; nothing else ParseBool accepts is a number, so nothing else is ambiguous.
+			// -hide-covered=0 therefore hides every row that has a percentage at all, which is what
+			// it says and is rarely what anyone wants — write =false to turn the flag off.
+			if on, err := strconv.ParseBool(s); err == nil && s != "0" && s != "1" {
+				cfg.HideCovered = nil
+
+				if on {
+					at := 100.0
+					cfg.HideCovered = &at
+				}
+
+				return nil
+			}
+
+			pct, err := parsePercentage(s)
+			if err != nil {
+				//nolint:wrapcheck // parsePercentage returns a sentinel phrased for the flag package.
+				return err
+			}
+
+			cfg.HideCovered = &pct
+
+			return nil
+		})
 	set.BoolVar(&cfg.Counts, "counts", false, "show uncovered/total statements after each percentage")
 	set.BoolVar(&cfg.Files, "files", false, "show the profile's files, not only its packages")
 	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")

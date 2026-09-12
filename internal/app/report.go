@@ -72,12 +72,30 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 
 	// The destination is asked about here and nowhere earlier: parsing argv is too early to know
 	// where the report goes, and no other flag needs to.
-	prettycov.DisplayTree(stdout, tree, prettycov.Options{
-		Depth:  cfg.Depth,
-		Color:  cfg.Color.palette(stdout),
-		Counts: cfg.Counts,
-		Files:  cfg.Files,
-	})
+	// checkThreshold below reads the tree, not the rows, so -hide-covered cannot move the gate.
+	opts := prettycov.Options{
+		Depth:       cfg.Depth,
+		Color:       cfg.Color.palette(stdout),
+		Counts:      cfg.Counts,
+		Files:       cfg.Files,
+		HideCovered: cfg.HideCovered,
+	}
+
+	// -hide-covered can take the whole report, when this depth draws nothing below the threshold.
+	// The exit code is unchanged and the report is correct, but a command that prints nothing reads
+	// as one that failed, so it says which flag emptied it.
+	//
+	// It does not say the profile holds nothing below the bar, which would often be false: -depth
+	// decides what is drawn as much as this does, so `-depth=0 -hide-covered=80` empties a report
+	// over a package at 0.00 that a deeper one would show.
+	//
+	// Naming the flag without checking it was given, and reading the threshold through the pointer,
+	// because nothing else can arrive here: the profile holds statements or refuseEmpty returned
+	// above, and a tree with statements has a top row that -depth always draws. Testing for the
+	// flag as well would be a guard no invocation can reach.
+	if prettycov.DisplayTree(stdout, tree, opts) == 0 {
+		_, _ = fmt.Fprintf(stderr, "-hide-covered=%v hid every row this depth draws\n", *cfg.HideCovered)
+	}
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
 }

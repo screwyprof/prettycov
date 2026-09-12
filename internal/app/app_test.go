@@ -1099,3 +1099,151 @@ func TestRunAutoColorAgainstRealFiles(t *testing.T) {
 		assert.Equal(t, codeOK, app.Run([]string{path}, closed, io.Discard))
 	})
 }
+
+// -hide-covered shapes the report and never the measurement: -total and -fail-under read the same
+// with it as without, which is what separates it from -exclude.
+func TestRunHideCovered(t *testing.T) {
+	t.Parallel()
+
+	// done/ is finished, work/ is not, and work/deep sits below a parent that is itself above 90.
+	shaped := "mode: set\n" +
+		"m/done/a.go:1.1,2.2 4 1\n" +
+		"m/work/c.go:1.1,2.2 9 1\n" +
+		"m/work/deep/d.go:1.1,2.2 1 0\n"
+
+	tests := map[string]struct {
+		args []string
+		want string
+	}{
+		"unset":     {args: nil, want: " m - 92.86\n ├ done - 100.00\n └ work - 90.00\n   └ deep - 0.00\n"},
+		"bare":      {args: []string{"-hide-covered"}, want: " m - 92.86\n └ work - 90.00\n   └ deep - 0.00\n"},
+		"threshold": {args: []string{"-hide-covered=90"}, want: " m - 92.86\n └ work - 90.00\n   └ deep - 0.00\n"},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeProfile(t, shaped)
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run(append(tc.args, "-depth", "max", "-profile", path, "-color", "never"), stdout, stderr)
+
+			assert.Equal(t, codeOK, code)
+			assert.Equal(t, tc.want, stdout.String())
+			assert.Empty(t, stderr.String(), "a display flag says nothing, as -depth does not")
+
+			// The measurement is untouched whatever was drawn.
+			total := &bytes.Buffer{}
+			require.Equal(t, codeOK, app.Run(append(tc.args,
+				"-total", "-profile", path, "-color", "never"), total, io.Discard))
+			assert.Equal(t, "92.86\n", total.String())
+		})
+	}
+}
+
+// The threshold can take every row a depth draws. The exit code is unchanged, but a command that
+// prints nothing reads as one that failed, so it says which flag emptied it — and does not claim
+// the profile holds nothing below the bar, which the deeper run here disproves.
+func TestRunSaysWhenHideCoveredTookEveryRow(t *testing.T) {
+	t.Parallel()
+
+	// lo/ is at 0.00, so there is plenty below the bar; the shallow depth is what stops it drawing.
+	holdsWork := "mode: set\nm/hi/a.go:1.1,2.2 9 1\nm/lo/b.go:1.1,2.2 1 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-hide-covered=80", "-depth", "0", "-profile", writeProfile(t, holdsWork), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "-hide-covered=80 hid every row this depth draws")
+	assert.NotContains(t, stderr.String(), "nothing is below",
+		"the profile holds a package at 0.00; only this depth hides it")
+
+	// And the deeper run proves it.
+	deep, deepErr := &bytes.Buffer{}, &bytes.Buffer{}
+	require.Equal(t, codeOK, app.Run([]string{
+		"-hide-covered=80", "-depth", "max", "-profile", writeProfile(t, holdsWork), "-color", "never",
+	}, deep, deepErr))
+	assert.Equal(t, " m - 90.00\n └ lo - 0.00\n", deep.String())
+	assert.Empty(t, deepErr.String())
+}
+
+// The ends of the range are thresholds, not errors: 100 is the bare form written out, and 0 asks
+// for everything with a percentage to go. The rejections and the boundaries they bound belong in
+// one table, as -fail-under's are — both flags read the same percentage now.
+func TestRunHideCoveredPercentage(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		value    string
+		wantCode int
+	}{
+		"over a hundred": {value: "101", wantCode: codeFailed},
+		"negative":       {value: "-5", wantCode: codeFailed},
+		"not a number":   {value: "abc", wantCode: codeFailed},
+		"NaN":            {value: "nan", wantCode: codeFailed},
+		"a hundred":      {value: "100", wantCode: codeOK},
+		"zero":           {value: "0", wantCode: codeOK},
+		// BoolFunc advertises the flag as boolean, so every spelling ParseBool takes is its own
+		// contract — recognising two of the twelve and calling the rest "not a percentage" had the
+		// flag arguing with its usage line. Capitalisation is whatever the shell handed over.
+		"true":  {value: "true", wantCode: codeOK},
+		"false": {value: "false", wantCode: codeOK},
+		"False": {value: "False", wantCode: codeOK},
+		"FALSE": {value: "FALSE", wantCode: codeOK},
+		"f":     {value: "f", wantCode: codeOK},
+		"T":     {value: "T", wantCode: codeOK},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{
+				"-hide-covered=" + tc.value, "-profile", writeProfile(t, profile), "-color", "never",
+			}, stdout, stderr)
+
+			assert.Equal(t, tc.wantCode, code)
+
+			if tc.wantCode == codeFailed {
+				assert.Empty(t, stdout.String())
+				assert.Contains(t, stderr.String(), "want a percentage from 0 to 100")
+
+				return
+			}
+
+			assert.NotContains(t, stderr.String(), "want a percentage")
+		})
+	}
+}
+
+// "0" and "1" are the one place the percentage and the boolean vocabularies collide, and they stay
+// percentages: the value this flag documents is a percentage and both are in range. So
+// -hide-covered=0 hides every row that has one, where =false leaves the report alone.
+func TestRunHideCoveredReadsZeroAsAPercentageNotAsOff(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct{ value, wantOut string }{
+		"zero is a threshold": {value: "0", wantOut: ""},
+		// And "1" the same way, or the guard that keeps it a percentage is untested.
+		"one is a threshold": {value: "1", wantOut: ""},
+		"false is off":       {value: "false", wantOut: " m - 60.00\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{
+				"-hide-covered=" + tc.value, "-depth", "0",
+				"-profile", writeProfile(t, profile), "-color", "never",
+			}, stdout, stderr)
+
+			assert.Equal(t, codeOK, code)
+			assert.Equal(t, tc.wantOut, stdout.String())
+		})
+	}
+}

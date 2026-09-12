@@ -10,6 +10,42 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Added
+
+- `-hide-covered` leaves out subtrees with nothing left to do, so what is left is what there is
+  still work in. On the delegator profile at `-depth=max` that is 18 rows down to 12. It pays where
+  a remaining gap is hardest to find and does nothing where gaps are everywhere: at `-depth=max
+  -files`, gin has 42 of 54 rows fully covered, dive 1 of 100.
+
+  `-hide-covered=90` moves the bar. A subtree goes when every row *drawn* beneath it is at the bar
+  or above, so the flag is a conjunction with `-depth` and `-files`: a row those already cut cannot
+  be the reason its parent stays, and raising the depth brings a branch back as soon as there is
+  something under it worth reading. Below 100 it hides misses along with the rows: at 90 on that
+  profile, 9 of the 34 uncovered statements stop being drawn.
+
+  At 100 the test is whether an uncovered statement is left rather than whether the ratio reaches
+  100, which are different questions once the counts are large enough for the miss to fall below
+  float64's mantissa.
+
+  A collapsed run of directories is one row, so it costs one level here too — `chain/inner` over a
+  package at 0.00 is kept at `-depth=2`, which draws it. `-hide-covered=false` turns the flag off,
+  in any spelling `strconv.ParseBool` takes, as the bare form's boolean contract implies — except
+  `0` and `1`, which stay percentages because the value is one and both are in range. The threshold
+  needs `=`, since `-hide-covered 90` reads 90 as the profile path.
+
+  Like `-depth` and `-files` it shapes the report and never the measurement, so `-total` and
+  `-fail-under` read the same with it as without. When it takes every row a depth draws it says so
+  on stderr rather than printing nothing at all.
+
+### Go API
+
+- `Options.HideCovered` is the threshold, nil for the whole report.
+
+- `DisplayTree` returns the number of rows it drew, so a caller can tell an empty report from a full
+  one without building every row a second time to ask. Callers ignoring the result are unaffected.
+
 ## [0.10.0] — 2026-09-11
 
 ### Added
@@ -424,6 +460,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[Unreleased]: https://github.com/screwyprof/prettycov/compare/v0.10.0...HEAD
 [0.10.0]: https://github.com/screwyprof/prettycov/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/screwyprof/prettycov/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/screwyprof/prettycov/compare/v0.7.1...v0.8.0

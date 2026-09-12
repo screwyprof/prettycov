@@ -23,6 +23,18 @@ type Options struct {
 	// Counts writes uncovered/total statements after each percentage, which hides size on its own.
 	Counts bool
 
+	// HideCovered leaves out every subtree covered to this percentage or above, so what is left is
+	// what there is still work in. Nil is the whole report; the CLI's -hide-covered defaults it to
+	// 100, where nothing hidden holds an uncovered statement and absence means "nothing to do here".
+	//
+	// A threshold below 100 hides misses along with the rows — at 90 on the delegator profile, 9 of
+	// its 34 — which is the caller's to decide and worth knowing. Said here rather than refused:
+	// -fail-under already takes a number, and this one only shapes the report.
+	//
+	// Shaping, never measuring. The tree keeps every statement it had, so -total, -fail-under and
+	// the top row read the same with this set as without — as with Depth, which hides far more.
+	HideCovered *float64
+
 	// Files draws the profile's files as well as its packages, as entries of the package holding
 	// them the way tree -L counts a directory's, so a package's own files and its subpackages
 	// appear side by side and every parent is the sum of what is drawn beneath it. A file costs a
@@ -47,10 +59,13 @@ type Row struct {
 }
 
 // Rows flattens tree into the lines a report prints, in order. It reads the options that decide
-// which rows there are — Depth and Files — and ignores the rest. Pure: no writer, no colour, no
-// terminal. DisplayTree is the one that decides how a Row looks.
+// which rows there are and ignores the rest. Pure: no writer, no colour, no terminal. DisplayTree
+// is the one that decides how a Row looks.
 func Rows(tree *PathTree, opts Options) []Row {
 	b := rowBuilder{opts: opts}
+	if opts.HideCovered != nil {
+		b.hiding, b.hideAt, b.hideWhole = true, *opts.HideCovered, *opts.HideCovered >= 100
+	}
 
 	// One leading space, with room to grow two bytes per level. Deep enough for any real path;
 	// append handles a deeper one correctly if it comes.
@@ -62,12 +77,17 @@ func Rows(tree *PathTree, opts Options) []Row {
 	return b.rows
 }
 
-// DisplayTree writes tree as an indented report. A collapsed run of directories is the one row it
-// renders as.
-func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
+// DisplayTree writes tree as an indented report and reports how many rows it drew. A collapsed run
+// of directories is the one row it renders as.
+//
+// The count is there so a caller can tell an empty report from a full one without building every
+// row a second time to ask — which is what asking Rows first amounted to, and it doubled the work
+// of the run on the one path where a caller cares.
+func DisplayTree(w io.Writer, tree *PathTree, opts Options) int {
 	buf := bufio.NewWriter(w)
 
-	for _, row := range Rows(tree, opts) {
+	rows := Rows(tree, opts)
+	for _, row := range rows {
 		_, _ = buf.WriteString(row.Prefix)
 		_, _ = buf.WriteString(row.Label)
 		_, _ = buf.WriteString(" - ")
@@ -76,6 +96,8 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
 	}
 
 	_ = buf.Flush()
+
+	return len(rows)
 }
 
 // rowBuilder holds what stays the same for the whole traversal, so the recursion carries only
@@ -83,6 +105,14 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) {
 type rowBuilder struct {
 	opts Options
 	rows []Row
+
+	// hiding says -hide-covered was given at all, hideAt is the threshold, and hideWhole is that
+	// threshold reaching 100 — where the question becomes whether an uncovered statement is left
+	// rather than whether the ratio gets there. Read once in Rows: they are the innermost check in
+	// the walk, and reading them back through the pointer per node kept it out of the inliner.
+	hiding    bool
+	hideWhole bool
+	hideAt    float64
 }
 
 // entry is one row to draw: the node, and the label it will carry once any run below it has been
@@ -100,11 +130,17 @@ type entry struct {
 // between runs. Files are simply not enumerated when they are not being shown, so they cost no
 // level and no glyph rather than being filtered out later: without that the last package under a
 // directory would draw the branch glyph of a middle one whenever a file sorted after it.
-func (b *rowBuilder) visible(tree *PathTree) []entry {
+func (b *rowBuilder) visible(tree *PathTree, level Depth) []entry {
 	entries := make([]entry, 0, len(tree.Children)+len(tree.Files))
 
 	for name, node := range tree.Children {
 		label, merged := collapse(name, node, b.opts.Files)
+
+		// Asked of the node the row draws, which is the one collapse merged to, so a run judged
+		// here is judged by the number the reader would have seen.
+		if b.hiding && b.allCovered(merged, level) {
+			continue
+		}
 
 		// The filesystem root is the one node with no name of its own: an absolute path splits to
 		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
@@ -121,6 +157,10 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 
 	if b.opts.Files {
 		for name, node := range tree.Files {
+			if b.hiding && b.allCovered(node, level) {
+				continue
+			}
+
 			entries = append(entries, entry{label: sanitize(name), name: name, node: node})
 		}
 	}
@@ -147,6 +187,87 @@ func (b *rowBuilder) visible(tree *PathTree) []entry {
 	return entries
 }
 
+// allCovered reports whether a node says nothing the report was asked to show: it is at the bar,
+// and so is every row drawn beneath it.
+//
+// What is drawn, not what the tree holds. -depth is a filter as much as -hide-covered is, so the
+// two compose: a row -depth already cut cannot be the reason its parent survives. Judging the whole
+// subtree kept `pkg - 96.41` above `logger - 96.88` at -depth=2, two rows both above the bar,
+// explained only by a logger.go at 86.67 the depth had already removed.
+//
+// The subtree, not the node alone: coverage is not monotonic downwards below 100, so a package at
+// 91 can hold one at 88. Judging the top row by itself hid the branch with the work in it.
+//
+// An ancestor re-walks what its child just did, so this is O(n·depth) along the surviving path
+// rather than O(n) — a hidden subtree leaves the walk at once and a node under the bar stops at its
+// own check. Measured on a 30,000-file tree at a realistic depth it costs 1.8ms against the 15ms of
+// rendering it saves; it only overtakes that past roughly a hundred levels of nesting, which no Go
+// repository has. At the default threshold it barely recurses at all: Coverage is rolled up, so a
+// node with no uncovered statement has no descendant with one, and the answer comes from the first
+// check.
+func (b *rowBuilder) allCovered(node *PathTree, level Depth) bool {
+	if !b.atOrAbove(node.Coverage) {
+		return false
+	}
+
+	// Past the last level the report draws, so nothing below can speak for itself.
+	if level >= b.opts.Depth {
+		return true
+	}
+
+	// Collapsed the way visible collapses, so a level here is a row there. A run of directories
+	// each holding nothing but the next is one row, and walking it a node at a time spent the
+	// budget several levels early — the recursion then stopped above rows the report does draw and
+	// called the subtree covered. Single-child directories are the norm in Go, so that hid real
+	// gaps: `chain/inner` over a `low` at 0.00 went at -depth=2, which draws it.
+	for name, child := range node.Children {
+		if _, merged := collapse(name, child, b.opts.Files); !b.allCovered(merged, level+1) {
+			return false
+		}
+	}
+
+	// Files are only rows when -files asks for them, and a row that is never drawn cannot justify
+	// its parent — the same reason the depth cut-off above exists.
+	//
+	// Graded directly rather than recursed into: add only ever puts a leaf in Files, so a file has
+	// nothing below it to ask about, and passing it a level would be arithmetic no test could reach.
+	if b.opts.Files {
+		for _, file := range node.Files {
+			if !b.atOrAbove(file.Coverage) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// atOrAbove grades one node's counts against the threshold.
+//
+// At 100 it asks Percentage whether the node is complete rather than whether the ratio reaches 100,
+// which are different questions: the ratio of 2^56-1 covered beside one uncovered is exactly 100 in
+// float64, the miss falling below the mantissa. Percentage carries `complete` for precisely that
+// reason — it is why a report reads 99.99 rather than claiming a completeness it does not have —
+// so this reads the field rather than keeping a second copy of the rule.
+//
+// Below 100 it is the ratio, unrounded, as -fail-under compares it.
+//
+// A node with nothing to cover has no percentage and stays. Whether an empty package is worth
+// drawing is a different question from whether a covered one is, and answering both with one flag
+// would hide a package whose tests were deleted along with the ones that never needed any.
+func (b *rowBuilder) atOrAbove(stats CoverageStats) bool {
+	pct, ok := stats.Percentage()
+	if !ok {
+		return false
+	}
+
+	if b.hideWhole {
+		return pct.complete
+	}
+
+	return pct.Float() >= b.hideAt
+}
+
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
 // level 0 means — it is not tracked separately, since a second flag can only drift from it.
 func (b *rowBuilder) walk(tree *PathTree, level Depth, padding []byte) {
@@ -154,7 +275,7 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding []byte) {
 		return
 	}
 
-	entries := b.visible(tree)
+	entries := b.visible(tree, level)
 
 	for i, e := range entries {
 		root := level == 0

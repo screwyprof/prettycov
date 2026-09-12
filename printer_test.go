@@ -613,3 +613,257 @@ func TestPercentageReportsNothingToCover(t *testing.T) {
 	assert.False(t, ok)
 	assert.Zero(t, pct.Float())
 }
+
+func at(pct float64) *float64 { return &pct }
+
+// -hide-covered shapes the report and never the measurement, and it prunes a subtree only when
+// there is nothing left to do anywhere inside it.
+func TestDisplayTreeHideCovered(t *testing.T) {
+	t.Parallel()
+
+	// done/ is finished; work/ is not, and work/deep hides below a parent that is itself above 90.
+	files := []prettycov.FileCoverage{
+		file("m/done/a.go", 4, 0),
+		file("m/done/sub/b.go", 6, 0),
+		file("m/work/c.go", 9, 0),
+		file("m/work/deep/d.go", 1, 1),
+	}
+
+	tests := map[string]struct {
+		hide *float64
+		want string
+	}{
+		"unset draws everything": {want: "" +
+			" m - 95.24\n ├ done - 100.00\n │ └ sub - 100.00\n └ work - 90.91\n   └ deep - 50.00\n"},
+
+		// done/ and its subtree go; the glyph on work/ becomes the last-child one, which it would
+		// not if the hidden rows were dropped after the tree was drawn.
+		"bare hides what is finished": {hide: at(100), want: "" +
+			" m - 95.24\n └ work - 90.91\n   └ deep - 50.00\n"},
+
+		// work/ is 90.91, at or above the threshold, but holds deep/ at 50. Judging the parent
+		// alone hid the one branch with work in it and left an empty report.
+		"a threshold keeps a parent that holds a lower child": {hide: at(90), want: "" +
+			" m - 95.24\n └ work - 90.91\n   └ deep - 50.00\n"},
+
+		// Everything is above 40, so there is nothing the flag was asked to show. showReport says
+		// so rather than leaving a reader wondering whether it crashed.
+		"a threshold under everything empties the report": {hide: at(40), want: ""},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process(files)
+
+			got := renderOpts(t, tree, prettycov.Options{
+				Depth: prettycov.DepthAll, HideCovered: tc.hide,
+			})
+
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, 21, tree.Coverage.Total(), "the tree keeps every statement it had")
+		})
+	}
+}
+
+// A package with nothing to cover has no percentage, so it is not "covered" and stays. Hiding it
+// would answer a different question — whether an empty package is worth drawing — with this flag.
+func TestDisplayTreeHideCoveredKeepsAPackageWithNoStatements(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/doc/doc.go", 0, 0),
+		file("m/real/a.go", 2, 0),
+	})
+
+	got := renderOpts(t, tree, prettycov.Options{
+		Depth: prettycov.DepthAll, HideCovered: at(100),
+	})
+
+	assert.Equal(t, " m - 100.00\n └ doc - n/a\n", got)
+}
+
+// The threshold is inclusive, and whether a file counts depends on whether -files draws it.
+//
+// even/ and mixed/ both read exactly 90.00. mixed/ holds a file with nothing covered; even/ does
+// not. Without -files neither file is a row, so both packages say nothing and go. With -files the
+// one holding work has something to show and comes back, carrying only that file.
+func TestDisplayTreeHideCoveredAtTheThreshold(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{
+		file("m/even/a.go", 9, 1),      // 90.00, and its only file is 90.00 too
+		file("m/mixed/big.go", 9, 0),   // 100.00
+		file("m/mixed/small.go", 0, 1), // 0.00, so mixed/ is 90.00 over a file with nothing
+		file("m/done/x.go", 5, 0),      // finished, two files so the run does not collapse
+		file("m/done/y.go", 5, 0),
+		file("m/under/c.go", 8, 2), // 80.00, below the bar at every setting
+	}
+
+	tests := map[string]struct {
+		files bool
+		want  string
+	}{
+		"files undrawn, so a file cannot speak for its package": {
+			want: " m - 90.00\n └ under - 80.00\n",
+		},
+		"files drawn, so the package over one with work returns": {
+			files: true,
+			want:  " m - 90.00\n ├ mixed - 90.00\n │ └ small.go - 0.00\n └ under/c.go - 80.00\n",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := renderOpts(t, prettycov.Process(files), prettycov.Options{
+				Depth: prettycov.DepthAll, Files: tc.files, HideCovered: at(90),
+			})
+
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// A file is hidden the way a package is, so -files does not bring back what -hide-covered took.
+func TestDisplayTreeHideCoveredHidesFiles(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/pkg/done.go", 3, 0),
+		file("m/pkg/todo.go", 0, 1),
+	})
+
+	got := renderOpts(t, tree, prettycov.Options{
+		Depth: prettycov.DepthAll, Files: true, HideCovered: at(100),
+	})
+
+	assert.Equal(t, " m/pkg - 75.00\n └ todo.go - 0.00\n", got)
+}
+
+// At 100 the test is "is an uncovered statement left", not "does the ratio reach 100", and the two
+// are not the same question. 2^56-1 covered beside one uncovered divides to exactly 100.0 in
+// float64 — the miss is below the mantissa — so a ratio comparison hides a package that still has
+// work in it. Percentage already renders this 99.99 for the same reason.
+func TestDisplayTreeHideCoveredTrustsTheCountNotTheRatio(t *testing.T) {
+	t.Parallel()
+
+	const covered = 1<<56 - 1
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/huge/a.go", covered, 1)})
+
+	pct, ok := tree.Coverage.Percentage()
+	require.True(t, ok)
+	require.InDelta(t, 100.0, pct.Float(), 0, "the ratio really does round to 100")
+
+	got := renderOpts(t, tree, prettycov.Options{
+		Depth: prettycov.DepthAll, HideCovered: at(100),
+	})
+
+	assert.Equal(t, " m/huge - 99.99\n", got, "one uncovered statement is still one to do")
+}
+
+// -hide-covered judges what the report draws, not what the tree holds. -depth is a filter too, so
+// the two compose: a row the depth limit already cut cannot be the reason a parent survives.
+//
+// pkg/ reads 95.35 and holds logger/ at 93.94, which holds logger.go at 86.67. With the files
+// undrawn and the depth short, every row on that branch is above the bar, so the branch says
+// nothing and goes. scraper/store at 77.78 is below it and stays at every depth.
+func TestDisplayTreeHideCoveredJudgesWhatIsDrawn(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{
+		file("m/pkg/logger/logger.go", 13, 2), // 86.67, below the bar but three levels down
+		file("m/pkg/logger/other.go", 18, 0),  // so logger/ itself reads 93.94
+		file("m/pkg/done/d.go", 10, 0),        // finished, hidden at every depth
+		file("m/scraper/store/s.go", 7, 2),    // 77.78, below the bar
+	}
+
+	tests := map[string]struct {
+		depth prettycov.Depth
+		files bool
+		want  string
+	}{
+		"one level draws only what is below the bar": {
+			depth: 1,
+			want:  " m - 92.31\n └ scraper/store - 77.78\n",
+		},
+		"two levels still cut logger.go off, so its branch says nothing": {
+			depth: 2,
+			want:  " m - 92.31\n └ scraper/store - 77.78\n",
+		},
+		// -files alone does not bring it back: the files sit a level below the cut too.
+		"files drawn but still below the cut": {
+			depth: 2, files: true,
+			want: " m - 92.31\n └ scraper/store/s.go - 77.78\n",
+		},
+		// With the depth to draw the file, the branch has something to show and comes back.
+		"the file is drawn and the branch it explains returns": {
+			depth: prettycov.DepthAll, files: true,
+			want: " m - 92.31\n ├ pkg - 95.35\n │ └ logger - 93.94\n" +
+				" │   └ logger.go - 86.67\n └ scraper/store/s.go - 77.78\n",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := renderOpts(t, prettycov.Process(files), prettycov.Options{
+				Depth: tc.depth, Files: tc.files, HideCovered: at(90),
+			})
+
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// A collapsed run is one row, so it must cost one level here too. allCovered walked the tree a node
+// at a time while the report draws a merged run as a single row, so below the first collapse the
+// budget ran out early and a subtree was called covered without the rows it actually draws being
+// looked at. Single-child directories are the norm in Go — internal/app, a module path prefix — so
+// this hid real gaps at any finite depth.
+func TestDisplayTreeHideCoveredSpendsALevelPerRowNotPerNode(t *testing.T) {
+	t.Parallel()
+
+	// chain/ holds only inner/, so the two draw as one row and low/ sits one level below it.
+	files := []prettycov.FileCoverage{
+		file("m/ok/a.go", 1, 0),
+		file("m/chain/inner/good.go", 9, 0),
+		file("m/chain/inner/low/b.go", 0, 1),
+	}
+
+	tree := prettycov.Process(files)
+
+	// What the depth draws with no hiding at all: low/ at 0.00 is one of the rows.
+	require.Equal(t, " m - 90.91\n ├ chain/inner - 90.00\n │ └ low - 0.00\n └ ok - 100.00\n",
+		renderOpts(t, tree, prettycov.Options{Depth: 2}))
+
+	// So hiding at 90 may take ok/ and nothing else.
+	assert.Equal(t, " m - 90.91\n └ chain/inner - 90.00\n   └ low - 0.00\n",
+		renderOpts(t, tree, prettycov.Options{Depth: 2, HideCovered: at(90)}))
+}
+
+// The invariant the empty-report message rests on: a tree with statements always draws a row unless
+// -hide-covered took it, so that message can name the flag and read its threshold without asking.
+func TestDisplayTreeAlwaysDrawsARowWithoutHideCovered(t *testing.T) {
+	t.Parallel()
+
+	for name, files := range map[string][]prettycov.FileCoverage{
+		"one bare file":       {file("a.go", 1, 0)},
+		"one deep file":       {file("m/x/y/z/a.go", 0, 1)},
+		"two top-level":       {file("a/x.go", 1, 0), file("b/y.go", 0, 1)},
+		"the filesystem root": {file("/home/x/a.go", 1, 0)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, depth := range []prettycov.Depth{0, 1, prettycov.DepthAll} {
+				assert.NotEmpty(t, prettycov.Rows(prettycov.Process(files), prettycov.Options{Depth: depth}),
+					"depth %v", depth)
+			}
+		})
+	}
+}
