@@ -1187,10 +1187,15 @@ func TestRunHideCoveredPercentage(t *testing.T) {
 		"NaN":            {value: "nan", wantCode: codeFailed},
 		"a hundred":      {value: "100", wantCode: codeOK},
 		"zero":           {value: "0", wantCode: codeOK},
-		// BoolFunc advertises the flag as boolean, so these two are its own contract: "true" is
-		// the bare form written out and "false" is the only way a shell variable says "not now".
+		// BoolFunc advertises the flag as boolean, so every spelling ParseBool takes is its own
+		// contract — recognising two of the twelve and calling the rest "not a percentage" had the
+		// flag arguing with its usage line. Capitalisation is whatever the shell handed over.
 		"true":  {value: "true", wantCode: codeOK},
 		"false": {value: "false", wantCode: codeOK},
+		"False": {value: "False", wantCode: codeOK},
+		"FALSE": {value: "FALSE", wantCode: codeOK},
+		"f":     {value: "f", wantCode: codeOK},
+		"T":     {value: "T", wantCode: codeOK},
 	}
 
 	for name, tc := range tests {
@@ -1212,6 +1217,33 @@ func TestRunHideCoveredPercentage(t *testing.T) {
 			}
 
 			assert.NotContains(t, stderr.String(), "want a percentage")
+		})
+	}
+}
+
+// "0" and "1" are the one place the percentage and the boolean vocabularies collide, and they stay
+// percentages: the value this flag documents is a percentage and both are in range. So
+// -hide-covered=0 hides every row that has one, where =false leaves the report alone.
+func TestRunHideCoveredReadsZeroAsAPercentageNotAsOff(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct{ value, wantOut string }{
+		"zero is a threshold": {value: "0", wantOut: ""},
+		// And "1" the same way, or the guard that keeps it a percentage is untested.
+		"one is a threshold": {value: "1", wantOut: ""},
+		"false is off":       {value: "false", wantOut: " m - 60.00\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{
+				"-hide-covered=" + tc.value, "-depth", "0",
+				"-profile", writeProfile(t, profile), "-color", "never",
+			}, stdout, stderr)
+
+			assert.Equal(t, codeOK, code)
+			assert.Equal(t, tc.wantOut, stdout.String())
 		})
 	}
 }

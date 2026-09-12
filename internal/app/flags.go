@@ -162,20 +162,29 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	// behind it, and it passes "true" for that form. A pointer for the reason -fail-under is one —
 	// 0 is a legitimate threshold, so the value cannot say whether the flag was given.
 	set.BoolFunc("hide-covered",
-		"hide subtrees covered to this `percentage` or above (default 100 when given bare)",
+		// No backquoted operand: PrintDefaults would render "-hide-covered percentage", the same
+		// shape as -fail-under two lines up, and that one is a Func which does take the space form.
+		// Here `-hide-covered 90` reads 90 as the profile path, so the help says "=" instead.
+		"hide subtrees covered to a percentage or above, as -hide-covered=90; bare means 100",
 		func(s string) error {
-			// "true" and "false" are what the flag package passes for the bare form and for
-			// -hide-covered=false, which is how a shell variable spells "not this run" and the
-			// only way to turn a bool flag off. Refusing it for not being a percentage would be
-			// the flag contradicting the contract BoolFunc advertises for it.
-			switch s {
-			case "true":
-				at := 100.0
-				cfg.HideCovered = &at
-
-				return nil
-			case "false":
+			// BoolFunc advertises the flag as boolean, so every spelling ParseBool takes is part of
+			// its contract: "true" is what the bare form passes, and "false" — however a shell
+			// happens to capitalise it — is how `-hide-covered=$HIDE` says "not this run".
+			// Recognising two of the twelve and calling the rest "not a percentage" would have the
+			// flag arguing with its own usage line.
+			//
+			// Except "0" and "1", which are the one place the two vocabularies collide. They stay
+			// percentages, because the value this flag documents is a percentage and both are in
+			// range; nothing else ParseBool accepts is a number, so nothing else is ambiguous.
+			// -hide-covered=0 therefore hides every row that has a percentage at all, which is what
+			// it says and is rarely what anyone wants — write =false to turn the flag off.
+			if on, err := strconv.ParseBool(s); err == nil && s != "0" && s != "1" {
 				cfg.HideCovered = nil
+
+				if on {
+					at := 100.0
+					cfg.HideCovered = &at
+				}
 
 				return nil
 			}

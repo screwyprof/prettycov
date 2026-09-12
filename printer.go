@@ -27,8 +27,8 @@ type Options struct {
 	// what there is still work in. Nil is the whole report; the CLI's -hide-covered defaults it to
 	// 100, where nothing hidden holds an uncovered statement and absence means "nothing to do here".
 	//
-	// A threshold below 100 hides misses along with the rows — at 90 on the delegator profile, 64
-	// of 126 — which is the caller's to decide and worth knowing. Said here rather than refused:
+	// A threshold below 100 hides misses along with the rows — at 90 on the delegator profile, 9 of
+	// its 34 — which is the caller's to decide and worth knowing. Said here rather than refused:
 	// -fail-under already takes a number, and this one only shapes the report.
 	//
 	// Shaping, never measuring. The tree keeps every statement it had, so -total, -fail-under and

@@ -31,8 +31,9 @@ tags.
 
   A collapsed run of directories is one row, so it costs one level here too — `chain/inner` over a
   package at 0.00 is kept at `-depth=2`, which draws it. `-hide-covered=false` turns the flag off,
-  as the bare form's boolean contract implies; the threshold needs `=`, since `-hide-covered 90`
-  reads 90 as the profile path.
+  in any spelling `strconv.ParseBool` takes, as the bare form's boolean contract implies — except
+  `0` and `1`, which stay percentages because the value is one and both are in range. The threshold
+  needs `=`, since `-hide-covered 90` reads 90 as the profile path.
 
   Like `-depth` and `-files` it shapes the report and never the measurement, so `-total` and
   `-fail-under` read the same with it as without. When it takes every row a depth draws it says so

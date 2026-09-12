@@ -176,8 +176,10 @@ there:
 Below 100 it hides misses along with the rows, which is the point and worth knowing: at 90 on this
 profile, 9 of the 34 uncovered statements stop being drawn.
 
-`-hide-covered=false` turns it off, and the threshold needs `=` — `-hide-covered 90` reads 90 as
-the profile path.
+`-hide-covered=false` turns it off, in any spelling `strconv.ParseBool` takes. `0` and `1` are the
+exception: they stay percentages, since the value is a percentage and both are in range — so
+`-hide-covered=0` hides every row that has one. The threshold needs `=`, because `-hide-covered 90`
+reads 90 as the profile path.
 
 Like `-depth` and `-files`, it shapes the report and never the measurement — `-total` and
 `-fail-under` read the same with it as without. That is what separates it from `-exclude`, which
