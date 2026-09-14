@@ -139,9 +139,10 @@ type drawn struct {
 	Coverage CoverageStats
 	Blocks   []Block
 	Label    string
-	// Path is Label with every ancestor's label in front of it, which Label alone is not: a row is
-	// drawn with its own segment, so `httpkit` says nothing about the `pkg` above it. Misses needs
-	// the whole path, because what it prints has to name a file an editor can open.
+	// Path is the node's whole path, which Label alone is not: a row is drawn with its own segment,
+	// so `httpkit` says nothing about the `pkg` above it. Misses needs all of it, because what it
+	// prints has to name a file an editor can open — and for the same reason it is built from the
+	// unsanitised segments, where Label is the drawn one.
 	Path  string
 	Level Depth
 	// Prefix is the indent and glyph placing the row.
@@ -175,6 +176,10 @@ type walker struct {
 // by name alone.
 type entry struct {
 	label string
+	// raw is label before sanitize, which is what a position has to carry: the replacement is for a
+	// terminal to draw, and no editor opens `a/a�b.go`. -exclude matches its patterns against
+	// the profile's own path, so a printed position only pastes back as a pattern if this is it.
+	raw string
 	// name is what the map called this before any merging, kept only to break a tie between two
 	// labels that came out the same. Within one map it is unique, so it is a total order there.
 	name string
@@ -282,7 +287,7 @@ func (b *walker) entries(tree *PathTree) []entry {
 		// Sanitised here and not in below: a replaced rune sorts where the replacement does, so the
 		// label has to be the drawn one before visible sorts it. allCovered reads no label, and the
 		// scan is per rune of every name in the profile.
-		e.label = sanitize(e.label)
+		e.raw, e.label = e.label, sanitize(e.label)
 		out = append(out, e)
 	}
 
@@ -341,7 +346,7 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 	root := level == 0
 
 	for at, e := range entries {
-		here := path.Join(parent, e.label)
+		here := path.Join(parent, e.raw)
 
 		b.out = append(b.out, drawn{
 			Coverage: e.node.Coverage,

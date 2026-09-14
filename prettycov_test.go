@@ -140,6 +140,48 @@ func TestCoverageStatsPercentage(t *testing.T) {
 	}
 }
 
+// AtLeast is the gate -fail-under and -hide-covered are graded by, and at 100 it is not the
+// comparison the ratio would make. Exported, so a caller can hand it any number the CLI's own
+// [0, 100] clamp would have refused.
+func TestCoverageStatsAtLeast(t *testing.T) {
+	t.Parallel()
+
+	// One statement short of complete, and large enough that the miss falls below the mantissa: the
+	// ratio is exactly 100.0 in float64, which is why the question at 100 is about the counts.
+	const huge = 1 << 56
+
+	tests := []struct {
+		name  string
+		stats prettycov.CoverageStats
+		pct   float64
+		want  bool
+	}{
+		{name: "above the bar", stats: prettycov.CoverageStats{Covered: 9, Uncovered: 1}, pct: 80, want: true},
+		{name: "exactly at it", stats: prettycov.CoverageStats{Covered: 8, Uncovered: 2}, pct: 80, want: true},
+		{name: "below it", stats: prettycov.CoverageStats{Covered: 7, Uncovered: 3}, pct: 80, want: false},
+		{name: "complete at 100", stats: prettycov.CoverageStats{Covered: 4}, pct: 100, want: true},
+		{
+			name:  "one short of complete, rounding to 100",
+			stats: prettycov.CoverageStats{Covered: huge - 1, Uncovered: 1},
+			pct:   100, want: false,
+		},
+		// Nothing to cover has no share to compare, so it is not at any bar — including 0, which
+		// would otherwise make every empty package pass every gate.
+		{name: "no statements", stats: prettycov.CoverageStats{}, pct: 0, want: false},
+		// And nothing reaches more than all of it. A caller passing a computed threshold, or one it
+		// meant as a fraction, gets a refusal rather than a gate that reads 100 as "at least 150".
+		{name: "past 100", stats: prettycov.CoverageStats{Covered: 10}, pct: 150, want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, tc.stats.AtLeast(tc.pct))
+		})
+	}
+}
+
 // Both sides move together, or a percentage ends up drawn from counts that were never summed the
 // same way.
 func TestCoverageStatsAdd(t *testing.T) {

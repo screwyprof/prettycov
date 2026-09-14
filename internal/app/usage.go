@@ -34,7 +34,7 @@ Leave out what is finished, or anything already above a bar (the bar needs '='):
 Print just the number, for a Makefile or a badge:
 	prettycov -total
 Print where the uncovered statements are, for an editor:
-	prettycov -misses
+	prettycov -misses -depth=max
 	prettycov -misses -depth=max | vim -q -
 `
 

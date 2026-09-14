@@ -237,7 +237,8 @@ scraper/service.go:94:16: 2 uncovered
 scraper/service.go:158:20: 1 uncovered
 scraper/service.go:165:16: 1 uncovered
 scraper/service.go:188:16: 1 uncovered
-scraper/store/pgxstore/store.go:44:35: 2 uncovered
+scraper/store/pgxstore/store.go:44:35: 1 uncovered
+scraper/store/pgxstore/store.go:47:16: 1 uncovered
 scraper/store/pgxstore/store.go:56:27: 1 uncovered
 scraper/store/pgxstore/store.go:64:16: 1 uncovered
 scraper/store/pgxstore/store.go:69:51: 1 uncovered
@@ -270,12 +271,18 @@ strips the module prefix and leaves something an editor can open.
 
 Blocks that abut fold into one entry — `cmd/cover` emits one per branch, so a function nothing covers
 arrives as a dozen of them. That halves the list on a badly covered profile and changes almost
-nothing on a good one, where misses are scattered single statements.
+nothing on a good one, where misses are scattered single statements. A covered block between two
+uncovered ones stops the fold, or the entry would claim a statement the tests do reach.
 
 `-depth` and `-hide-covered` narrow it exactly as they narrow the tree, being the same filtering: a
 file is an entry of the package holding it, so it sits one level below that package — the default
-`-depth=1` gives 8 of the 31 entries above, and `-depth=max` gives all of them. `-hide-covered=90`
+`-depth=1` gives 8 of the 32 entries above, and `-depth=max` gives all of them. `-hide-covered=90`
 leaves out the ones in subtrees already at the bar.
+
+That level is worth counting before reaching for `-depth`. `-new=.` above leaves packages at the top
+level and their files one below, which the default draws; without a rename the module path is a top
+row of its own and everything moves down one, so `prettycov -misses` alone lists only the files in
+your module root. When the list comes out empty it says which flag emptied it.
 
 `-files` says nothing here. It adds files to the *tree's* output; a list of positions is made of them
 either way.

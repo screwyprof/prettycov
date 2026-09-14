@@ -84,10 +84,17 @@ func byPosition(x, y Block) int {
 // one that ended on 41 reads as abutting it, and two regions become one silently. Copied rather than
 // sorted in place, so asking for the misses does not reorder the tree underneath the caller.
 //
-// Abutting means starting no later than the line after the last one ended. Comparing against the
-// end rather than the previous start is what does the work: a block spanning lines 44 to 51 reaches
-// the one that opens on 52, where comparing openings would not. On a profile at 1.7% coverage that
-// is 1,344 regions against 2,087.
+// Abutting means starting no later than the line after the last one ended, with nothing covered in
+// between. Comparing against the end rather than the previous start is what does the work: a block
+// spanning lines 44 to 51 reaches the one that opens on 52, where comparing openings would not. On a
+// profile at 1.7% coverage that is 1,344 regions against 2,087.
+//
+// A covered block between two uncovered ones stops the fold, or the region would claim a statement
+// the tests do reach. delegator's pgxstore/store.go has 44.35,46.3 unrun, 47.2,47.16 run and
+// 47.16,49.3 unrun: line 47 opens where the region ended, so the two folded into 44-49 and a
+// consumer that speaks ranges — a GitHub annotation, an LSP diagnostic — marked the covered line
+// with them. Only the range was ever wrong: the statement counts were right either way, and the CLI
+// prints the opening position alone, which is why nothing in the output showed it.
 func merge(out []Miss, file string, blocks []Block) []Miss {
 	if !slices.IsSortedFunc(blocks, byPosition) {
 		// Cloned and sorted rather than collected from an iterator, which grows by doubling: one
@@ -100,13 +107,20 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 	// rarely many, and a profile's are.
 	start := len(out)
 
+	// Where the last covered block begins. cmd/cover nests them — a run block spans the branch
+	// blocks inside it — so one that opened before the region did says nothing about what is between
+	// the region and the next block, and only a start at or past the region's end can bridge them.
+	covered := 0
+
 	for _, block := range blocks {
 		if block.Coverage.Uncovered == 0 {
+			covered = max(covered, block.Line)
+
 			continue
 		}
 
 		last := len(out) - 1
-		if last >= start && block.Line <= out[last].EndLine+1 {
+		if last >= start && block.Line <= out[last].EndLine+1 && covered < out[last].EndLine {
 			out[last].EndLine = max(out[last].EndLine, block.EndLine)
 			out[last].Statements += block.Coverage.Uncovered
 

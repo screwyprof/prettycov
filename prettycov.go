@@ -58,13 +58,22 @@ func (c CoverageStats) Percentage() (Percentage, bool) {
 //
 // Nothing to cover is not "at least anything": a package with no statements has no share to compare,
 // and treating it as complete would fold two questions into one flag.
+//
+// Nothing reaches more than all of it either. The CLI clamps -fail-under and -hide-covered to
+// [0, 100] before either gets here, so only a library caller can ask — with a threshold it computed,
+// or one it meant as a fraction — and answering the completeness question for 150 would hand that
+// caller a passing gate.
 func (c CoverageStats) AtLeast(pct float64) bool {
 	share, ok := c.Percentage()
 	if !ok {
 		return false
 	}
 
-	if pct >= 100 {
+	if pct > 100 {
+		return false
+	}
+
+	if pct == 100 {
 		return share.complete
 	}
 

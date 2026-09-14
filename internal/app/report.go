@@ -94,9 +94,9 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	}
 
 	// Either printer can come up empty, and a command that prints nothing reads as one that failed.
-	// The exit code is unchanged and the report is correct; this says which flag emptied it.
+	// The exit code is unchanged and the report is correct; this says what emptied it.
 	if draw(stdout, tree, opts) == 0 {
-		_, _ = fmt.Fprintln(stderr, cfg.whyNothingDrawn())
+		_, _ = fmt.Fprintln(stderr, cfg.whyNothingShown(tree))
 	}
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
@@ -164,22 +164,51 @@ func refuseEmpty(cfg config, reason string, stderr io.Writer) int {
 	return exitFailed
 }
 
-// whyNothingDrawn says why a printer drew nothing.
+// whyNothingShown says why a printer came up empty.
 //
-// With -misses there is nothing left to cover in what this depth draws, which is news worth having
-// rather than a mistake. Otherwise only -hide-covered can have emptied it: the profile holds
-// statements or refuseEmpty returned above, and a tree with statements has a top row that -depth
-// always draws — so the threshold can be read through its pointer without a guard no run can reach.
+// It asks nothing about which printer that was. One drawing rows and one printing positions would
+// need a message each, and a third would need a third — and every one of them would be a second
+// place holding an opinion about what the output filters do, which is the drift the single prepare
+// seam exists to prevent. The filters emptied it; naming them is the whole answer either way.
 //
-// Neither says the profile holds nothing below the bar, which would often be false: -depth decides
-// what is drawn as much as -hide-covered does, so `-depth=0 -hide-covered=80` empties a report over
-// a package at 0.00 that a deeper one would show.
-func (c config) whyNothingDrawn() string {
-	if c.Misses {
-		return "nothing left to cover in what this depth draws"
+// Two causes, and they are opposite news. The tree's own count separates them, which is a number
+// already to hand rather than a second pass over the filtering: no uncovered statement anywhere is
+// an all-clear worth printing, and uncovered statements the filters leave out is the opposite.
+// Saying the first when the second happened is a false all-clear on a profile with work left in it —
+// `-misses -hide-covered=0` over a fully drawn tree reported completion on 34 statements, exit 0.
+//
+// It does not say what one level deeper would have shown, which nothing here knows. Re-deriving it
+// would put the filtering in a second place.
+func (c config) whyNothingShown(tree *prettycov.PathTree) string {
+	if tree.Coverage.Uncovered == 0 {
+		return "nothing left to cover"
 	}
 
-	return fmt.Sprintf("-hide-covered=%v hid every row this depth draws", *c.HideCovered)
+	// "left" rather than "remain", which would need a second spelling for the singular that plural
+	// already handles for the count itself.
+	return fmt.Sprintf("nothing to show at %s; %s left",
+		c.outputFilters(), plural(tree.Coverage.Uncovered, "uncovered statement"))
+}
+
+// outputFilters names the flags that shape the output, as typed. A filter added later is named here
+// rather than in a message per printer, which is the point of listing them rather than diagnosing
+// them: nothing here has to know which one did it, only which ones were asked for.
+//
+// -depth is always in play and always has a value, so it is always named. -hide-covered is named
+// when it was given, which is the only time it can have taken anything.
+//
+// -files is not one of these. It decides whether the tree's output holds files, and a list of
+// positions is made of them either way, so it shapes what a row is rather than whether there is one.
+// -exclude is not either: it acts on the profile, and a report it emptied is refused further up with
+// a message of its own.
+func (c config) outputFilters() string {
+	filters := "-depth=" + c.Depth.String()
+
+	if c.HideCovered != nil {
+		filters += fmt.Sprintf(", -hide-covered=%v", *c.HideCovered)
+	}
+
+	return filters
 }
 
 // showTotal writes the total percentage and nothing else, for a caller reading it into a variable.

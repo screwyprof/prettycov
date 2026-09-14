@@ -29,12 +29,16 @@ tags.
   Abutting blocks fold into one entry, because `cmd/cover` emits one per branch: 2,610 uncovered
   blocks on a profile at 1.7% coverage are 1,344 regions. The gain is all in the badly covered case
   — 4% on a profile at 91%, nothing at 99%, where misses are scattered single statements with
-  nothing adjacent to fold. A block declaring no statements is not a miss.
+  nothing adjacent to fold. A block declaring no statements is not a miss, and a covered block
+  between two uncovered ones stops the fold rather than being swallowed by it.
 
   `-depth` and `-hide-covered` narrow it as they narrow the tree, being the same filtering: a file is
   an entry of the package holding it, so it sits one level below that package and the default depth
-  gives 8 of delegator's 31 where `-depth=max` gives all. `-files` says nothing here — it adds files
-  to the tree's output, and a list of positions is made of them either way.
+  gives 8 of delegator's 32 where `-depth=max` gives all. That level is worth counting: `-new=.`
+  leaves packages at the top and their files one below, which the default reaches, while an
+  unrenamed module path is a top row of its own and moves everything down one — so `prettycov
+  -misses` alone lists the module root's files and nothing else. `-files` says nothing here — it adds
+  files to the tree's output, and a list of positions is made of them either way.
   `-exclude` removes them from the profile before any of it, and takes the same coordinates this
   prints — which is the workflow golang/go#53271 was declined in favour of.
 
@@ -60,7 +64,18 @@ tags.
 - `PathTree.Blocks` holds a file leaf's blocks, so the tree can answer where as well as how much.
 
 - `CoverageStats.AtLeast` grades counts against a threshold, including the 100 case where the answer
-  is about the counts rather than the ratio.
+  is about the counts rather than the ratio. Nothing is at least more than all of it, so a threshold
+  above 100 is false rather than complete — the CLI clamps to `[0, 100]`, so only a library caller
+  can ask, and answering the completeness question there would hand it a passing gate.
+
+### Changed
+
+- A printer that comes up empty names the output filters that emptied it, rather than each printer
+  carrying a sentence of its own: `nothing to show at -depth=max, -hide-covered=0; 34 uncovered
+  statements left`. `-misses` said `nothing left to cover in what this depth draws` whatever the
+  cause, which is a false all-clear on a profile with work still in it — and it exited 0. That
+  sentence is now printed only when the tree really holds no uncovered statement, which is the one
+  thing that makes it true.
 
 ## [0.11.0] — 2026-09-12
 

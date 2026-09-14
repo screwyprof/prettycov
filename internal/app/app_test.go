@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1158,7 +1159,7 @@ func TestRunSaysWhenHideCoveredTookEveryRow(t *testing.T) {
 
 	assert.Equal(t, codeOK, code)
 	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "-hide-covered=80 hid every row this depth draws")
+	assert.Contains(t, stderr.String(), "nothing to show at -depth=0, -hide-covered=80")
 	assert.NotContains(t, stderr.String(), "nothing is below",
 		"the profile holds a package at 0.00; only this depth hides it")
 
@@ -1327,7 +1328,70 @@ func TestRunMissesSaysWhenThereAreNone(t *testing.T) {
 
 	assert.Equal(t, codeOK, code)
 	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "nothing left to cover in what this depth draws")
+	assert.Contains(t, stderr.String(), "nothing left to cover")
+}
+
+// An empty list has two causes and they are opposite news. Saying "nothing left to cover" when the
+// shaping flags took it all is a false all-clear on a profile with work left in it, and it exits 0.
+//
+// The count is the tree's own, which is why it is right whichever flag did it: -depth and
+// -hide-covered shape the report and never the measurement, so the total is what it always was.
+func TestRunNamesWhatEmptiedTheOutput(t *testing.T) {
+	t.Parallel()
+
+	// pkg holds two files, so nothing merges and both sit at level 2 — the default -depth=1 draws
+	// pkg itself and reaches neither of them. web holds one, which merges into a row of its own at
+	// level 1, and it is covered: without it the whole chain would collapse to a single file row at
+	// level 0 and the depth would reach it after all.
+	const profile = "mode: set\n" +
+		"m/pkg/a.go:9.2,10.3 1 0\n" +
+		"m/pkg/b.go:40.2,41.3 1 0\n" +
+		"m/web/c.go:1.1,2.2 3 1\n"
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "no file sits at this depth",
+			args: []string{"-misses"},
+			want: "nothing to show at -depth=1; 2 uncovered statements left",
+		},
+		{
+			name: "the bar hides every file holding one",
+			// The threshold needs "=": -hide-covered takes an optional value, so a separate one is
+			// read as the profile path.
+			args: []string{"-misses", "-depth", "max", "-hide-covered=0"},
+			want: "nothing to show at -depth=max, -hide-covered=0; 2 uncovered statements left",
+		},
+		// The same sentence from the other printer, which is the point of it: the filters emptied
+		// the output, and naming them is the answer whichever one was holding the pen. A message per
+		// printer is a second place with an opinion about what those filters do.
+		{
+			name: "the bar hides every row of the tree",
+			args: []string{"-depth", "max", "-hide-covered=0"},
+			want: "nothing to show at -depth=max, -hide-covered=0; 2 uncovered statements left",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			args := slices.Concat(tc.args, []string{
+				"-profile", writeProfile(t, profile), "-color", "never",
+			})
+
+			code := app.Run(args, stdout, stderr)
+
+			assert.Equal(t, codeOK, code)
+			assert.Empty(t, stdout.String())
+			assert.Equal(t, tc.want+"\n", stderr.String())
+			assert.NotContains(t, stderr.String(), "nothing left to cover", "a false all-clear")
+		})
+	}
 }
 
 // -exclude acts on the profile before the tree, so an excluded block is not a miss — which is what

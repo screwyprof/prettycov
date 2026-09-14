@@ -78,7 +78,13 @@ func TestMissesSkipsBlocksWithNoStatements(t *testing.T) {
 	assert.Equal(t, 20, got[0].Line)
 }
 
-// A covered block is not a miss either, and it does not join the regions on either side of it.
+// A covered block is not a miss either, and it does not join the regions on either side of it. The
+// blocks abut, so only the covered one between them keeps this two regions — a gap would have done
+// it on its own and tested nothing.
+//
+// delegator's pgxstore/store.go is this shape: 44.35,46.3 unrun, 47.2,47.16 run, 47.16,49.3 unrun.
+// Folding across gave a region of 44-49 that claimed the covered statement on 47, which a GitHub
+// annotation or an LSP diagnostic would have marked with the rest.
 func TestMissesLeavesCoveredBlocksOut(t *testing.T) {
 	t.Parallel()
 
@@ -87,14 +93,40 @@ func TestMissesLeavesCoveredBlocksOut(t *testing.T) {
 		Coverage: prettycov.CoverageStats{Covered: 5, Uncovered: 2},
 		Blocks: []prettycov.Block{
 			uncovered(10, 2, 11, 1),
-			covered(12, 2, 13, 5),
-			uncovered(14, 2, 15, 1),
+			covered(11, 2, 12, 5),
+			uncovered(12, 2, 13, 1), // abuts 10-11, and would fold but for the block between
 		},
 	}})
 
 	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
 
-	assert.Len(t, got, 2, "the covered block between them is not a bridge")
+	assert.Equal(t, []prettycov.Miss{
+		{File: "m/a.go", Line: 10, Col: 2, EndLine: 11, Statements: 1},
+		{File: "m/a.go", Line: 12, Col: 2, EndLine: 13, Statements: 1},
+	}, got, "the covered block between them is not a bridge")
+}
+
+// cmd/cover nests blocks: a function's run block spans the branch blocks inside it, so a covered
+// block is nearly always open when an uncovered one starts. Only one that begins between two
+// uncovered regions separates them; one that began before the first is what encloses it.
+func TestMissesFoldAcrossAnEnclosingCoveredBlock(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{{
+		File:     "m/a.go",
+		Coverage: prettycov.CoverageStats{Covered: 3, Uncovered: 2},
+		Blocks: []prettycov.Block{
+			covered(41, 69, 44, 3), // the enclosing run block, open before either miss
+			uncovered(44, 35, 46, 1),
+			uncovered(47, 2, 49, 1),
+		},
+	}})
+
+	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
+
+	assert.Equal(t, []prettycov.Miss{
+		{File: "m/a.go", Line: 44, Col: 35, EndLine: 49, Statements: 2},
+	}, got, "a block that opened above them says nothing about what is between them")
 }
 
 // -depth chooses which packages are visited, so it chooses which misses are listed. A miss inside a
@@ -219,6 +251,33 @@ func TestMissesAreSortedByPosition(t *testing.T) {
 
 	assert.Equal(t, []string{"m/a.go", "m/a.go", "m/z.go"}, got,
 		"a.go's two blocks are 30 lines apart, so they stay two regions despite arriving reversed")
+}
+
+// A row is sanitised because a terminal would obey the rune rather than draw it. A position is not
+// a row: it names a file for something to open, and `-exclude` matches its patterns against the
+// profile's own path, so the replacement character would give a location nothing resolves and a
+// pattern that cannot match what it was copied from.
+func TestMissesNameTheFileAsTheProfileSpelledIt(t *testing.T) {
+	t.Parallel()
+
+	// U+200E is Cf, a bidi mark: drawn as nothing, and it reverses what follows it.
+	const name = "m/pkg/a\u200eb.go"
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		withBlocks(name, uncovered(3, 2, 4, 1)),
+	})
+
+	var buf bytes.Buffer
+	require.Equal(t, 1, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
+
+	assert.Equal(t, name+":3:2: 1 uncovered\n", buf.String())
+	assert.NotContains(t, buf.String(), "�", "the row's replacement reached the position")
+
+	// And the tree still draws the sanitised one, which is the whole reason the two differ. One file
+	// is all this profile holds, so the whole chain collapses to a single row carrying the path.
+	rows := prettycov.Rows(tree, missOpts(prettycov.DepthAll))
+	require.Len(t, rows, 1)
+	assert.Equal(t, "m/pkg/a�b.go", rows[0].Label)
 }
 
 // `file:line:col: message`, as go vet prints it. The message is not decoration: without one an
