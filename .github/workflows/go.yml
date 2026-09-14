@@ -58,7 +58,7 @@ jobs:
         uses: reviewdog/action-golangci-lint@v2
         with:
           github_token: ${{ secrets.github_token }}
-          golangci_lint_version: v2.13.1
+          golangci_lint_version: v2.13.2
 
       # reviewdog reports the diff, which .golangci.yml's new-from-rev narrows it to. That is what
       # keeps a contributor from drowning in what was already there — and it is also why a function
@@ -66,9 +66,9 @@ jobs:
       # newFlagSet grew from 78 to 80 lines against a funlen of 60 that way. This runs the whole
       # repository so the standing state has to stay clean too.
       - name: golangci-lint, whole repository
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.1
+          version: v2.13.2
           # setup-go above already restored the module cache; letting this restore its own on top
           # unpacks the same files over themselves and tar fails the step.
           skip-cache: true
