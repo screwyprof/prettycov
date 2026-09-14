@@ -159,6 +159,29 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 
 		return nil
 	})
+	hideCovered(set, cfg)
+	set.BoolVar(&cfg.Counts, "counts", false, "show uncovered/total statements after each percentage")
+	set.BoolVar(&cfg.Files, "files", false, "show the profile's files, not only its packages")
+	set.BoolVar(&cfg.Misses, "misses", false,
+		"print only the uncovered positions, as file:line:col, for an editor or a pipe")
+	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")
+	set.BoolVar(&cfg.Help, "help", false, "show help")
+	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")
+	set.BoolVar(&cfg.Version, "version", false, "show version")
+
+	// Registering -h ourselves stops the flag package special-casing it, so every help path is
+	// the same path. With that, nothing here needs the package's own reporting: a mistyped flag
+	// used to print the message, then the whole usage, then the message again, 33 lines for one
+	// typo. run says what was wrong and where to look.
+	set.SetOutput(io.Discard)
+	set.Usage = func() {}
+
+	return set
+}
+
+// hideCovered registers -hide-covered, which is its own function only because it is long: the flag
+// answers to two vocabularies and the reasons are worth writing down where the code is.
+func hideCovered(set *flag.FlagSet, cfg *config) {
 	// BoolFunc, not Func: it is what lets -hide-covered stand bare without eating the profile path
 	// behind it, and it passes "true" for that form. A pointer for the reason -fail-under is one —
 	// 0 is a legitimate threshold, so the value cannot say whether the flag was given.
@@ -200,23 +223,6 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 
 			return nil
 		})
-	set.BoolVar(&cfg.Counts, "counts", false, "show uncovered/total statements after each percentage")
-	set.BoolVar(&cfg.Files, "files", false, "show the profile's files, not only its packages")
-	set.BoolVar(&cfg.Misses, "misses", false,
-		"print only the uncovered positions, as file:line:col, for an editor or a pipe")
-	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")
-	set.BoolVar(&cfg.Help, "help", false, "show help")
-	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")
-	set.BoolVar(&cfg.Version, "version", false, "show version")
-
-	// Registering -h ourselves stops the flag package special-casing it, so every help path is
-	// the same path. With that, nothing here needs the package's own reporting: a mistyped flag
-	// used to print the message, then the whole usage, then the message again, 33 lines for one
-	// typo. run says what was wrong and where to look.
-	set.SetOutput(io.Discard)
-	set.Usage = func() {}
-
-	return set
 }
 
 // subcommand matches a bare `help` or `version`, which have to be recognised before the flag

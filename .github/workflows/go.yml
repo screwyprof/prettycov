@@ -60,6 +60,17 @@ jobs:
           github_token: ${{ secrets.github_token }}
           golangci_lint_version: v2.13.1
 
+      # reviewdog reports the diff, which .golangci.yml's new-from-rev narrows it to. That is what
+      # keeps a contributor from drowning in what was already there — and it is also why a function
+      # already over a budget can be added to without a word: the lines are new, the issue is not.
+      # newFlagSet grew from 78 to 80 lines against a funlen of 60 that way. This runs the whole
+      # repository so the standing state has to stay clean too.
+      - name: golangci-lint, whole repository
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.13.1
+          args: ./... --new-from-rev=""
+
   test:
     runs-on: ubuntu-latest
     steps:
