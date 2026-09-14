@@ -325,29 +325,52 @@ func TestMissesAreSortedByPosition(t *testing.T) {
 		"a.go's two blocks are 30 lines apart, so they stay two regions despite arriving reversed")
 }
 
-// A row is sanitised because a terminal would obey the rune rather than draw it. A position is not
-// a row: it names a file for something to open, and `-exclude` matches its patterns against the
-// profile's own path, so the replacement character would give a location nothing resolves and a
-// pattern that cannot match what it was copied from.
-func TestMissesNameTheFileAsTheProfileSpelledIt(t *testing.T) {
+// A position goes to the same terminal a row does, so it is scrubbed the same way. Printing the
+// profile's own spelling let a crafted one erase the miss above it -- \x1b[1A\x1b[2K is cursor up
+// and erase line -- and made "real\revil/b.go" read as "evil/b.go". A coverage tool that can be
+// made to drop a line of its own output is failing at the one thing it is for.
+//
+// The cost is that such a path no longer opens in an editor or matches as an -exclude pattern. No
+// Go repository holds one: a module path cannot carry any of this set, so only a file name could.
+func TestMissesScrubTheFileAsTheRowIs(t *testing.T) {
 	t.Parallel()
 
-	// U+200E is Cf, a bidi mark: drawn as nothing, and it reverses what follows it.
-	const name = "m/pkg/a\u200eb.go"
-
 	tree := prettycov.Process([]prettycov.FileCoverage{
-		withBlocks(name, uncovered(3, 2, 4, 1)),
+		withBlocks("m/\x1b[1A\x1b[2Kforged/a.go", uncovered(3, 2, 4, 1)),
+		withBlocks("m/real\revil/b.go", uncovered(9, 2, 10, 1)),
 	})
+
+	var buf bytes.Buffer
+	require.Equal(t, 2, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
+
+	// real\u2026 sorts first: the replacement is U+FFFD, which outranks every ASCII letter, so scrubbing
+	// moves a row as well as redrawing it \u2014 the reason visible sorts on the label as drawn.
+	assert.Equal(t,
+		"m/real\ufffdevil/b.go:9:2: 1 uncovered\n"+
+			"m/\ufffd[1A\ufffd[2Kforged/a.go:3:2: 1 uncovered\n",
+		buf.String())
+
+	// One spelling between the two printers, which is the point: a path the report draws one way and
+	// a position names another is the disagreement that has bitten this pair twice already. A row
+	// carries its own segment, so these are the halves of the paths above.
+	assert.Equal(t,
+		[]string{"m", "real\ufffdevil/b.go", "\ufffd[1A\ufffd[2Kforged/a.go"},
+		namesWith(t, tree, missOpts(prettycov.DepthAll)))
+}
+
+// The joiners are not obeyed, so a path spelling a word in Persian or Devanagari survives both
+// printers intact -- the scrubbed set is the one a terminal acts on, not everything invisible.
+func TestMissesKeepAZeroWidthJoiner(t *testing.T) {
+	t.Parallel()
+
+	const name = "m/pkg/a\u200db.go"
+
+	tree := prettycov.Process([]prettycov.FileCoverage{withBlocks(name, uncovered(3, 2, 4, 1))})
 
 	var buf bytes.Buffer
 	require.Equal(t, 1, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
 
 	assert.Equal(t, name+":3:2: 1 uncovered\n", buf.String())
-	assert.NotContains(t, buf.String(), "�", "the row's replacement reached the position")
-
-	// And the tree still draws the sanitised one, which is the whole reason the two differ. One file
-	// is all this profile holds, so the whole chain collapses to a single row carrying the path.
-	assert.Equal(t, []string{"m/pkg/a�b.go"}, namesWith(t, tree, missOpts(prettycov.DepthAll)))
 }
 
 // `file:line:col: message`, as go vet prints it. The message is not decoration: without one an

@@ -201,8 +201,10 @@ func DisplayMisses(w io.Writer, tree *PathTree, opts Options) int {
 	listed := 0
 
 	for _, m := range Misses(tree, opts) {
-		// position, not a spelling of its own: -exclude matches its patterns against exactly this,
-		// so the two have to agree for a line printed here to work as a pattern there.
+		// position, not a spelling of its own, so one definition of the format serves -exclude's
+		// matching and this. The path is the drawn one, so a position pastes back as an -exclude
+		// pattern for every path a Go repository actually holds — and for one carrying a rune a
+		// terminal would obey it does not, which sanitize weighs and takes.
 		_, _ = buf.WriteString(position(m.File, m.Line, m.Col))
 		_, _ = buf.WriteString(": ")
 		_, _ = buf.WriteString(strconv.Itoa(m.Statements))

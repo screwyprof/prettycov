@@ -141,8 +141,8 @@ type drawn struct {
 	Label    string
 	// Path is the node's whole path, which Label alone is not: a row is drawn with its own segment,
 	// so `httpkit` says nothing about the `pkg` above it. Misses needs all of it, because what it
-	// prints has to name a file an editor can open — and for the same reason it is built from the
-	// unsanitised segments, where Label is the drawn one.
+	// prints has to name a file. Built from the sanitised segments, so the two printers spell one
+	// path the same way — see sanitize for why a position is scrubbed as a row is.
 	Path  string
 	Level Depth
 	// Prefix is the indent and glyph placing the row.
@@ -176,10 +176,6 @@ type walker struct {
 // by name alone.
 type entry struct {
 	label string
-	// raw is label before sanitize, which is what a position has to carry: the replacement is for a
-	// terminal to draw, and no editor opens `a/a�b.go`. -exclude matches its patterns against
-	// the profile's own path, so a printed position only pastes back as a pattern if this is it.
-	raw string
 	// name is what the map called this before any merging, kept only to break a tie between two
 	// labels that came out the same. Within one map it is unique, so it is a total order there.
 	name string
@@ -287,8 +283,7 @@ func (b *walker) entries(tree *PathTree) []entry {
 		// Sanitised here and not in below: a replaced rune sorts where the replacement does, so the
 		// label has to be the drawn one before visible sorts it. allCovered reads no label, and the
 		// scan is per rune of every name in the profile.
-		e.raw = e.label
-		e.label = sanitize(e.raw)
+		e.label = sanitize(e.label)
 		out = append(out, e)
 	}
 
@@ -347,7 +342,7 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 	root := level == 0
 
 	for at, e := range entries {
-		here := path.Join(parent, e.raw)
+		here := path.Join(parent, e.label)
 
 		b.out = append(b.out, drawn{
 			Coverage: e.node.Coverage,
@@ -413,11 +408,17 @@ func join(label, name string) string {
 // quote them too. It also stops a spoof: a package named "\x1b[1A\x1b[2Kforged" erases the row
 // above and writes over it, and above the first child is the total.
 //
-// Rows only. A position carries the profile's own spelling — see entry.raw — because the
-// replacement gives a path no editor resolves and an -exclude pattern that cannot match what it was
-// copied from. go vet and gopls do not sanitize their positions either. So a profile naming
-// "\x1b[1A\x1b[2Kforged/a.go" draws as a scrubbed row and prints raw under -misses, which is the
-// trade: the report is the thing read by eye, and a location has to stay a location.
+// Positions too, not rows alone. -misses prints to the same terminal, so the same escape erases a
+// miss above it, and "real\revil/b.go" draws as "evil/b.go" — a coverage tool whose own output can
+// be made to drop a line or rename a file is failing at the one thing it is for.
+//
+// Which costs a path carrying one of these its round trip: it will not open in an editor and will
+// not match as an -exclude pattern. That is worth it three times over. Such a path is corrupted
+// visibly rather than silently, so the reader can see there is something to look at; most of this
+// set breaks a line-oriented consumer anyway, since Cc holds the newline and U+2028 ends a line for
+// a JSON reader; and a module path cannot contain any of it — Go forbids it — so only a file name
+// could, and none does. go vet prints its positions raw, but its input is source you have already
+// compiled, where this is a profile that may have come from a CI artifact or a bug report.
 //
 // What counts as obeyed is wider than the control characters, and obeyed reports it.
 func sanitize(label string) string {
