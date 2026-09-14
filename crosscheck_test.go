@@ -348,7 +348,8 @@ func TestRowsAndMissesAccountForTheSameFiles(t *testing.T) {
 			// well, because it is the other half of that decision.
 			for _, depth := range []prettycov.Depth{0, 1, 2, 3, prettycov.DepthAll} {
 				for _, bar := range []*float64{nil, at(100), at(90), at(50)} {
-					opts := prettycov.Options{Depth: depth, Files: true, HideCovered: bar}
+					opts := missOpts(depth)
+					opts.HideCovered = bar
 					drawn, missed := fileRowsWithMisses(tree, files, opts), missedFiles(tree, opts)
 
 					// One way at every depth: a file row the report draws over unrun statements
@@ -416,9 +417,9 @@ func missedFiles(tree *prettycov.PathTree, opts prettycov.Options) []string {
 // unrun statements has a position for a miss to name. Left alone when there are blocks already,
 // which is every profile read off disk.
 func withUnrunBlocks(files []prettycov.FileCoverage) []prettycov.FileCoverage {
-	out := make([]prettycov.FileCoverage, len(files))
+	out := slices.Clone(files)
 
-	for i, f := range files {
+	for i, f := range out {
 		if len(f.Blocks) == 0 {
 			if f.Coverage.Covered > 0 {
 				f.Blocks = append(f.Blocks, covered(1, 1, 1, f.Coverage.Covered))

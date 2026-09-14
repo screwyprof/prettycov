@@ -255,12 +255,14 @@ func TestProcessAddsUpAFileNamedTwice(t *testing.T) {
 	require.NotNil(t, node)
 	assert.Equal(t, prettycov.CoverageStats{Covered: 1, Uncovered: 3}, node.Files["a.go"].Coverage)
 
-	// And the second file's blocks are there beside the first's, which only the positions can show.
-	misses := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true})
-	assert.Equal(t, []prettycov.Miss{
-		{File: "m/a.go", Line: 9, Col: 2, EndLine: 10, Statements: 1},
-		{File: "m/a.go", Line: 40, Col: 2, EndLine: 41, Statements: 2},
-	}, misses)
+	// And the second file's blocks are appended to the first's rather than replacing them, in the
+	// order they arrived. Asserted on the leaf, not through a report: this is what add does, and a
+	// report would only show it once merging and the depth had had their say.
+	assert.Equal(t, []prettycov.Block{
+		{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 1}},
+		{Line: 9, Col: 2, EndLine: 10, Coverage: prettycov.CoverageStats{Uncovered: 1}},
+		{Line: 40, Col: 2, EndLine: 41, Coverage: prettycov.CoverageStats{Uncovered: 2}},
+	}, node.Files["a.go"].Blocks)
 }
 
 func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {

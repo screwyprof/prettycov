@@ -281,8 +281,9 @@ leaves out the ones in subtrees already at the bar.
 either way.
 
 `-exclude` removes them outright, since it acts on the profile before any of this — and it takes the
-same `file:line:col` this prints, so a position you judge unreachable can be pasted back as a
-pattern.
+same `file:line:col` spelling, so a position you judge unreachable pastes back as a pattern. It
+matches the paths the profile holds, so paste the position as printed when you are not renaming, and
+the profile's own path when you are.
 
 ## Stop counting code you never meant to test
 

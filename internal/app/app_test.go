@@ -1265,11 +1265,8 @@ func TestRunMisses(t *testing.T) {
 	// covered/c.go and deep/b.go are in the profile and in none of these: a covered block is not a
 	// miss. The two blocks of deep/a.go abut, so they are one position carrying both statements.
 	//
-	// A file is an entry of the package holding it, as -files draws it, so own.go is a row at depth
-	// 1 and deep/a.go one at depth 2.
-	//
-	// A file sits a level below the package holding it, as -files draws it, so own.go arrives at
-	// depth 1 and deep/a.go at depth 2 — which the whole tree covers.
+	// A file is an entry of the package holding it, so it sits a level below that package: own.go
+	// is a row at depth 1 and deep/a.go one at depth 2.
 	const (
 		whole = "m/deep/a.go:9:2: 2 uncovered\n" +
 			"m/own.go:5:2: 1 uncovered\n"

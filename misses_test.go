@@ -10,13 +10,8 @@ import (
 	"github.com/screwyprof/prettycov"
 )
 
-// withBlocks lives in exclude_test.go, which needed the same fixture first.
-//
-// uncovered builds one unrun block of the profile, the way cmd/cover writes it: a start position,
-// an end line, and the statements between them. Distinct from exclude_test.go's block, which takes
-// a covered count and no end — that one predates Misses needing to know where a block stops.
-// missOpts is how the CLI runs this mode: a miss is a file position, and a file is a row only when
-// -files draws one, so -misses turns it on before anything is filtered.
+// missOpts is how the CLI runs this mode: a miss is a file position, and a list of them is made of
+// files, so the output includes them whatever -files says about the tree's.
 func missOpts(depth prettycov.Depth) prettycov.Options {
 	return prettycov.Options{Depth: depth, Files: true}
 }
@@ -30,8 +25,7 @@ func missPaths(misses []prettycov.Miss) []string {
 	return out
 }
 
-// covered is uncovered's other half. exclude_test.go's block builds one too, but without an end —
-// that helper predates Misses needing to know where a block stops.
+// covered is uncovered's other half.
 func covered(line, col, endLine, statements int) prettycov.Block {
 	return prettycov.Block{
 		Line: line, Col: col, EndLine: endLine,
@@ -39,6 +33,9 @@ func covered(line, col, endLine, statements int) prettycov.Block {
 	}
 }
 
+// uncovered builds one unrun block the way cmd/cover writes it: a start position, an end line, and
+// the statements between them. Distinct from exclude_test.go's block, which takes a covered count
+// and no end — that one predates Misses needing to know where a block stops.
 func uncovered(line, col, endLine, statements int) prettycov.Block {
 	return prettycov.Block{
 		Line: line, Col: col, EndLine: endLine,
@@ -186,10 +183,6 @@ func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 	opts.HideCovered = at(90)
 
 	assert.Equal(t, []string{"m/logger/logger.go"}, missPaths(prettycov.Misses(tree, opts)))
-
-	// And the bar is asked of the file, not only of the package holding it: logger/ is 96.88 and
-	// below the bar only because of logger.go.
-	assert.NotContains(t, missPaths(prettycov.Misses(tree, opts)), "m/logger/middleware.go")
 }
 
 // A package holding one file merges into a single row, and that row is the file — so the node the
@@ -205,7 +198,7 @@ func TestMissesIncludeACollapsedFileRow(t *testing.T) {
 		withBlocks("m/other.go", uncovered(9, 2, 10, 1)),
 	})
 
-	got := missPaths(prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}))
+	got := missPaths(prettycov.Misses(tree, missOpts(prettycov.DepthAll)))
 
 	assert.Equal(t, []string{"m/other.go", "m/store/pgxstore/store.go"}, got,
 		"the merged row carries its own blocks; the bare file is listed by the package holding it")

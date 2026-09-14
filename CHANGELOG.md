@@ -41,6 +41,11 @@ tags.
   The paths are the profile's, which names packages rather than files on disk, so `-new=.` is what
   makes them openable.
 
+- **Breaking:** `-fail-under=100` no longer passes a profile that is one statement short of complete.
+  The gate compared the ratio while the report asks the counts, and past a certain size the two
+  differ: a profile missing one statement of 2^56 divides to exactly 100 in float64, so the gate
+  passed a run whose own report read `99.99`. Both ask `CoverageStats.AtLeast` now.
+
 ### Go API
 
 - `Misses` and `DisplayMisses` are the second printer over the same traversal as `Rows` and
@@ -53,6 +58,9 @@ tags.
   naming a line means the block that opens there however far it runs.
 
 - `PathTree.Blocks` holds a file leaf's blocks, so the tree can answer where as well as how much.
+
+- `CoverageStats.AtLeast` grades counts against a threshold, including the 100 case where the answer
+  is about the counts rather than the ratio.
 
 ## [0.11.0] — 2026-09-12
 

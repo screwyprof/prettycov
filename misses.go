@@ -41,10 +41,6 @@ type Miss struct {
 // leaves out the ones already at the bar. -files is not among them — a miss is a file position
 // whether or not a file is drawn as a row.
 //
-// -files is not read. The tree holds the files either way; that flag adds them to the tree's output,
-// and a list of positions is made of them — so this asks for them and leaves the flag to the report
-// it is about.
-//
 // -exclude and a renamed root are not read here. They act on the profile before the tree is built,
 // so an excluded block is not a miss and a shortened path is what these carry — which is what makes
 // them useful, since the profile's own module paths do not resolve on disk and `-new=.` makes them
@@ -53,10 +49,15 @@ type Miss struct {
 // A block declaring no statements is not a miss. cmd/cover emits them, and there is nothing in one
 // to cover: three of delegator's thirty-five uncovered blocks are of that kind, leaving 32.
 func Misses(tree *PathTree, opts Options) []Miss {
+	// Grown rather than sized. Counting the unrun blocks first saves twelve milliseconds and ninety
+	// megabytes on a synthetic profile of 30,000 files at 5% coverage, and nothing on any real one —
+	// the worst measured here was 1,344 regions, which is eleven regrowths. The count is only a
+	// capacity, so nothing observes whether it is right, and a branch no test can be wrong about is
+	// worse than the regrowths.
 	var misses []Miss
 
 	for _, d := range prepare(tree, opts, true) {
-		misses = merge(misses, d.Path, d.Node.Blocks)
+		misses = merge(misses, d.Path, d.Blocks)
 	}
 
 	// Sorted by position, so the list is diffable between runs and reads down a file the way the

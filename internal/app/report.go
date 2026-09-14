@@ -258,6 +258,11 @@ func plural(n int, thing string) string {
 
 // checkThreshold grades the total against want, which is nil when no gate was asked for.
 //
+// CoverageStats answers whether the total is at the bar, rather than this comparing the ratio
+// itself: at 100 the two differ. A profile one statement short of complete divides to exactly 100
+// in float64 once the counts are large enough, so comparing ratios passed -fail-under=100 for a
+// report that reads 99.99 — the gate and the figure beside it disagreeing about the same run.
+//
 // There is always a number by here: showReport refuses a profile with nothing to cover before
 // either caller reaches this, and says what emptied it, which this cannot.
 func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) int {
@@ -265,9 +270,9 @@ func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) i
 		return exitOK
 	}
 
-	pct, _ := tree.Coverage.Percentage()
+	if !tree.Coverage.AtLeast(*want) {
+		pct, _ := tree.Coverage.Percentage()
 
-	if pct.Float() < *want {
 		// Percentage renders the coverage figure, as it does everywhere else, so this message and
 		// the report cannot show different numbers for the same thing.
 		//

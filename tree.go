@@ -2,6 +2,7 @@ package prettycov
 
 import (
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -64,9 +65,15 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// assembling its own can; cap == len makes that one copy rather than write into the window.
 	if leaf.Blocks == nil {
 		leaf.Blocks = blocks
-	} else {
-		leaf.Blocks = append(leaf.Blocks, blocks...)
+
+		return
 	}
+
+	// Clipped first, so appending allocates rather than writing into whatever the caller's slice
+	// shares its array with. The parser's windows are already capped and this is a no-op for them;
+	// a caller slabbing its own blocks and naming one file twice would otherwise have the second
+	// add overwrite the blocks of the file after it.
+	leaf.Blocks = append(slices.Clip(leaf.Blocks), blocks...)
 }
 
 // child returns the node called name in the given map, creating both if this is the first time it

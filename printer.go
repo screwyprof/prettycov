@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"cmp"
 	"io"
+	"iter"
 	"path"
 	"slices"
 	"strconv"
@@ -70,7 +71,7 @@ func Rows(tree *PathTree, opts Options) []Row {
 			Prefix:   d.Prefix,
 			Label:    d.Label,
 			Level:    int(d.Level),
-			Coverage: d.Node.Coverage,
+			Coverage: d.Coverage,
 		})
 	}
 
@@ -89,7 +90,7 @@ func Rows(tree *PathTree, opts Options) []Row {
 // varies is the output. -files puts them in the tree's, and a list of positions is made of them, so
 // the two renderers ask for different things without either of them filtering.
 func prepare(tree *PathTree, opts Options, withFiles bool) []drawn {
-	b := walker{opts: opts, withFiles: withFiles}
+	b := walker{depth: opts.Depth, withFiles: withFiles}
 	if opts.HideCovered != nil {
 		b.hiding, b.hideAt = true, *opts.HideCovered
 	}
@@ -127,24 +128,23 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) int {
 	return len(rows)
 }
 
-// drawn is one node the traversal decided to show, and everything a visitor needs to shape it: the
-// node itself, the label after any run below it was merged in, how deep it sits, and the indent it
-// would be drawn behind.
+// drawn is one row the traversal decided on, and everything a renderer needs to shape it.
 //
-// The node, not a narrower payload. A visitor reads the part it cares about — Rows the rolled-up
-// Coverage, Misses the Blocks of the node's own Files — and those are different parts, so narrowing
-// this would either carry both and have each ignore half, or forbid what Misses needs: at -depth=1
-// the misses of `scraper` are in its own file leaves, which -files leaves undrawn.
+// What the renderers read, not the node they read it from: Rows takes Coverage, Misses takes
+// Blocks. Carrying the *PathTree instead would hand every renderer the Children and Files maps
+// below it, so re-deriving the subtree stage 4 has already decided against would be one field
+// access away and nothing would catch it — which is the way the two of them came to disagree twice.
 type drawn struct {
-	Node  *PathTree
-	Label string
+	// Coverage is the node's, rolled up. Blocks is empty unless the row stands for a file.
+	Coverage CoverageStats
+	Blocks   []Block
+	Label    string
 	// Path is Label with every ancestor's label in front of it, which Label alone is not: a row is
 	// drawn with its own segment, so `httpkit` says nothing about the `pkg` above it. Misses needs
 	// the whole path, because what it prints has to name a file an editor can open.
 	Path  string
 	Level Depth
-	// Prefix is the indent and glyph placing a row, and is empty for a node the tree does not draw
-	// — a file leaf that -files leaves out, which only a visitor asking for leaves ever sees.
+	// Prefix is the indent and glyph placing the row.
 	Prefix string
 }
 
@@ -154,18 +154,20 @@ type drawn struct {
 // It decides which nodes are visited and nothing about what they look like. One implementation of
 // that decision, because two would drift — collapse and the depth cut-off already disagreed once,
 // and every emitter added is another chance at it.
+// Every field is one the traversal reads. Options is deliberately not among them: -files must be
+// asked as withFiles, which is the output's question rather than the flag's, and leaving the struct
+// in scope would put the wrong answer one field access away on every line of the walk.
 type walker struct {
-	opts Options
-	out  []drawn
+	out []drawn
 
+	depth Depth
+	// withFiles is the output's, not the options': see prepare.
+	withFiles bool
 	// hiding says -hide-covered was given at all and hideAt is the threshold, read once rather than
 	// through the pointer at every node. What "at least this much" means is CoverageStats', not
 	// ours: the answer at 100 is about the counts, not the ratio.
 	hiding bool
 	hideAt float64
-
-	// withFiles is the output's, not the options': see prepare.
-	withFiles bool
 }
 
 // entry is one row to draw: the node, and the label it will carry once any run below it has been
@@ -179,10 +181,8 @@ type entry struct {
 	node *PathTree
 }
 
-// visible is what to draw below tree, sorted — map order is randomised and this output gets diffed
-// between runs. Files are simply not enumerated when they are not being shown, so they cost no
-// level and no glyph rather than being filtered out later: without that the last package under a
-// directory would draw the branch glyph of a middle one whenever a file sorted after it.
+// visible is what to draw below tree: the entries, minus the ones already at the bar, sorted — map
+// order is randomised and this output gets diffed between runs.
 func (b *walker) visible(tree *PathTree, level Depth) []entry {
 	entries := b.entries(tree)
 
@@ -227,11 +227,10 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 //
 // An ancestor re-walks what its child just did, so this is O(n·depth) along the surviving path
 // rather than O(n) — a hidden subtree leaves the walk at once and a node under the bar stops at its
-// own check. Measured on a 30,000-file tree at a realistic depth it costs 1.8ms against the 15ms of
-// rendering it saves; it only overtakes that past roughly a hundred levels of nesting, which no Go
-// repository has. At the default threshold it barely recurses at all: Coverage is rolled up, so a
-// node with no uncovered statement has no descendant with one, and the answer comes from the first
-// check.
+// own check. On a 30,000-file tree the re-walk costs 0.09ms against 0.29ms of rendering saved at 85%
+// coverage, and 3.7ms against about 7ms at 99%: it earns its keep where there is most to hide, which
+// is where the flag is for. At the default threshold it barely recurses at all — Coverage is rolled
+// up, so a node with no uncovered statement has no descendant with one.
 func (b *walker) allCovered(node *PathTree, level Depth) bool {
 	if !node.Coverage.AtLeast(b.hideAt) {
 		return false
@@ -242,15 +241,14 @@ func (b *walker) allCovered(node *PathTree, level Depth) bool {
 		return true
 	}
 
-	// Collapsed the way visible collapses, so a level here is a row there. A run of directories
-	// each holding nothing but the next is one row, and walking it a node at a time spent the
-	// budget several levels early — the recursion then stopped above rows the report does draw and
-	// called the subtree covered. Single-child directories are the norm in Go, so that hid real
-	// gaps: `chain/inner` over a `low` at 0.00 went at -depth=2, which draws it.
 	// The same rows the report would draw here, so a level spent below is a level the report spends
-	// too. A file among them has nothing under it, so the recursion stops at its own bar check.
-	for _, e := range b.entries(node) {
-		if !b.allCovered(e.node, level+1) {
+	// too. Walking the tree a node at a time instead spent the budget several levels early wherever
+	// a run of directories collapses into one row — and single-child directories are the norm in Go
+	// — so the recursion stopped above rows the report does draw and called the subtree covered.
+	//
+	// A file among them has nothing under it, so the recursion stops at its own bar check.
+	for child := range b.below(node) {
+		if !b.allCovered(child.node, level+1) {
 			return false
 		}
 	}
@@ -263,7 +261,7 @@ func (b *walker) allCovered(node *PathTree, level Depth) bool {
 // drawsAt reports whether the report puts rows at this level. One definition, because walk asks it
 // of the level it is about to draw and allCovered of the level below the one it is judging, and the
 // two drifting is how a collapsed run came to cost allCovered more levels than it cost the report.
-func (b *walker) drawsAt(level Depth) bool { return level <= b.opts.Depth }
+func (b *walker) drawsAt(level Depth) bool { return level <= b.depth }
 
 // entries is everything below tree that could be a row: its directories with any run below them
 // merged in, and its files when -files draws them. In map order, and without the bar — whether a
@@ -273,34 +271,63 @@ func (b *walker) drawsAt(level Depth) bool { return level <= b.opts.Depth }
 // the same decision written twice is how the depth cut-off and collapse came to disagree once
 // already: allCovered spent a level per directory where the report spends one per row.
 func (b *walker) entries(tree *PathTree) []entry {
-	out := make([]entry, 0, len(tree.Children)+len(tree.Files))
-
-	for name, node := range tree.Children {
-		label, merged := collapse(name, node, b.withFiles)
-
-		// The filesystem root is the one node with no name of its own: an absolute path splits to
-		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
-		// there is something below to fold. When there is not — a root holding two files — the
-		// label is left empty, and a blank row says nothing. Decided here rather than at the row,
-		// so the sort in visible sees the label the reader will: "/" belongs after ".", and sorting
-		// on the empty string put it first.
-		if label == "" {
-			label = "/"
-		}
-
-		out = append(out, entry{label: sanitize(label), name: name, node: merged})
+	size := len(tree.Children)
+	if b.withFiles {
+		size += len(tree.Files)
 	}
 
-	// Files are simply not enumerated when they are not being shown, so they cost no level and no
-	// glyph rather than being filtered out later: without that the last package under a directory
-	// would draw the branch glyph of a middle one whenever a file sorted after it.
-	if b.withFiles {
-		for name, node := range tree.Files {
-			out = append(out, entry{label: sanitize(name), name: name, node: node})
-		}
+	out := make([]entry, 0, size)
+
+	for e := range b.below(tree) {
+		// Sanitised here and not in below: a replaced rune sorts where the replacement does, so the
+		// label has to be the drawn one before visible sorts it. allCovered reads no label, and the
+		// scan is per rune of every name in the profile.
+		e.label = sanitize(e.label)
+		out = append(out, e)
 	}
 
 	return out
+}
+
+// below yields what the node holds that could be a row: its directories with any run beneath them
+// merged in, and its files when the output includes them.
+//
+// The one place collapse and the files gate are read. An iterator rather than a slice because
+// allCovered walks this for every node it judges and reads only the nodes — materialising there
+// cost twelve times the bytes of the walk it was judging, for labels it never looks at.
+func (b *walker) below(tree *PathTree) iter.Seq[entry] {
+	return func(yield func(entry) bool) {
+		for name, node := range tree.Children {
+			label, merged := collapse(name, node, b.withFiles)
+
+			// The filesystem root is the one node with no name of its own: an absolute path splits
+			// to a leading empty component, which collapse turns back into the "/" of "/home/x"
+			// whenever there is something below to fold. When there is not — a root holding two
+			// files — the label is left empty, and a blank row says nothing. Decided here rather
+			// than at the row, so the sort in visible sees the label the reader will: "/" belongs
+			// after ".", and sorting on the empty string put it first.
+			if label == "" {
+				label = "/"
+			}
+
+			if !yield(entry{label: label, name: name, node: merged}) {
+				return
+			}
+		}
+
+		// Files are simply not enumerated when they are not being shown, so they cost no level and
+		// no glyph rather than being filtered out later: without that the last package under a
+		// directory would draw the branch glyph of a middle one whenever a file sorted after it.
+		if !b.withFiles {
+			return
+		}
+
+		for name, node := range tree.Files {
+			if !yield(entry{label: name, name: name, node: node}) {
+				return
+			}
+		}
+	}
 }
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
@@ -317,10 +344,11 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		here := path.Join(parent, e.label)
 
 		b.out = append(b.out, drawn{
-			Node:  e.node,
-			Label: e.label,
-			Path:  here,
-			Level: level,
+			Coverage: e.node.Coverage,
+			Blocks:   e.node.Blocks,
+			Label:    e.label,
+			Path:     here,
+			Level:    level,
 			// string() copies, so the visitor owns its prefix and padding stays reusable. Built
 			// here even for a visitor that ignores it: a row's indent depends on whether every
 			// ancestor was a last child, which cannot be rebuilt from the level alone.
