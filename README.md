@@ -311,6 +311,12 @@ same `file:line:col` spelling, so a position you judge unreachable pastes back a
 matches the paths the profile holds, so paste the position as printed when you are not renaming, and
 the profile's own path when you are.
 
+What it matches is the block that opens there, not the whole region. A position is the *first* block
+of a fold while the count beside it is the region's, so excluding one that reads `2 uncovered` takes
+one statement out and leaves the next block listed at its own position — repeat until the region is
+gone, or aim a pattern at the file. `-exclude` works in blocks, which is what makes a coordinate mean
+one thing.
+
 ## Stop counting code you never meant to test
 
 `-exclude` drops files whose path matches a regexp, before anything is totalled — generated code,

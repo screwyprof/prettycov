@@ -134,9 +134,15 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 			//
 			// Not by one that starts inside the region. cmd/cover nests blocks, and a region opened
 			// by a single 10.2,20.x already spans its own whole range — closing there would leave
-			// the next block to open a second region inside the first, and nothing downstream
-			// unpicks overlapping ranges. An enclosing run block opens at or before the region and
-			// is walked before it exists, so it never reaches this at all.
+			// the next block to open a second region nested in the first, and nothing downstream
+			// unpicks that. An enclosing run block opens at or before the region and is walked
+			// before it exists, so it never reaches this at all.
+			//
+			// At or past, not past: two regions may share the line between them, and that is not
+			// the same fault. A block's end is the coordinate after it, so `} else if d {` is the
+			// end of one block and the start of the next on one line — 4.7,7.3 and 7.14,10.3 give
+			// regions 4-7 and 7-10. Refusing to close there would fold them into 4-10 across the
+			// covered condition between, which is the fault. Neither contains the other.
 			if open >= 0 && block.Line >= out[open].EndLine {
 				open = -1
 			}
@@ -209,6 +215,11 @@ func DisplayMisses(w io.Writer, tree *PathTree, opts Options) int {
 		// matching and this. The path is the drawn one, so a position pastes back as an -exclude
 		// pattern for every path a Go repository actually holds — and for one carrying a rune a
 		// terminal would obey it does not, which sanitize weighs and takes.
+		//
+		// What it matches is the block that opens there, not the region: this names the first
+		// block of a fold and the count beside it is the whole region's, so excluding a position
+		// reading "2 uncovered" takes one statement out and leaves the next block listed at its
+		// own position. -exclude works in blocks, which is what makes a coordinate mean one thing.
 		_, _ = buf.WriteString(position(m.File, m.Line, m.Col))
 		_, _ = buf.WriteString(": ")
 		_, _ = buf.WriteString(strconv.Itoa(m.Statements))

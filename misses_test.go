@@ -168,7 +168,8 @@ func TestMissesFoldPastTheLargestLineNumber(t *testing.T) {
 // A covered block inside an open region does not close it. The region came from a single block
 // spanning its whole range, so it already holds that covered statement — closing here would leave
 // the next block to open a second region nested in the first, and Misses only sorts, so nothing
-// downstream unpicks overlapping ranges.
+// downstream unpicks that. Nesting is the fault; sharing the line between two regions is not, and
+// TestMissesShareTheLineBetweenTwoRegions has the case cmd/cover actually emits.
 func TestMissesDoNotOverlapWhenACoveredBlockSitsInsideARegion(t *testing.T) {
 	t.Parallel()
 
@@ -187,6 +188,33 @@ func TestMissesDoNotOverlapWhenACoveredBlockSitsInsideARegion(t *testing.T) {
 	assert.Equal(t, []prettycov.Miss{
 		{File: "m/a.go", Line: 10, Col: 2, EndLine: 20, Statements: 2},
 	}, got, "one region; the alternative is 10-20 with 15-16 nested inside it")
+}
+
+// `} else if d {` is the end of one block and the start of the next on one line, because a block's
+// end is the coordinate after it. So two regions meet on that line, and neither contains the other.
+// Closing only past the end instead would fold them into one region spanning the covered condition
+// between them, which is the fault this guards; meeting on a line is not.
+//
+// From a profile go test -cover produced for an if/else-if/else where only the last arm runs.
+func TestMissesShareTheLineBetweenTwoRegions(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{{
+		File:     "m/o.go",
+		Coverage: prettycov.CoverageStats{Covered: 1, Uncovered: 4},
+		Blocks: []prettycov.Block{
+			uncovered(4, 7, 7, 2),   // 4.7,7.3   — ends on the line the next opens
+			covered(7, 8, 7, 1),     // 7.8,7.14  — the else-if condition, run
+			uncovered(7, 14, 10, 2), // 7.14,10.3
+		},
+	}})
+
+	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
+
+	assert.Equal(t, []prettycov.Miss{
+		{File: "m/o.go", Line: 4, Col: 7, EndLine: 7, Statements: 2},
+		{File: "m/o.go", Line: 7, Col: 14, EndLine: 10, Statements: 2},
+	}, got, "two regions meeting on line 7, not one spanning the covered condition")
 }
 
 // cmd/cover nests blocks: a function's run block spans the branch blocks inside it, so a covered
