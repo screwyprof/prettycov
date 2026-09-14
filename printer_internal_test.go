@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Internal, because the glyphs are how this package draws a tree, not something a caller picks.
@@ -49,21 +50,16 @@ func TestPrepareStopsWhenTheConsumerDoes(t *testing.T) {
 		{File: "m/b/two.go", Coverage: CoverageStats{Covered: 1}},
 	})
 
-	opts := Options{Depth: DepthAll, Files: true}
+	// Files is not in this: prepare reads Depth and HideCovered from the options, and takes files
+	// from shape. Setting it here would suggest a coupling the commit exists to remove.
+	opts := Options{Depth: DepthAll}
 
 	var all []string
 	for d := range prepare(tree, opts, shape{files: true}) {
 		all = append(all, d.Label)
 	}
 
-	require := func(cond bool, msg string) {
-		t.Helper()
-
-		if !cond {
-			t.Fatal(msg)
-		}
-	}
-	require(len(all) > 3, "fixture needs rows at more than one level")
+	require.Greater(t, len(all), 3, "fixture needs rows at more than one level")
 
 	for stop := 1; stop <= len(all); stop++ {
 		var got []string

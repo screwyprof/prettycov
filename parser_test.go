@@ -153,11 +153,13 @@ func TestCoverageStatsAreComparable(t *testing.T) {
 	assert.Equal(t, first, second, "two identical parses must compare equal")
 }
 
-func writeProfile(t *testing.T, content string) string {
-	t.Helper()
+// testing.TB rather than *testing.T, so a benchmark can write a fixture too. Every caller passes a
+// *testing.T and is unaffected.
+func writeProfile(tb testing.TB, content string) string {
+	tb.Helper()
 
-	path := filepath.Join(t.TempDir(), "coverage.out")
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	path := filepath.Join(tb.TempDir(), "coverage.out")
+	require.NoError(tb, os.WriteFile(path, []byte(content), 0o600))
 
 	return path
 }
@@ -190,10 +192,9 @@ func TestParseProfileKeepsBlockPositions(t *testing.T) {
 }
 
 func BenchmarkParseProfile(b *testing.B) {
-	path := writeSyntheticProfile(b, benchFiles)
+	path := writeSyntheticProfile(b)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		if _, err := prettycov.ParseProfile(path); err != nil {

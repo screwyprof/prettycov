@@ -63,7 +63,11 @@ type Row struct {
 // which rows there are and ignores the rest. Pure: no writer, no colour, no terminal. DisplayTree
 // is the one that decides how a Row looks.
 func Rows(tree *PathTree, opts Options) []Row {
-	var rows []Row
+	// Empty rather than nil, as it has always been: this is exported, and a caller marshalling the
+	// result wants [] for a report with no rows rather than null. An empty slice costs no
+	// allocation, so the only thing the lost presize costs is the growth, which nothing can size
+	// now that the rows arrive one at a time.
+	rows := []Row{}
 
 	for d := range prepare(tree, opts, shape{files: opts.Files}) {
 		rows = append(rows, d.Row)
@@ -104,7 +108,7 @@ type shape struct {
 // cannot filter, because all they can do with this is receive.
 func prepare(tree *PathTree, opts Options, want shape) iter.Seq[drawn] {
 	return func(yield func(drawn) bool) {
-		b := walker{depth: opts.Depth, withFiles: want.files, withPaths: want.positions, yield: yield}
+		b := walker{shape: want, depth: opts.Depth, yield: yield}
 		if opts.HideCovered != nil {
 			b.hiding, b.hideAt = true, *opts.HideCovered
 		}
@@ -122,23 +126,28 @@ func prepare(tree *PathTree, opts Options, want shape) iter.Seq[drawn] {
 // of directories is the one row it renders as.
 //
 // The count is there so a caller can tell an empty report from a full one without building every
-// row a second time to ask — which is what asking Rows first amounted to, and it doubled the work
-// of the run on the one path where a caller cares.
+// row a second time to ask.
+//
+// Counted while writing rather than taken from Rows, which would hold every row of the report in
+// memory to hand back a length: this is the path the CLI takes, and on a 30,000-file profile at
+// -depth=max the slice was three quarters of what the whole render allocated.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) int {
 	buf := bufio.NewWriter(w)
+	drawn := 0
 
-	rows := Rows(tree, opts)
-	for _, row := range rows {
-		_, _ = buf.WriteString(row.Prefix)
-		_, _ = buf.WriteString(row.Label)
+	for d := range prepare(tree, opts, shape{files: opts.Files}) {
+		_, _ = buf.WriteString(d.Prefix)
+		_, _ = buf.WriteString(d.Label)
 		_, _ = buf.WriteString(" - ")
-		_, _ = buf.WriteString(formatCoverage(row.Coverage, opts))
+		_, _ = buf.WriteString(formatCoverage(d.Coverage, opts))
 		_ = buf.WriteByte('\n')
+
+		drawn++
 	}
 
 	_ = buf.Flush()
 
-	return len(rows)
+	return drawn
 }
 
 // drawn is one row the traversal decided on, and everything a renderer needs to shape it.
@@ -167,18 +176,15 @@ type drawn struct {
 // that decision, because two would drift — collapse and the depth cut-off already disagreed once,
 // and every emitter added is another chance at it.
 // Every field is one the traversal reads. Options is deliberately not among them: -files must be
-// asked as withFiles, which is the output's question rather than the flag's, and leaving the struct
-// in scope would put the wrong answer one field access away on every line of the walk.
+// asked as shape, which is the output's question rather than the flag's, and leaving the struct in
+// scope would put the wrong answer one field access away on every line of the walk.
 type walker struct {
-	// yield takes each row as it is decided. It reports false when the consumer has stopped, which
-	// unwinds the recursion through stopped rather than by returning up the stack.
-	yield   func(drawn) bool
-	stopped bool
+	// yield takes each row as it is decided, and reports false when the consumer has stopped.
+	yield func(drawn) bool
 
 	depth Depth
-	// withFiles and withPaths are the output's questions, not the options': see prepare and shape.
-	withFiles bool
-	withPaths bool
+	// shape is the output's question, not the options': see prepare.
+	shape
 	// hiding says -hide-covered was given at all and hideAt is the threshold, read once rather than
 	// through the pointer at every node. What "at least this much" means is CoverageStats', not
 	// ours: the answer at 100 is about the counts, not the ratio.
@@ -202,7 +208,7 @@ type entry struct {
 // between runs.
 func (b *walker) visible(tree *PathTree, level Depth) []entry {
 	size := len(tree.Children)
-	if b.withFiles {
+	if b.files {
 		size += len(tree.Files)
 	}
 
@@ -301,7 +307,7 @@ func (b *walker) drawsAt(level Depth) bool { return level <= b.depth }
 func (b *walker) below(tree *PathTree) iter.Seq[entry] {
 	return func(yield func(entry) bool) {
 		for name, node := range tree.Children {
-			label, merged := collapse(name, node, b.withFiles)
+			label, merged := collapse(name, node, b.files)
 
 			// The filesystem root is the one node with no name of its own: an absolute path splits
 			// to a leading empty component, which collapse turns back into the "/" of "/home/x"
@@ -321,7 +327,7 @@ func (b *walker) below(tree *PathTree) iter.Seq[entry] {
 		// Files are simply not enumerated when they are not being shown, so they cost no level and
 		// no glyph rather than being filtered out later: without that the last package under a
 		// directory would draw the branch glyph of a middle one whenever a file sorted after it.
-		if !b.withFiles {
+		if !b.files {
 			return
 		}
 
@@ -335,9 +341,13 @@ func (b *walker) below(tree *PathTree) iter.Seq[entry] {
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
 // level 0 means — it is not tracked separately, since a second flag can only drift from it.
-func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte) {
+//
+// It reports whether to carry on. A consumer that stops has to stop every ancestor's loop and not
+// only the one that yielded, because range-over-func panics on a yield after the body has been
+// left; saying so in the return value is what makes the compiler ask at each call site.
+func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte) bool {
 	if tree == nil || !b.drawsAt(level) {
-		return
+		return true
 	}
 
 	entries := b.visible(tree, level)
@@ -349,8 +359,15 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		// parent's plus a segment — where a prefix is needed only by the row it places.
 		var here, prefix string
 
-		if b.withPaths {
-			here = path.Join(parent, e.label)
+		if b.positions {
+			// join, not path.Join: the package's own spelling allocates once where Join builds a
+			// buffer and then a string, and this runs per row. They agree everywhere but the top,
+			// where join is right for the filesystem root — join("", "a.go") is "/a.go" — and this
+			// parent is empty because there is nothing above it.
+			here = e.label
+			if parent != "" {
+				here = join(parent, e.label)
+			}
 		} else {
 			// string() copies, so the visitor owns its prefix and padding stays reusable. A row's
 			// indent depends on whether every ancestor was a last child, which cannot be rebuilt
@@ -368,9 +385,7 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 			Blocks: e.node.Blocks,
 			Path:   here,
 		}) {
-			b.stopped = true
-
-			return
+			return false
 		}
 
 		// Grown for the child and truncated after it, so siblings share one buffer instead of each
@@ -378,18 +393,15 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		// before the next sibling overwrites it.
 		depth := len(padding)
 		padding = append(padding, symbol(root, childSymbol(at, len(entries)))...)
-		b.walk(e.node, level+1, here, padding)
+		carryOn := b.walk(e.node, level+1, here, padding)
 		padding = padding[:depth]
 
-		// Asked after the descent, which is the only place it needs asking: a consumer that stopped
-		// inside this child unwinds through every ancestor's loop, and each would otherwise carry
-		// on to its next sibling. range-over-func panics on a yield after the loop has been left,
-		// so this is the difference between stopping and crashing. Nothing tests it on entry —
-		// walk is never called with it set, because this returns first.
-		if b.stopped {
-			return
+		if !carryOn {
+			return false
 		}
 	}
+
+	return true
 }
 
 // collapse merges a run of nodes that each hold nothing but the next one into a single row, so a

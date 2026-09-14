@@ -430,14 +430,13 @@ func TestExcludeDropsAFileLeftWithNoStatements(t *testing.T) {
 // Two patterns, one matching whole files and one matching block coordinates, because Exclude asks
 // every pattern about both spellings of every block and the coordinate path is the hot one.
 func BenchmarkExclude(b *testing.B) {
-	files := syntheticProfile(b, benchFiles)
+	files := syntheticProfile(b)
 	patterns := []*regexp.Regexp{
 		regexp.MustCompile(`/sub7/`),
 		regexp.MustCompile(`file1\d\d\.go:3`),
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		_, _ = prettycov.Exclude(files, patterns)

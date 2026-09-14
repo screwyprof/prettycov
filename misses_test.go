@@ -455,11 +455,10 @@ func TestDisplayMissesCountsNothingWhenFullyCovered(t *testing.T) {
 
 // The same traversal as the tree benchmarks, plus folding every unrun block in the profile.
 func BenchmarkMisses(b *testing.B) {
-	tree := prettycov.Process(syntheticProfile(b, benchFiles))
+	tree := prettycov.Process(syntheticProfile(b))
 	opts := missOpts(prettycov.DepthAll)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		_ = prettycov.Misses(tree, opts)
@@ -467,11 +466,10 @@ func BenchmarkMisses(b *testing.B) {
 }
 
 func BenchmarkDisplayMisses(b *testing.B) {
-	tree := prettycov.Process(syntheticProfile(b, benchFiles))
+	tree := prettycov.Process(syntheticProfile(b))
 	opts := missOpts(prettycov.DepthAll)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		prettycov.DisplayMisses(io.Discard, tree, opts)

@@ -218,7 +218,9 @@ lint-all: require-golangci ## run linters
 #
 # gobco prints the same sentence for each package and nothing in it says which, so the two condition
 # lines are labelled here. That is the one thing copying by hand could not get wrong and reading the
-# output could.
+# output could — and the labels are positional, so the count is asserted: cover-branches swallows a
+# failed gobco run with `|| true`, and one surviving line would otherwise be labelled "# root"
+# whichever package it came from, in a block whose whole purpose is to be pasted somewhere.
 #
 # Every line is a pipe, so without pipefail the status would be grep's and a failing gate would
 # still print a clean-looking block and exit 0. Scoped to this target, so no other recipe changes.
@@ -237,7 +239,8 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
 	@echo; echo '$$ make cover-branches'
 	@$(MAKE) --no-print-directory cover-branches 2>&1 | grep '^Condition coverage:' \
-		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"}'
+		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"} \
+		       END {if (NR != 2) {print "cover-branches reported " NR " packages, wanted 2" > "/dev/stderr"; exit 1}}'
 
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
