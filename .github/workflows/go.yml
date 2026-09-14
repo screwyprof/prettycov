@@ -66,10 +66,13 @@ jobs:
       # newFlagSet grew from 78 to 80 lines against a funlen of 60 that way. This runs the whole
       # repository so the standing state has to stay clean too.
       - name: golangci-lint, whole repository
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
           version: v2.13.1
-          args: ./... --new-from-rev=""
+          # setup-go above already restored the module cache; letting this restore its own on top
+          # unpacks the same files over themselves and tar fails the step.
+          skip-cache: true
+          args: --new-from-rev=""
 
   test:
     runs-on: ubuntu-latest
