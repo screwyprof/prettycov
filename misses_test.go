@@ -131,6 +131,77 @@ func TestMissesFollowHideCovered(t *testing.T) {
 	assert.Equal(t, "m/bad/b.go", focused[0].File)
 }
 
+// A file already at the bar has no misses worth listing, even when the package holding it is below
+// the bar and so is visited. delegator's logger/ is 96.88 over a logger.go at 86.67 and a
+// middleware.go at 98.77: at -hide-covered=90 the tree draws logger.go alone, and the misses have to
+// agree — listing middleware.go's one uncovered statement contradicts the report beside it.
+//
+// -files is what puts the two files in play at all: without it neither is a row, so neither speaks
+// for the package, and the whole of logger/ goes — which the misses agree with by saying nothing.
+func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		// 86.67, below the bar, so its miss is listed.
+		{
+			File: "m/logger/logger.go", Coverage: prettycov.CoverageStats{Covered: 13, Uncovered: 2},
+			Blocks: []prettycov.Block{
+				{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 13}},
+				uncovered(23, 3, 24, 2),
+			},
+		},
+		// 98.77, above it, so its miss is not.
+		{
+			File: "m/logger/middleware.go", Coverage: prettycov.CoverageStats{Covered: 80, Uncovered: 1},
+			Blocks: []prettycov.Block{
+				{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 80}},
+				uncovered(90, 2, 91, 1),
+			},
+		},
+	})
+
+	at := func(pct float64) *float64 { return &pct }
+	opts := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: at(90)}
+
+	found := prettycov.Misses(tree, opts)
+
+	got := make([]string, 0, len(found))
+	for _, m := range found {
+		got = append(got, m.File)
+	}
+
+	assert.Equal(t, []string{"m/logger/logger.go"}, got)
+
+	// Without -files the package itself goes: nothing under it is a row, so nothing under it speaks
+	// for it, and the misses agree with the tree by saying nothing either.
+	opts.Files = false
+	assert.Empty(t, prettycov.Misses(tree, opts))
+}
+
+// A package holding one file merges into a single row, and that row is the file — so the node the
+// traversal hands over has the blocks on it rather than in a Files map below it. Emitting only what
+// a node's Files hold lost those: delegator's `store/pgxstore/store.go` is drawn at 75.47 and its
+// misses went unlisted, which contradicts the row beside them.
+func TestMissesIncludeACollapsedFileRow(t *testing.T) {
+	t.Parallel()
+
+	// pgxstore/ holds one file, so with -files the two draw as one row.
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		withBlocks("m/store/pgxstore/store.go", uncovered(44, 35, 45, 1)),
+		withBlocks("m/other.go", uncovered(9, 2, 10, 1)),
+	})
+
+	found := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true})
+
+	got := make([]string, 0, len(found))
+	for _, m := range found {
+		got = append(got, m.File)
+	}
+
+	assert.Equal(t, []string{"m/other.go", "m/store/pgxstore/store.go"}, got,
+		"the merged row carries its own blocks; the bare file is listed by the package holding it")
+}
+
 // The list is sorted by position, not by map order, or it would differ between runs and a consumer
 // would have to sort it back. A file whose own blocks arrive out of order is sorted before merging,
 // or a block listed early would fold into a region it does not touch.

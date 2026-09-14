@@ -49,7 +49,7 @@ func Misses(tree *PathTree, opts Options) []Miss {
 	var misses []Miss
 
 	visit(tree, opts, func(d drawn) {
-		misses = append(misses, d.Node.misses(d.Path)...)
+		misses = append(misses, merge(d.Path, d.Node.Blocks)...)
 	})
 
 	// Sorted by position, so the list is diffable between runs and reads down a file the way the

@@ -65,6 +65,10 @@ func Rows(tree *PathTree, opts Options) []Row {
 	var rows []Row
 
 	visit(tree, opts, func(d drawn) {
+		if !d.Drawn {
+			return
+		}
+
 		rows = append(rows, Row{
 			Prefix:   d.Prefix,
 			Label:    d.Label,
@@ -130,8 +134,11 @@ type drawn struct {
 	// Path is Label with every ancestor's label in front of it, which Label alone is not: a row is
 	// drawn with its own segment, so `httpkit` says nothing about the `pkg` above it. Misses needs
 	// the whole path, because what it prints has to name a file an editor can open.
-	Path   string
-	Level  Depth
+	Path  string
+	Level Depth
+	// Drawn says the tree puts a row here. A file that -files leaves out is still visited, because
+	// what is worth drawing and what holds a miss are different questions; Prefix is empty for one.
+	Drawn  bool
 	Prefix string
 }
 
@@ -157,6 +164,10 @@ type walker struct {
 // by name alone.
 type entry struct {
 	label string
+	// file marks an entry that came from Files rather than Children, which decides whether the tree
+	// draws it — and only that. It is visited either way, because a miss lives in a file and a file
+	// is a row only when -files asks for one.
+	file bool
 	// name is what the map called this before any merging, kept only to break a tie between two
 	// labels that came out the same. Within one map it is unique, so it is a total order there.
 	name string
@@ -192,14 +203,16 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 		entries = append(entries, entry{label: sanitize(label), name: name, node: merged})
 	}
 
-	if b.opts.Files {
-		for name, node := range tree.Files {
-			if b.hiding && b.allCovered(node, level) {
-				continue
-			}
-
-			entries = append(entries, entry{label: sanitize(name), name: name, node: node})
+	// Always enumerated, not only when they are drawn. A file is where a miss is, so leaving it out
+	// here would put the decision somewhere else as well, and the same question answered twice is
+	// the way the depth cut-off and collapse came to disagree. walk is what decides whether one of
+	// these is drawn, and an undrawn file costs no level and no glyph.
+	for name, node := range tree.Files {
+		if b.hiding && b.allCovered(node, level) {
+			continue
 		}
+
+		entries = append(entries, entry{label: sanitize(name), name: name, file: true, node: node})
 	}
 
 	// Sorted by the label the reader sees rather than by the name it started as, or a merged row
@@ -279,17 +292,50 @@ func (b *walker) allCovered(node *PathTree, level Depth) bool {
 	return true
 }
 
+// draws reports whether the tree puts a row where this entry is. Every entry is visited; only a
+// file needs asking about, and only because -files is what turns one into a row.
+func (b *walker) draws(e entry) bool { return !e.file || b.opts.Files }
+
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
 // level 0 means — it is not tracked separately, since a second flag can only drift from it.
 func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte) {
-	if tree == nil || level > b.opts.Depth {
+	if tree == nil {
 		return
 	}
 
 	entries := b.visible(tree, level)
 
-	for i, e := range entries {
-		root := level == 0
+	// An undrawn file takes no glyph and no level, so the depth cut cannot be what keeps it from
+	// being visited: the files of the deepest package a report draws are exactly one step past that
+	// cut, and a miss in one of them belongs to a package the reader can see. Visited first and
+	// then the cut, rather than the cut and then a second enumeration, so there is still one place
+	// that decides what is visible.
+	for _, e := range entries {
+		if !b.draws(e) {
+			b.visit(drawn{Node: e.node, Label: e.label, Path: path.Join(parent, e.label), Level: level})
+		}
+	}
+
+	if level > b.opts.Depth {
+		return
+	}
+
+	// Counted over what is drawn, not over what is visited: an undrawn file must not take a glyph,
+	// or the last package under a directory draws the branch glyph of a middle one.
+	shown := 0
+
+	for _, e := range entries {
+		if b.draws(e) {
+			shown++
+		}
+	}
+
+	root, at := level == 0, 0
+
+	for _, e := range entries {
+		if !b.draws(e) {
+			continue
+		}
 
 		here := path.Join(parent, e.label)
 
@@ -298,19 +344,22 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 			Label: e.label,
 			Path:  here,
 			Level: level,
+			Drawn: true,
 			// string() copies, so the visitor owns its prefix and padding stays reusable. Built
 			// here even for a visitor that ignores it: a row's indent depends on whether every
 			// ancestor was a last child, which cannot be rebuilt from the level alone.
-			Prefix: string(append(padding, symbol(root, getBoxType(i, len(entries)))...)),
+			Prefix: string(append(padding, symbol(root, getBoxType(at, shown))...)),
 		})
 
 		// Grown for the child and truncated after it, so siblings share one buffer instead of each
 		// concatenating a string. The walk is depth-first, so the child is done with its padding
 		// before the next sibling overwrites it.
 		depth := len(padding)
-		padding = append(padding, symbol(root, childSymbol(i, len(entries)))...)
+		padding = append(padding, symbol(root, childSymbol(at, shown))...)
 		b.walk(e.node, level+1, here, padding)
 		padding = padding[:depth]
+
+		at++
 	}
 }
 

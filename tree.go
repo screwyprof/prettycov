@@ -61,21 +61,6 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	leaf.Blocks = append(leaf.Blocks, blocks...)
 }
 
-// misses folds this node's own files into the fewest regions covering their unrun statements, named
-// under dir.
-//
-// Its own files, not its subtree: a package deeper down is visited in its own right when the options
-// draw it, and reaching down from here as well would list its misses twice.
-func (n *PathTree) misses(dir string) []Miss {
-	out := make([]Miss, 0, len(n.Files))
-
-	for name, file := range n.Files {
-		out = append(out, merge(path.Join(dir, name), file.Blocks)...)
-	}
-
-	return out
-}
-
 // child returns the node called name in the given map, creating both if this is the first time it
 // is named. The map is taken by pointer so the nil one a fresh node starts with can be filled in.
 func (a *arena) child(nodes *map[string]*PathTree, name string) *PathTree {
