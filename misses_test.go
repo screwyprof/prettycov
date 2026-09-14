@@ -15,6 +15,24 @@ import (
 // uncovered builds one unrun block of the profile, the way cmd/cover writes it: a start position,
 // an end line, and the statements between them. Distinct from exclude_test.go's block, which takes
 // a covered count and no end — that one predates Misses needing to know where a block stops.
+func missPaths(misses []prettycov.Miss) []string {
+	out := make([]string, 0, len(misses))
+	for _, m := range misses {
+		out = append(out, m.File)
+	}
+
+	return out
+}
+
+// covered is uncovered's other half. exclude_test.go's block builds one too, but without an end —
+// that helper predates Misses needing to know where a block stops.
+func covered(line, col, endLine, statements int) prettycov.Block {
+	return prettycov.Block{
+		Line: line, Col: col, EndLine: endLine,
+		Coverage: prettycov.CoverageStats{Covered: statements},
+	}
+}
+
 func uncovered(line, col, endLine, statements int) prettycov.Block {
 	return prettycov.Block{
 		Line: line, Col: col, EndLine: endLine,
@@ -66,7 +84,7 @@ func TestMissesLeavesCoveredBlocksOut(t *testing.T) {
 		Coverage: prettycov.CoverageStats{Covered: 5, Uncovered: 2},
 		Blocks: []prettycov.Block{
 			uncovered(10, 2, 11, 1),
-			{Line: 12, Col: 2, EndLine: 13, Coverage: prettycov.CoverageStats{Covered: 5}},
+			covered(12, 2, 13, 5),
 			uncovered(14, 2, 15, 1),
 		},
 	}})
@@ -89,14 +107,7 @@ func TestMissesFollowTheDepth(t *testing.T) {
 	})
 
 	paths := func(d prettycov.Depth) []string {
-		found := prettycov.Misses(tree, prettycov.Options{Depth: d})
-
-		out := make([]string, 0, len(found))
-		for _, m := range found {
-			out = append(out, m.File)
-		}
-
-		return out
+		return missPaths(prettycov.Misses(tree, prettycov.Options{Depth: d}))
 	}
 
 	assert.Equal(t, []string{"m/own.go"}, paths(0), "only the top row's own files")
@@ -113,7 +124,7 @@ func TestMissesFollowHideCovered(t *testing.T) {
 		{
 			File: "m/nearly/a.go", Coverage: prettycov.CoverageStats{Covered: 19, Uncovered: 1},
 			Blocks: []prettycov.Block{
-				{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 19}},
+				covered(3, 2, 4, 19),
 				uncovered(9, 2, 10, 1),
 			},
 		},
@@ -144,7 +155,7 @@ func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 		{
 			File: "m/logger/logger.go", Coverage: prettycov.CoverageStats{Covered: 13, Uncovered: 2},
 			Blocks: []prettycov.Block{
-				{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 13}},
+				covered(3, 2, 4, 13),
 				uncovered(23, 3, 24, 2),
 			},
 		},
@@ -152,7 +163,7 @@ func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 		{
 			File: "m/logger/middleware.go", Coverage: prettycov.CoverageStats{Covered: 80, Uncovered: 1},
 			Blocks: []prettycov.Block{
-				{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 80}},
+				covered(3, 2, 4, 80),
 				uncovered(90, 2, 91, 1),
 			},
 		},
@@ -160,12 +171,7 @@ func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 
 	opts := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: at(90)}
 
-	found := prettycov.Misses(tree, opts)
-
-	got := make([]string, 0, len(found))
-	for _, m := range found {
-		got = append(got, m.File)
-	}
+	got := missPaths(prettycov.Misses(tree, opts))
 
 	assert.Equal(t, []string{"m/logger/logger.go"}, got)
 
@@ -188,12 +194,7 @@ func TestMissesIncludeACollapsedFileRow(t *testing.T) {
 		withBlocks("m/other.go", uncovered(9, 2, 10, 1)),
 	})
 
-	found := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true})
-
-	got := make([]string, 0, len(found))
-	for _, m := range found {
-		got = append(got, m.File)
-	}
+	got := missPaths(prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}))
 
 	assert.Equal(t, []string{"m/other.go", "m/store/pgxstore/store.go"}, got,
 		"the merged row carries its own blocks; the bare file is listed by the package holding it")
@@ -210,12 +211,7 @@ func TestMissesAreSortedByPosition(t *testing.T) {
 		withBlocks("m/a.go", uncovered(40, 2, 41, 1), uncovered(9, 2, 10, 1)),
 	})
 
-	found := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll})
-
-	got := make([]string, 0, len(found))
-	for _, m := range found {
-		got = append(got, m.File)
-	}
+	got := missPaths(prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll}))
 
 	assert.Equal(t, []string{"m/a.go", "m/a.go", "m/z.go"}, got,
 		"a.go's two blocks are 30 lines apart, so they stay two regions despite arriving reversed")

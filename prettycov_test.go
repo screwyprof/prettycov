@@ -227,6 +227,42 @@ func TestHasRootAllocatesNothing(t *testing.T) {
 	}), "HasRoot allocates")
 }
 
+// A caller assembling its own FileCoverage can name one file twice, which ParseProfile cannot: it
+// keys profiles by filename and merges them first. Both the counts and the positions have to add up
+// rather than the second replacing the first, or a tree built by hand loses half a file.
+func TestProcessAddsUpAFileNamedTwice(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		{
+			File:     "m/a.go",
+			Coverage: prettycov.CoverageStats{Covered: 1, Uncovered: 1},
+			Blocks: []prettycov.Block{
+				{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 1}},
+				{Line: 9, Col: 2, EndLine: 10, Coverage: prettycov.CoverageStats{Uncovered: 1}},
+			},
+		},
+		{
+			File:     "m/a.go",
+			Coverage: prettycov.CoverageStats{Uncovered: 2},
+			Blocks: []prettycov.Block{
+				{Line: 40, Col: 2, EndLine: 41, Coverage: prettycov.CoverageStats{Uncovered: 2}},
+			},
+		},
+	})
+
+	node := tree.Get("m")
+	require.NotNil(t, node)
+	assert.Equal(t, prettycov.CoverageStats{Covered: 1, Uncovered: 3}, node.Files["a.go"].Coverage)
+
+	// And the second file's blocks are there beside the first's, which only the positions can show.
+	misses := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll})
+	assert.Equal(t, []prettycov.Miss{
+		{File: "m/a.go", Line: 9, Col: 2, EndLine: 10, Statements: 1},
+		{File: "m/a.go", Line: 40, Col: 2, EndLine: 41, Statements: 2},
+	}, misses)
+}
+
 func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 	t.Parallel()
 

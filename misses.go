@@ -33,10 +33,13 @@ type Miss struct {
 	Statements int
 }
 
-// Misses lists the statements the tests never reached, in the order a report draws the packages
-// holding them. It reads the same options Rows does and answers them the same way, being the same
-// traversal: -depth decides which packages are visited and so which misses are listed, and
-// -hide-covered leaves out the ones already at the bar.
+// Misses lists the statements the tests never reached, ordered by position so the list is diffable
+// between runs and reads down a file the way the file does.
+//
+// It reads the same options Rows does and answers them the same way, being the same traversal:
+// -depth decides which packages are visited and so which misses are listed, and -hide-covered
+// leaves out the ones already at the bar. -files is not among them — a miss is a file position
+// whether or not a file is drawn as a row.
 //
 // -exclude and a renamed root are not read here. They act on the profile before the tree is built,
 // so an excluded block is not a miss and a shortened path is what these carry — which is what makes
@@ -48,8 +51,8 @@ type Miss struct {
 func Misses(tree *PathTree, opts Options) []Miss {
 	var misses []Miss
 
-	visit(tree, opts, func(d drawn) {
-		misses = append(misses, merge(d.Path, d.Node.Blocks)...)
+	visit(tree, opts, true, func(d drawn) {
+		misses = merge(misses, d.Path, d.Node.Blocks)
 	})
 
 	// Sorted by position, so the list is diffable between runs and reads down a file the way the
@@ -80,12 +83,17 @@ func byPosition(x, y Block) int {
 // end rather than the previous start is what does the work: a block spanning lines 44 to 51 reaches
 // the one that opens on 52, where comparing openings would not. On a profile at 1.7% coverage that
 // is 1,344 regions against 2,087.
-func merge(file string, blocks []Block) []Miss {
+func merge(out []Miss, file string, blocks []Block) []Miss {
 	if !slices.IsSortedFunc(blocks, byPosition) {
-		blocks = slices.SortedFunc(slices.Values(blocks), byPosition)
+		// Cloned and sorted rather than collected from an iterator, which grows by doubling: one
+		// allocation of the right size instead of fourteen.
+		blocks = slices.Clone(blocks)
+		slices.SortFunc(blocks, byPosition)
 	}
 
-	var out []Miss
+	// Appended to the caller's slice rather than built and copied into it: one file's regions are
+	// rarely many, and a profile's are.
+	start := len(out)
 
 	for _, block := range blocks {
 		if block.Coverage.Uncovered == 0 {
@@ -93,7 +101,7 @@ func merge(file string, blocks []Block) []Miss {
 		}
 
 		last := len(out) - 1
-		if last >= 0 && block.Line <= out[last].EndLine+1 {
+		if last >= start && block.Line <= out[last].EndLine+1 {
 			out[last].EndLine = max(out[last].EndLine, block.EndLine)
 			out[last].Statements += block.Coverage.Uncovered
 
@@ -134,11 +142,9 @@ func DisplayMisses(w io.Writer, tree *PathTree, opts Options) int {
 
 	misses := Misses(tree, opts)
 	for _, m := range misses {
-		_, _ = buf.WriteString(m.File)
-		_ = buf.WriteByte(':')
-		_, _ = buf.WriteString(strconv.Itoa(m.Line))
-		_ = buf.WriteByte(':')
-		_, _ = buf.WriteString(strconv.Itoa(m.Col))
+		// position, not a spelling of its own: -exclude matches its patterns against exactly this,
+		// so the two have to agree for a line printed here to work as a pattern there.
+		_, _ = buf.WriteString(position(m.File, m.Line, m.Col))
 		_, _ = buf.WriteString(": ")
 		_, _ = buf.WriteString(strconv.Itoa(m.Statements))
 		_, _ = buf.WriteString(" uncovered\n")

@@ -104,7 +104,8 @@ type FileCoverage struct {
 	Coverage CoverageStats
 	// Blocks is where the file's statements are, in the order the profile listed them. Optional:
 	// a FileCoverage assembled by a caller may leave it empty. Coverage is the sum and stays the
-	// authority; only Exclude reads this.
+	// authority. Exclude matches patterns against these, and Process carries them onto the tree's
+	// file leaves, which is what lets Misses say where rather than only how much.
 	Blocks []Block
 }
 
@@ -135,7 +136,15 @@ type Block struct {
 func (b Block) at(file string) (withCol, toLine string) {
 	toLine = file + ":" + strconv.Itoa(b.Line)
 
-	return toLine + ":" + strconv.Itoa(b.Col), toLine
+	return position(file, b.Line, b.Col), toLine
+}
+
+// position names a place in a file the way a compiler does. One spelling, because -exclude matches
+// its patterns against what this returns and -misses prints it: a position a reader judges
+// unreachable is pasted back as a pattern, and two definitions of the format would let that stop
+// working with nothing to catch it.
+func position(file string, line, col int) string {
+	return file + ":" + strconv.Itoa(line) + ":" + strconv.Itoa(col)
 }
 
 // Process turns per-file coverage into a tree in which every node reports its own statements plus

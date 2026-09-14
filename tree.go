@@ -54,11 +54,19 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// ParseProfile cannot deliver that — x/tools keys profiles by filename and merges their blocks
 	// — so this is for a caller handing Process a slice of its own.
 	leaf.Coverage.Add(stats)
-	// Appended for the same reason, and kept because Misses reads positions the counts cannot say.
-	// Appending onto a nil slice copies, so the leaf owns its blocks rather than pointing into the
-	// parser's shared slab — which is what makes them safe to reorder or trim later, and costs one
-	// Block per block of the profile.
-	leaf.Blocks = append(leaf.Blocks, blocks...)
+	// Kept because Misses reads positions the counts cannot say. Shared with the caller's slice
+	// rather than copied: the parser hands out one capped window per file, so appending to a leaf
+	// can never reach into the next file's blocks, and nothing here reorders or trims them — merge
+	// sorts a copy when it has to. Copying instead held a second image of every block in the
+	// profile alongside the first, 13MB of a 30,000-file one.
+	//
+	// The append is for the same file named twice, which ParseProfile cannot deliver but a caller
+	// assembling its own can; cap == len makes that one copy rather than write into the window.
+	if leaf.Blocks == nil {
+		leaf.Blocks = blocks
+	} else {
+		leaf.Blocks = append(leaf.Blocks, blocks...)
+	}
 }
 
 // child returns the node called name in the given map, creating both if this is the first time it

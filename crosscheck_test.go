@@ -349,9 +349,20 @@ func TestRowsAndMissesAccountForTheSameFiles(t *testing.T) {
 			for _, depth := range []prettycov.Depth{0, 1, 2, 3, prettycov.DepthAll} {
 				for _, bar := range []*float64{nil, at(100), at(90), at(50)} {
 					opts := prettycov.Options{Depth: depth, Files: true, HideCovered: bar}
+					drawn, missed := fileRowsWithMisses(tree, files, opts), missedFiles(tree, opts)
 
-					assert.Equal(t, fileRowsWithMisses(tree, files, opts), missedFiles(tree, opts),
-						"depth=%v bar=%v", depth, bar)
+					// One way at every depth: a file row the report draws over unrun statements
+					// must be somewhere in the list, or the report points at work the list denies.
+					for _, f := range drawn {
+						assert.Contains(t, missed, f, "depth=%v bar=%v", depth, bar)
+					}
+
+					// Both ways once nothing is cut. Past a cut the two are allowed to differ: a
+					// file takes no level, so it is visited where it is not drawn, and -misses
+					// answers for the package the reader can see rather than for the rows.
+					if depth == prettycov.DepthAll {
+						assert.Equal(t, drawn, missed, "bar=%v", bar)
+					}
 				}
 			}
 		})
@@ -389,10 +400,10 @@ func missedFiles(tree *prettycov.PathTree, opts prettycov.Options) []string {
 
 	var named []string
 
-	for _, m := range prettycov.Misses(tree, opts) {
-		if !seen[m.File] {
-			seen[m.File] = true
-			named = append(named, m.File)
+	for _, f := range missPaths(prettycov.Misses(tree, opts)) {
+		if !seen[f] {
+			seen[f] = true
+			named = append(named, f)
 		}
 	}
 
@@ -410,17 +421,11 @@ func withUnrunBlocks(files []prettycov.FileCoverage) []prettycov.FileCoverage {
 	for i, f := range files {
 		if len(f.Blocks) == 0 {
 			if f.Coverage.Covered > 0 {
-				f.Blocks = append(f.Blocks, prettycov.Block{
-					Line: 1, Col: 1, EndLine: 1,
-					Coverage: prettycov.CoverageStats{Covered: f.Coverage.Covered},
-				})
+				f.Blocks = append(f.Blocks, covered(1, 1, 1, f.Coverage.Covered))
 			}
 
 			if f.Coverage.Uncovered > 0 {
-				f.Blocks = append(f.Blocks, prettycov.Block{
-					Line: 10, Col: 1, EndLine: 10,
-					Coverage: prettycov.CoverageStats{Uncovered: f.Coverage.Uncovered},
-				})
+				f.Blocks = append(f.Blocks, uncovered(10, 1, 10, f.Coverage.Uncovered))
 			}
 		}
 
