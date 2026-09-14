@@ -63,11 +63,15 @@ type Row struct {
 // which rows there are and ignores the rest. Pure: no writer, no colour, no terminal. DisplayTree
 // is the one that decides how a Row looks.
 func Rows(tree *PathTree, opts Options) []Row {
-	// Empty rather than nil, as it has always been: this is exported, and a caller marshalling the
-	// result wants [] for a report with no rows rather than null. An empty slice costs no
-	// allocation, so the only thing the lost presize costs is the growth, which nothing can size
-	// now that the rows arrive one at a time.
-	rows := []Row{}
+	// Nil when there is nothing to draw, which is what this has always returned and what Misses and
+	// Exclude return beside it. A caller marshalling an empty report gets null rather than [];
+	// making this one an empty slice would have been a change to exported behaviour, dressed up as
+	// restoring something.
+	//
+	// Grown rather than presized: nothing can size it now that the rows arrive one at a time, and
+	// the traversal that knew the count is exactly what was removed. DisplayTree does not pay it —
+	// it counts as it writes rather than asking here.
+	var rows []Row
 
 	for d := range prepare(tree, opts, shape{files: opts.Files}) {
 		rows = append(rows, d.Row)

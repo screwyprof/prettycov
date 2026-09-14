@@ -870,6 +870,29 @@ func TestDisplayTreeAlwaysDrawsARowWithoutHideCovered(t *testing.T) {
 	}
 }
 
+// Rows, Misses and Exclude all hand back nil when there is nothing, so a caller marshalling an
+// empty report gets null from every one of them rather than null from some and [] from others.
+// Worth pinning because it is invisible: every length check and every range reads the same either
+// way, and only encoding/json tells the two apart.
+func TestEmptyResultsAreNilNotEmptySlices(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		withBlocks("m/a.go", covered(1, 1, 2, 3)),
+	})
+
+	bar := 0.0
+	hidden := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar}
+
+	assert.Nil(t, prettycov.Rows(tree, hidden), "-hide-covered=0 took every row")
+	assert.Nil(t, prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
+		"nothing uncovered")
+
+	kept, excluded := prettycov.Exclude(nil, nil)
+	assert.Nil(t, kept)
+	assert.Nil(t, excluded)
+}
+
 // DisplayTree counts as it writes rather than taking the length of a slice it built, so the count
 // is no longer true by construction and has to be asserted. Nothing downstream notices a wrong one
 // until it is used to decide the report came up empty, which only a zero reaches — a mutation
