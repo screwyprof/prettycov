@@ -163,7 +163,8 @@ func TestCoverageStatsAtLeast(t *testing.T) {
 		{
 			name:  "one short of complete, rounding to 100",
 			stats: prettycov.CoverageStats{Covered: huge - 1, Uncovered: 1},
-			pct:   100, want: false,
+			pct:   100,
+			want:  false,
 		},
 		// Nothing to cover has no share to compare, so it is not at any bar — including 0, which
 		// would otherwise make every empty package pass every gate.

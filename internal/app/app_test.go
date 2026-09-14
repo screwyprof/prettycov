@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -1343,7 +1342,7 @@ func TestRunNamesWhatEmptiedTheOutput(t *testing.T) {
 	// pkg itself and reaches neither of them. web holds one, which merges into a row of its own at
 	// level 1, and it is covered: without it the whole chain would collapse to a single file row at
 	// level 0 and the depth would reach it after all.
-	const profile = "mode: set\n" +
+	const twoDeep = "mode: set\n" +
 		"m/pkg/a.go:9.2,10.3 1 0\n" +
 		"m/pkg/b.go:40.2,41.3 1 0\n" +
 		"m/web/c.go:1.1,2.2 3 1\n"
@@ -1380,16 +1379,16 @@ func TestRunNamesWhatEmptiedTheOutput(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-			args := slices.Concat(tc.args, []string{
-				"-profile", writeProfile(t, profile), "-color", "never",
-			})
+
+			args := append([]string{writeProfile(t, twoDeep), "-color", "never"}, tc.args...)
 
 			code := app.Run(args, stdout, stderr)
 
 			assert.Equal(t, codeOK, code)
 			assert.Empty(t, stdout.String())
+			// The whole of stderr, which is what rules out the all-clear: any sentence claiming
+			// completion is a different string.
 			assert.Equal(t, tc.want+"\n", stderr.String())
-			assert.NotContains(t, stderr.String(), "nothing left to cover", "a false all-clear")
 		})
 	}
 }

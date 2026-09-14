@@ -190,17 +190,18 @@ func (c config) whyNothingShown(tree *prettycov.PathTree) string {
 		c.outputFilters(), plural(tree.Coverage.Uncovered, "uncovered statement"))
 }
 
-// outputFilters names the flags that shape the output, as typed. A filter added later is named here
-// rather than in a message per printer, which is the point of listing them rather than diagnosing
-// them: nothing here has to know which one did it, only which ones were asked for.
+// outputFilters names the flags that shape the output, as typed — the one place a filter added
+// later has to be named, which is what keeps whyNothingShown out of the business of diagnosing
+// which one did it.
 //
 // -depth is always in play and always has a value, so it is always named. -hide-covered is named
 // when it was given, which is the only time it can have taken anything.
 //
-// -files is not one of these. It decides whether the tree's output holds files, and a list of
-// positions is made of them either way, so it shapes what a row is rather than whether there is one.
-// -exclude is not either: it acts on the profile, and a report it emptied is refused further up with
-// a message of its own.
+// -files is not one of these, not because it shapes nothing — it decides which rows exist, and
+// reaches -hide-covered's judgement through the same gate — but because it cannot be the one that
+// emptied the output. A list of positions is made of files whatever it says, and a tree keeps the
+// top row -depth always draws. -exclude is not either: it acts on the profile, and a report it
+// emptied is refused further up with a message of its own.
 func (c config) outputFilters() string {
 	filters := "-depth=" + c.Depth.String()
 

@@ -62,17 +62,17 @@ func (c CoverageStats) Percentage() (Percentage, bool) {
 // Nothing reaches more than all of it either. The CLI clamps -fail-under and -hide-covered to
 // [0, 100] before either gets here, so only a library caller can ask — with a threshold it computed,
 // or one it meant as a fraction — and answering the completeness question for 150 would hand that
-// caller a passing gate.
+// caller a passing gate. It falls through instead of being refused: Percentage never returns a share
+// above 100, so nothing reaches such a threshold, and that holds for +Inf as well. A guard would be
+// a branch saying what the comparison below already says.
 func (c CoverageStats) AtLeast(pct float64) bool {
 	share, ok := c.Percentage()
 	if !ok {
 		return false
 	}
 
-	if pct > 100 {
-		return false
-	}
-
+	// Exactly 100, not "at or above": above it is the case above, and asking the counts there would
+	// answer "complete" to a threshold nothing can meet.
 	if pct == 100 {
 		return share.complete
 	}

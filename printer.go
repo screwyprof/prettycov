@@ -287,7 +287,8 @@ func (b *walker) entries(tree *PathTree) []entry {
 		// Sanitised here and not in below: a replaced rune sorts where the replacement does, so the
 		// label has to be the drawn one before visible sorts it. allCovered reads no label, and the
 		// scan is per rune of every name in the profile.
-		e.raw, e.label = e.label, sanitize(e.label)
+		e.raw = e.label
+		e.label = sanitize(e.raw)
 		out = append(out, e)
 	}
 
@@ -411,6 +412,12 @@ func join(label, name string) string {
 // Chiefly hygiene — a stray control byte in a path garbles the report, which is why ls and git
 // quote them too. It also stops a spoof: a package named "\x1b[1A\x1b[2Kforged" erases the row
 // above and writes over it, and above the first child is the total.
+//
+// Rows only. A position carries the profile's own spelling — see entry.raw — because the
+// replacement gives a path no editor resolves and an -exclude pattern that cannot match what it was
+// copied from. go vet and gopls do not sanitize their positions either. So a profile naming
+// "\x1b[1A\x1b[2Kforged/a.go" draws as a scrubbed row and prints raw under -misses, which is the
+// trade: the report is the thing read by eye, and a location has to stay a location.
 //
 // What counts as obeyed is wider than the control characters, and obeyed reports it.
 func sanitize(label string) string {

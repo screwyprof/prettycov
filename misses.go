@@ -105,24 +105,28 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 
 	// Appended to the caller's slice rather than built and copied into it: one file's regions are
 	// rarely many, and a profile's are.
-	start := len(out)
-
-	// Where the last covered block begins. cmd/cover nests them — a run block spans the branch
-	// blocks inside it — so one that opened before the region did says nothing about what is between
-	// the region and the next block, and only a start at or past the region's end can bridge them.
-	covered := 0
+	//
+	// open is the region still able to take another block, or -1 for none. An index rather than a
+	// line number and a length: it starts closed, so a region from the file before cannot be
+	// extended into this one, and a covered block closes it rather than being remembered and
+	// compared against later.
+	open := -1
 
 	for _, block := range blocks {
 		if block.Coverage.Uncovered == 0 {
-			covered = max(covered, block.Line)
+			// Any of them closes the region, without asking where it starts. cmd/cover nests blocks
+			// — a run block spans the branch blocks inside it — but a block that encloses a region
+			// opens at or before it and so is walked before the region exists, when there is nothing
+			// to close. One reached with a region open is one that starts after it did, which is
+			// what "between" means here.
+			open = -1
 
 			continue
 		}
 
-		last := len(out) - 1
-		if last >= start && block.Line <= out[last].EndLine+1 && covered < out[last].EndLine {
-			out[last].EndLine = max(out[last].EndLine, block.EndLine)
-			out[last].Statements += block.Coverage.Uncovered
+		if open >= 0 && block.Line <= out[open].EndLine+1 {
+			out[open].EndLine = max(out[open].EndLine, block.EndLine)
+			out[open].Statements += block.Coverage.Uncovered
 
 			continue
 		}
@@ -134,6 +138,7 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 			EndLine:    block.EndLine,
 			Statements: block.Coverage.Uncovered,
 		})
+		open = len(out) - 1
 	}
 
 	return out

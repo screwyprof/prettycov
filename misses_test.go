@@ -275,9 +275,7 @@ func TestMissesNameTheFileAsTheProfileSpelledIt(t *testing.T) {
 
 	// And the tree still draws the sanitised one, which is the whole reason the two differ. One file
 	// is all this profile holds, so the whole chain collapses to a single row carrying the path.
-	rows := prettycov.Rows(tree, missOpts(prettycov.DepthAll))
-	require.Len(t, rows, 1)
-	assert.Equal(t, "m/pkg/a�b.go", rows[0].Label)
+	assert.Equal(t, []string{"m/pkg/a�b.go"}, namesWith(t, tree, missOpts(prettycov.DepthAll)))
 }
 
 // `file:line:col: message`, as go vet prints it. The message is not decoration: without one an
