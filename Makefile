@@ -209,6 +209,18 @@ lint-all: require-golangci ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
 	golangci-lint run ./... --new-from-rev=""
 
+gates: ## run every quality gate and print the block to paste into a PR description
+	@echo -e "$(OK_COLOR)==> Gates$(NO_COLOR)" >&2
+	@echo '$$ make test'
+	@$(MAKE) --no-print-directory test 2>&1 | grep 'coverage:' | grep -v '/cmd/' | tr -s '\t' ' '
+	@echo; echo '$$ make lint-all'
+	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
+	@echo; echo '$$ make mutate'
+	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
+	@echo; echo '$$ make cover-branches'
+	@$(MAKE) --no-print-directory cover-branches 2>&1 | grep '^Condition coverage:' \
+		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"}'
+
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
 	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov/...
@@ -273,4 +285,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-all install hooks nix-hash release publish clean help
+.PHONY: lint lint-all gates install hooks nix-hash release publish clean help
