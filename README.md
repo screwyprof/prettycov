@@ -70,6 +70,7 @@ Turn on the two flags that say more, and go a level deeper:
 | `-hide-covered[=N]` | leave out subtrees with nothing left to do — fully covered, or at `N`% and above. Shapes the report only |
 | `-counts` | show `uncovered/total` statements beside each percentage |
 | `-total` | print only the number, for a Makefile or a badge |
+| `-misses` | print only where the uncovered statements are, as `file:line:col`, for an editor or a pipe |
 | `-fail-under=N` | exit 1 when total coverage is below N, so prettycov can gate CI |
 | `-exclude=REGEXP` | leave out files whose path matches, or blocks whose `file:line:col` matches, before anything is totalled. Repeatable |
 | `-old=PATH -new=PATH` | shorten a long root package path in the labels. `-new=.` strips it, leaving one row per top-level entry |
@@ -216,6 +217,52 @@ test, so it is only printed when every statement is covered. Everything else rou
 A profile with nothing to cover has no total, so it exits 2 with a message rather than printing
 `n/a` or `0.00` into your variable — unless `-fail-under` was given, in which case that reports the
 shortfall and exits 1 instead.
+
+## Where the uncovered statements are
+
+A percentage says how much is untested; `-misses` says where. One line per run of statements the
+tests never reached, as `file:line:col: N uncovered` — the shape `go vet` prints and an editor's
+error format parses, so it pipes straight into `vim -q -` or `reviewdog`:
+
+```shell
+❯ prettycov -misses -old=github.com/screwyprof/delegator -new=.
+pkg/httpkit/httpkit.go:62:2: 1 uncovered
+pkg/logger/logger.go:22:16: 1 uncovered
+pkg/logger/logger.go:44:26: 1 uncovered
+pkg/logger/middleware.go:90:2: 1 uncovered
+pkg/pgxdb/pgxdb.go:23:16: 1 uncovered
+pkg/pgxdb/pgxdb.go:44:16: 1 uncovered
+pkg/pgxdb/pgxdb.go:48:39: 2 uncovered
+scraper/service.go:94:16: 2 uncovered
+scraper/service.go:158:20: 1 uncovered
+scraper/service.go:165:16: 1 uncovered
+scraper/service.go:188:16: 1 uncovered
+web/handler/tezos_get_delegations.go:40:16: 1 uncovered
+web/handler/tezos_get_delegations.go:46:16: 1 uncovered
+web/handler/tezos_get_delegations.go:52:16: 1 uncovered
+web/store/pgxstore/store.go:43:16: 1 uncovered
+web/store/pgxstore/store.go:50:16: 1 uncovered
+```
+
+The count is not decoration. Without a message after the position, that error format cannot match
+and falls back to `file:line:message`, reading the column as the text — so `a.go:62:2` opens line 62
+at column 1 and the column is lost. It is also the number a position cannot carry: one untaken
+branch and a whole untested function look alike until you see it.
+
+It replaces the report rather than decorating it: the tree is the summary, these are the drill-down.
+The path comes from the profile, which names Go packages rather than files on disk, so `-new=.`
+strips the module prefix and leaves something an editor can open.
+
+Blocks that abut fold into one entry — `cmd/cover` emits one per branch, so a function nothing covers
+arrives as a dozen of them. That halves the list on a badly covered profile and changes almost
+nothing on a good one, where misses are scattered single statements.
+
+`-depth` and `-hide-covered` narrow it the way they narrow the tree: `-depth` lists the misses of the
+packages you can see, and `-hide-covered` leaves out the ones in subtrees already at the bar. On the
+profile above that is 16 entries at the default depth, 31 at `-depth=max`, and 25 with
+`-hide-covered=90`. `-exclude` removes them outright, since it acts on the profile before any of
+this — and it takes the same `file:line:col` this prints, so a position you judge unreachable can be
+pasted back as a pattern.
 
 ## Stop counting code you never meant to test
 

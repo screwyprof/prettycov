@@ -62,9 +62,27 @@ type Row struct {
 // which rows there are and ignores the rest. Pure: no writer, no colour, no terminal. DisplayTree
 // is the one that decides how a Row looks.
 func Rows(tree *PathTree, opts Options) []Row {
-	b := rowBuilder{opts: opts}
+	var rows []Row
+
+	visit(tree, opts, func(d drawn) {
+		rows = append(rows, Row{
+			Prefix:   d.Prefix,
+			Label:    d.Label,
+			Level:    int(d.Level),
+			Coverage: d.Node.Coverage,
+		})
+	})
+
+	return rows
+}
+
+// visit walks tree and hands every node the options decide to show to the visitor, in the order a
+// report draws them. The one place -depth, -files and -hide-covered are read, so no two emitters
+// can answer differently.
+func visit(tree *PathTree, opts Options, v func(drawn)) {
+	b := walker{opts: opts, visit: v}
 	if opts.HideCovered != nil {
-		b.hiding, b.hideAt, b.hideWhole = true, *opts.HideCovered, *opts.HideCovered >= 100
+		b.hiding, b.hideAt = true, *opts.HideCovered
 	}
 
 	// One leading space, with room to grow two bytes per level. Deep enough for any real path;
@@ -72,9 +90,7 @@ func Rows(tree *PathTree, opts Options) []Row {
 	padding := make([]byte, 1, 128)
 	padding[0] = ' '
 
-	b.walk(tree, 0, padding)
-
-	return b.rows
+	b.walk(tree, 0, "", padding)
 }
 
 // DisplayTree writes tree as an indented report and reports how many rows it drew. A collapsed run
@@ -100,19 +116,40 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) int {
 	return len(rows)
 }
 
-// rowBuilder holds what stays the same for the whole traversal, so the recursion carries only
-// what actually varies: the node, how deep it is, and the indent it sits behind.
-type rowBuilder struct {
-	opts Options
-	rows []Row
+// drawn is one node the traversal decided to show, and everything a visitor needs to shape it: the
+// node itself, the label after any run below it was merged in, how deep it sits, and the indent it
+// would be drawn behind.
+//
+// The node, not a narrower payload. A visitor reads the part it cares about — Rows the rolled-up
+// Coverage, Misses the Blocks of the node's own Files — and those are different parts, so narrowing
+// this would either carry both and have each ignore half, or forbid what Misses needs: at -depth=1
+// the misses of `scraper` are in its own file leaves, which -files leaves undrawn.
+type drawn struct {
+	Node  *PathTree
+	Label string
+	// Path is Label with every ancestor's label in front of it, which Label alone is not: a row is
+	// drawn with its own segment, so `httpkit` says nothing about the `pkg` above it. Misses needs
+	// the whole path, because what it prints has to name a file an editor can open.
+	Path   string
+	Level  Depth
+	Prefix string
+}
 
-	// hiding says -hide-covered was given at all, hideAt is the threshold, and hideWhole is that
-	// threshold reaching 100 — where the question becomes whether an uncovered statement is left
-	// rather than whether the ratio gets there. Read once in Rows: they are the innermost check in
-	// the walk, and reading them back through the pointer per node kept it out of the inliner.
-	hiding    bool
-	hideWhole bool
-	hideAt    float64
+// walker holds what stays the same for the whole traversal, so the recursion carries only what
+// actually varies: the node, how deep it is, and the indent it sits behind.
+//
+// It decides which nodes are visited and nothing about what they look like. One implementation of
+// that decision, because two would drift — collapse and the depth cut-off already disagreed once,
+// and every emitter added is another chance at it.
+type walker struct {
+	opts  Options
+	visit func(drawn)
+
+	// hiding says -hide-covered was given at all and hideAt is the threshold, read once rather than
+	// through the pointer at every node. What "at least this much" means is CoverageStats', not
+	// ours: the answer at 100 is about the counts, not the ratio.
+	hiding bool
+	hideAt float64
 }
 
 // entry is one row to draw: the node, and the label it will carry once any run below it has been
@@ -130,7 +167,7 @@ type entry struct {
 // between runs. Files are simply not enumerated when they are not being shown, so they cost no
 // level and no glyph rather than being filtered out later: without that the last package under a
 // directory would draw the branch glyph of a middle one whenever a file sorted after it.
-func (b *rowBuilder) visible(tree *PathTree, level Depth) []entry {
+func (b *walker) visible(tree *PathTree, level Depth) []entry {
 	entries := make([]entry, 0, len(tree.Children)+len(tree.Files))
 
 	for name, node := range tree.Children {
@@ -205,8 +242,8 @@ func (b *rowBuilder) visible(tree *PathTree, level Depth) []entry {
 // repository has. At the default threshold it barely recurses at all: Coverage is rolled up, so a
 // node with no uncovered statement has no descendant with one, and the answer comes from the first
 // check.
-func (b *rowBuilder) allCovered(node *PathTree, level Depth) bool {
-	if !b.atOrAbove(node.Coverage) {
+func (b *walker) allCovered(node *PathTree, level Depth) bool {
+	if !node.Coverage.AtLeast(b.hideAt) {
 		return false
 	}
 
@@ -233,7 +270,7 @@ func (b *rowBuilder) allCovered(node *PathTree, level Depth) bool {
 	// nothing below it to ask about, and passing it a level would be arithmetic no test could reach.
 	if b.opts.Files {
 		for _, file := range node.Files {
-			if !b.atOrAbove(file.Coverage) {
+			if !file.Coverage.AtLeast(b.hideAt) {
 				return false
 			}
 		}
@@ -242,35 +279,9 @@ func (b *rowBuilder) allCovered(node *PathTree, level Depth) bool {
 	return true
 }
 
-// atOrAbove grades one node's counts against the threshold.
-//
-// At 100 it asks Percentage whether the node is complete rather than whether the ratio reaches 100,
-// which are different questions: the ratio of 2^56-1 covered beside one uncovered is exactly 100 in
-// float64, the miss falling below the mantissa. Percentage carries `complete` for precisely that
-// reason — it is why a report reads 99.99 rather than claiming a completeness it does not have —
-// so this reads the field rather than keeping a second copy of the rule.
-//
-// Below 100 it is the ratio, unrounded, as -fail-under compares it.
-//
-// A node with nothing to cover has no percentage and stays. Whether an empty package is worth
-// drawing is a different question from whether a covered one is, and answering both with one flag
-// would hide a package whose tests were deleted along with the ones that never needed any.
-func (b *rowBuilder) atOrAbove(stats CoverageStats) bool {
-	pct, ok := stats.Percentage()
-	if !ok {
-		return false
-	}
-
-	if b.hideWhole {
-		return pct.complete
-	}
-
-	return pct.Float() >= b.hideAt
-}
-
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
 // level 0 means — it is not tracked separately, since a second flag can only drift from it.
-func (b *rowBuilder) walk(tree *PathTree, level Depth, padding []byte) {
+func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte) {
 	if tree == nil || level > b.opts.Depth {
 		return
 	}
@@ -280,12 +291,17 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding []byte) {
 	for i, e := range entries {
 		root := level == 0
 
-		b.rows = append(b.rows, Row{
-			// string() copies, so the row owns its prefix and padding stays reusable.
-			Prefix:   string(append(padding, symbol(root, getBoxType(i, len(entries)))...)),
-			Label:    e.label,
-			Level:    int(level),
-			Coverage: e.node.Coverage,
+		here := path.Join(parent, e.label)
+
+		b.visit(drawn{
+			Node:  e.node,
+			Label: e.label,
+			Path:  here,
+			Level: level,
+			// string() copies, so the visitor owns its prefix and padding stays reusable. Built
+			// here even for a visitor that ignores it: a row's indent depends on whether every
+			// ancestor was a last child, which cannot be rebuilt from the level alone.
+			Prefix: string(append(padding, symbol(root, getBoxType(i, len(entries)))...)),
 		})
 
 		// Grown for the child and truncated after it, so siblings share one buffer instead of each
@@ -293,7 +309,7 @@ func (b *rowBuilder) walk(tree *PathTree, level Depth, padding []byte) {
 		// before the next sibling overwrites it.
 		depth := len(padding)
 		padding = append(padding, symbol(root, childSymbol(i, len(entries)))...)
-		b.walk(e.node, level+1, padding)
+		b.walk(e.node, level+1, here, padding)
 		padding = padding[:depth]
 	}
 }

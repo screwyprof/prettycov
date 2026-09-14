@@ -48,6 +48,29 @@ func (c CoverageStats) Percentage() (Percentage, bool) {
 	}, true
 }
 
+// AtLeast reports whether this much of the node is covered, which is not always what comparing the
+// ratio would say.
+//
+// At 100 the question is whether an uncovered statement is left, not whether the ratio reaches 100:
+// 2^56-1 covered beside one uncovered divides to exactly 100.0 in float64, the miss falling below
+// the mantissa. Percentage renders that 99.99 for the same reason, so asking here keeps the two
+// answers together instead of leaving a caller to rediscover the difference.
+//
+// Nothing to cover is not "at least anything": a package with no statements has no share to compare,
+// and treating it as complete would fold two questions into one flag.
+func (c CoverageStats) AtLeast(pct float64) bool {
+	share, ok := c.Percentage()
+	if !ok {
+		return false
+	}
+
+	if pct >= 100 {
+		return share.complete
+	}
+
+	return share.Float() >= pct
+}
+
 // Percentage is a share of statements covered. Build one with CoverageStats.Percentage, which
 // reports whether there was anything to cover; a Percentage that came from there always has a
 // number to show, so no caller carries that question further.
@@ -85,13 +108,20 @@ type FileCoverage struct {
 	Blocks []Block
 }
 
-// Block is one of a file's basic blocks: where it starts, and the statements it holds. Exactly one
-// side of Coverage is non-zero — a block is run or not run, never partly.
+// Block is one of a file's basic blocks: where it starts, where it ends, and the statements it
+// holds. Exactly one side of Coverage is non-zero — a block is run or not run, never partly.
 //
 // The position is where cmd/cover opens the block, which is not where a reader would point:
 // `if !ok {` on line 32 owns the `return` on line 33.
+//
+// Line and Col are the block's identity. -exclude matches against them and nothing else, so a
+// pattern like `a\.go:3` means "the block that opens on line 3" however far the block runs.
+// EndLine is how far it runs, which Misses needs to tell one region from the next: a block spanning
+// lines 44 to 51 reaches the one that opens on 52, where comparing openings would not. On a profile
+// at 1.7% coverage that is 1,344 regions against 2,087.
 type Block struct {
 	Line, Col int
+	EndLine   int
 	Coverage  CoverageStats
 }
 
@@ -120,7 +150,7 @@ func (b Block) at(file string) (withCol, toLine string) {
 func Process(files []FileCoverage) *PathTree {
 	tree, nodes := &PathTree{}, &arena{}
 	for _, f := range files {
-		tree.add(f.File, f.Coverage, nodes)
+		tree.add(f.File, f.Coverage, f.Blocks, nodes)
 	}
 
 	rollUp(tree)

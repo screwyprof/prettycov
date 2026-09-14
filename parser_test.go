@@ -163,7 +163,8 @@ func writeProfile(t *testing.T, content string) string {
 }
 
 // Positions are what -exclude matches a coordinate against, and the sum of the blocks has to be
-// the file's Coverage or the two disagree about the same profile.
+// the file's Coverage or the two disagree about the same profile. EndLine comes along for Misses,
+// which needs to know where one region stops to tell it from the next.
 func TestParseProfileKeepsBlockPositions(t *testing.T) {
 	t.Parallel()
 
@@ -176,8 +177,8 @@ func TestParseProfileKeepsBlockPositions(t *testing.T) {
 	require.Len(t, items, 1)
 
 	assert.Equal(t, []prettycov.Block{
-		{Line: 31, Col: 2, Coverage: prettycov.CoverageStats{Covered: 2}},
-		{Line: 32, Col: 9, Coverage: prettycov.CoverageStats{Uncovered: 1}},
+		{Line: 31, Col: 2, EndLine: 32, Coverage: prettycov.CoverageStats{Covered: 2}},
+		{Line: 32, Col: 9, EndLine: 34, Coverage: prettycov.CoverageStats{Uncovered: 1}},
 	}, items[0].Blocks)
 
 	var sum prettycov.CoverageStats

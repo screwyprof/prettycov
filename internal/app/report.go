@@ -81,20 +81,22 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 		HideCovered: cfg.HideCovered,
 	}
 
-	// -hide-covered can take the whole report, when this depth draws nothing below the threshold.
-	// The exit code is unchanged and the report is correct, but a command that prints nothing reads
-	// as one that failed, so it says which flag emptied it.
+	// -misses replaces the report rather than decorating it, so this is a choice of printer and not
+	// a second path through the report. The positions are the drill-down and the tree is the
+	// summary: printing both would answer the question the default invocation already answered, and
+	// a tree row can be read as a location by whatever parses this, since a label may carry a colon.
 	//
-	// It does not say the profile holds nothing below the bar, which would often be false: -depth
-	// decides what is drawn as much as this does, so `-depth=0 -hide-covered=80` empties a report
-	// over a package at 0.00 that a deeper one would show.
-	//
-	// Naming the flag without checking it was given, and reading the threshold through the pointer,
-	// because nothing else can arrive here: the profile holds statements or refuseEmpty returned
-	// above, and a tree with statements has a top row that -depth always draws. Testing for the
-	// flag as well would be a guard no invocation can reach.
-	if prettycov.DisplayTree(stdout, tree, opts) == 0 {
-		_, _ = fmt.Fprintf(stderr, "-hide-covered=%v hid every row this depth draws\n", *cfg.HideCovered)
+	// Both printers have the same shape — (writer, tree, options) returning what they drew — so
+	// nothing below here knows which one it is holding.
+	draw := prettycov.DisplayTree
+	if cfg.Misses {
+		draw = prettycov.DisplayMisses
+	}
+
+	// Either printer can come up empty, and a command that prints nothing reads as one that failed.
+	// The exit code is unchanged and the report is correct; this says which flag emptied it.
+	if draw(stdout, tree, opts) == 0 {
+		_, _ = fmt.Fprintln(stderr, cfg.whyNothingDrawn())
 	}
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
@@ -160,6 +162,24 @@ func refuseEmpty(cfg config, reason string, stderr io.Writer) int {
 	_, _ = fmt.Fprintln(stderr, reason)
 
 	return exitFailed
+}
+
+// whyNothingDrawn says why a printer drew nothing.
+//
+// With -misses there is nothing left to cover in what this depth draws, which is news worth having
+// rather than a mistake. Otherwise only -hide-covered can have emptied it: the profile holds
+// statements or refuseEmpty returned above, and a tree with statements has a top row that -depth
+// always draws — so the threshold can be read through its pointer without a guard no run can reach.
+//
+// Neither says the profile holds nothing below the bar, which would often be false: -depth decides
+// what is drawn as much as -hide-covered does, so `-depth=0 -hide-covered=80` empties a report over
+// a package at 0.00 that a deeper one would show.
+func (c config) whyNothingDrawn() string {
+	if c.Misses {
+		return "nothing left to cover in what this depth draws"
+	}
+
+	return fmt.Sprintf("-hide-covered=%v hid every row this depth draws", *c.HideCovered)
 }
 
 // showTotal writes the total percentage and nothing else, for a caller reading it into a variable.

@@ -91,6 +91,7 @@ type config struct {
 	HideCovered *float64
 	Counts      bool
 	Files       bool
+	Misses      bool
 	Total       bool
 	Help        bool
 	Version     bool
@@ -201,6 +202,8 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 		})
 	set.BoolVar(&cfg.Counts, "counts", false, "show uncovered/total statements after each percentage")
 	set.BoolVar(&cfg.Files, "files", false, "show the profile's files, not only its packages")
+	set.BoolVar(&cfg.Misses, "misses", false,
+		"print only the uncovered positions, as file:line:col, for an editor or a pipe")
 	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")
 	set.BoolVar(&cfg.Help, "help", false, "show help")
 	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")

@@ -15,6 +15,10 @@ import (
 // counted as a file, whether it could be folded away. Here it is simply two nodes.
 type PathTree struct {
 	Coverage CoverageStats
+	// Blocks is where a file's statements are, in the order the profile listed them, and is set on
+	// the nodes in Files and nowhere else — a directory holds no statements of its own. Optional in
+	// the same sense FileCoverage.Blocks is: a caller who built its own has none to give.
+	Blocks []Block
 	// Children is the directories below this one. Files is what the profile named here directly.
 	// A node in Files never has anything below it; a directory of the same name is in Children.
 	Children map[string]*PathTree
@@ -28,7 +32,7 @@ type PathTree struct {
 // Only the file carries the statements. Putting them on the directory as well — which is what
 // totalling per directory before building the tree amounts to — makes rollUp count every statement
 // twice, once on the directory and once beneath it.
-func (n *PathTree) add(file string, stats CoverageStats, nodes *arena) {
+func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *arena) {
 	// Split with path.Dir rather than by counting components, so a file with no directory at all
 	// still lands somewhere: path.Dir gives it ".", which is the row it renders as. Reading the
 	// directory off the second-to-last component instead left such a file hanging under the tree
@@ -50,6 +54,26 @@ func (n *PathTree) add(file string, stats CoverageStats, nodes *arena) {
 	// ParseProfile cannot deliver that — x/tools keys profiles by filename and merges their blocks
 	// — so this is for a caller handing Process a slice of its own.
 	leaf.Coverage.Add(stats)
+	// Appended for the same reason, and kept because Misses reads positions the counts cannot say.
+	// Appending onto a nil slice copies, so the leaf owns its blocks rather than pointing into the
+	// parser's shared slab — which is what makes them safe to reorder or trim later, and costs one
+	// Block per block of the profile.
+	leaf.Blocks = append(leaf.Blocks, blocks...)
+}
+
+// misses folds this node's own files into the fewest regions covering their unrun statements, named
+// under dir.
+//
+// Its own files, not its subtree: a package deeper down is visited in its own right when the options
+// draw it, and reaching down from here as well would list its misses twice.
+func (n *PathTree) misses(dir string) []Miss {
+	out := make([]Miss, 0, len(n.Files))
+
+	for name, file := range n.Files {
+		out = append(out, merge(path.Join(dir, name), file.Blocks)...)
+	}
+
+	return out
 }
 
 // child returns the node called name in the given map, creating both if this is the first time it

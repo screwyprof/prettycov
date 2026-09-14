@@ -115,16 +115,20 @@ func TestRunFailUnder(t *testing.T) {
 		},
 		{
 			// Silently passing here would make the gate useless on an empty or mis-pointed profile.
-			name: "nothing to cover cannot clear a threshold", profile: "mode: atomic\nm/d/doc.go:1.1,2.2 0 0\n",
-			args: []string{"-fail-under", "1"}, wantCode: codeBelow,
-			wantErr: "no statements to cover",
+			name:     "nothing to cover cannot clear a threshold",
+			profile:  "mode: atomic\nm/d/doc.go:1.1,2.2 0 0\n",
+			args:     []string{"-fail-under", "1"},
+			wantCode: codeBelow,
+			wantErr:  "no statements to cover",
 		},
 		{
 			// Zero is a real threshold: it asks only that the profile hold some statements. It
 			// must not silently mean "no gate", which is what a zero default would make it.
-			name: "zero still requires something to measure", profile: "mode: atomic\nm/d/doc.go:1.1,2.2 0 0\n",
-			args: []string{"-fail-under", "0"}, wantCode: codeBelow,
-			wantErr: "no statements to cover",
+			name:     "zero still requires something to measure",
+			profile:  "mode: atomic\nm/d/doc.go:1.1,2.2 0 0\n",
+			args:     []string{"-fail-under", "0"},
+			wantCode: codeBelow,
+			wantErr:  "no statements to cover",
 		},
 		{
 			name: "zero passes when there is anything at all", profile: profile,
@@ -264,7 +268,11 @@ func TestRunRejectsTwoProfiles(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-			code := app.Run(tc.args(writeProfile(t, profile), writeProfile(t, profile)), stdout, stderr)
+			code := app.Run(
+				tc.args(writeProfile(t, profile), writeProfile(t, profile)),
+				stdout,
+				stderr,
+			)
 
 			assert.Equal(t, codeFailed, code)
 			assert.Contains(t, stderr.String(), tc.wantErr)
@@ -403,7 +411,11 @@ func TestRunCountsFlag(t *testing.T) {
 	t.Parallel()
 
 	stdout := &bytes.Buffer{}
-	code := app.Run([]string{"-profile", writeProfile(t, profile), "-color", "never", "-counts"}, stdout, io.Discard)
+	code := app.Run(
+		[]string{"-profile", writeProfile(t, profile), "-color", "never", "-counts"},
+		stdout,
+		io.Discard,
+	)
 
 	assert.Equal(t, codeOK, code)
 	assert.Contains(t, stdout.String(), "60.00  4/10 uncovered\n")
@@ -417,7 +429,11 @@ func TestRunFilesFlag(t *testing.T) {
 	path := writeProfile(t, profile)
 
 	stdout := &bytes.Buffer{}
-	code := app.Run([]string{"-profile", path, "-color", "never", "-files", "-depth", "max"}, stdout, io.Discard)
+	code := app.Run(
+		[]string{"-profile", path, "-color", "never", "-files", "-depth", "max"},
+		stdout,
+		io.Discard,
+	)
 
 	require.Equal(t, codeOK, code)
 	assert.Contains(t, stdout.String(), "a.go - 100.00")
@@ -425,7 +441,11 @@ func TestRunFilesFlag(t *testing.T) {
 
 	// Without it, the same tree stops at the packages.
 	stdout.Reset()
-	code = app.Run([]string{"-profile", path, "-color", "never", "-depth", "max"}, stdout, io.Discard)
+	code = app.Run(
+		[]string{"-profile", path, "-color", "never", "-depth", "max"},
+		stdout,
+		io.Discard,
+	)
 
 	require.Equal(t, codeOK, code)
 	assert.NotContains(t, stdout.String(), ".go")
@@ -458,7 +478,14 @@ func TestRunExcludesPackages(t *testing.T) {
 		},
 		{
 			name: "excluded, the same profile clears the gate",
-			args: []string{"-exclude", "uncovered", "-fail-under", "100"}, wantCode: codeOK, want: "100.00",
+			args: []string{
+				"-exclude",
+				"uncovered",
+				"-fail-under",
+				"100",
+			},
+			wantCode: codeOK,
+			want:     "100.00",
 		},
 		{
 			// A pattern that excludes the whole profile leaves nothing to average, which
@@ -610,7 +637,11 @@ func TestRunExcludesOneBlockByCoordinate(t *testing.T) {
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
-	assert.Contains(t, stderr.String(), `-exclude "version\\.go:32" left out 1 statement in 1 block`)
+	assert.Contains(
+		t,
+		stderr.String(),
+		`-exclude "version\\.go:32" left out 1 statement in 1 block`,
+	)
 	assert.Equal(t, "100.00\n", stdout.String(), "the uncovered block left the denominator with it")
 }
 
@@ -709,7 +740,12 @@ func TestRunDoesNotBlameFlagsForAnEmptyProfile(t *testing.T) {
 				"-fail-under", "80", "-profile", writeProfile(t, empty), "-color", "never",
 			), stdout, stderr)
 
-			assert.Equal(t, codeBelow, code, "an empty profile is a failed gate, not a bad invocation")
+			assert.Equal(
+				t,
+				codeBelow,
+				code,
+				"an empty profile is a failed gate, not a bad invocation",
+			)
 			assert.Equal(t, "no statements to cover, wanted at least 80.00%\n", stderr.String())
 			assert.Empty(t, stdout.String())
 		})
@@ -793,7 +829,11 @@ func TestRunIsSilentWhenARootMatched(t *testing.T) {
 		// Both halves of the trimming meet here: the guard lets a root through on what is left
 		// after every separator goes, so Shorten has to trim them all too or a root that is in
 		// the profile silently matches nothing and gets reported as a root that is not.
-		"a root written with a separator too many": {oldRoot: "m//", newRoot: "renamed", want: "renamed"},
+		"a root written with a separator too many": {
+			oldRoot: "m//",
+			newRoot: "renamed",
+			want:    "renamed",
+		},
 	}
 
 	for name, tc := range tests {
@@ -850,7 +890,12 @@ func TestRunDoesNotBlameTheRootForWhatExcludeTook(t *testing.T) {
 	assert.Equal(t, codeOK, code, "the root is fine, so the report is drawn")
 	assert.Equal(t, " other - 100.00\n", stdout.String())
 	assert.NotContains(t, stderr.String(), "matched nothing, so no label was shortened")
-	assert.Contains(t, stderr.String(), `-exclude "^m/" left out`, "and -exclude still says what it took")
+	assert.Contains(
+		t,
+		stderr.String(),
+		`-exclude "^m/" left out`,
+		"and -exclude still says what it took",
+	)
 }
 
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
@@ -890,7 +935,8 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			// Appending onto a fresh literal, not onto tc.args: the table's slices are shared
 			// across parallel subtests.
-			args := append([]string{"-total", "-profile", writeProfile(t, sixtyOfTen), "-color", "never"},
+			args := append(
+				[]string{"-total", "-profile", writeProfile(t, sixtyOfTen), "-color", "never"},
 				tc.args...)
 
 			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
@@ -966,8 +1012,16 @@ func TestTotalOverAProfileWithNoSingleRoot(t *testing.T) {
 		"other.com/q/b.go:1.1,2.2 1 0\n")
 
 	total, tree := &bytes.Buffer{}, &bytes.Buffer{}
-	require.Equal(t, codeOK, app.Run([]string{"-total", "-profile", path, "-color", "never"}, total, io.Discard))
-	require.Equal(t, codeOK, app.Run([]string{"-profile", path, "-color", "never"}, tree, io.Discard))
+	require.Equal(
+		t,
+		codeOK,
+		app.Run([]string{"-total", "-profile", path, "-color", "never"}, total, io.Discard),
+	)
+	require.Equal(
+		t,
+		codeOK,
+		app.Run([]string{"-profile", path, "-color", "never"}, tree, io.Discard),
+	)
 
 	assert.Equal(t, "66.67\n", total.String(), "the union of both roots")
 	assert.NotContains(t, tree.String(), "66.67", "which no row carries")
@@ -984,8 +1038,16 @@ func TestTotalMatchesTheTreesOwnRendering(t *testing.T) {
 		"example.com/p/b.go:1.1,2.2 1 0\n")
 
 	total, tree := &bytes.Buffer{}, &bytes.Buffer{}
-	require.Equal(t, codeOK, app.Run([]string{"-total", "-profile", path, "-color", "never"}, total, io.Discard))
-	require.Equal(t, codeOK, app.Run([]string{"-depth", "0", "-profile", path, "-color", "never"}, tree, io.Discard))
+	require.Equal(
+		t,
+		codeOK,
+		app.Run([]string{"-total", "-profile", path, "-color", "never"}, total, io.Discard),
+	)
+	require.Equal(
+		t,
+		codeOK,
+		app.Run([]string{"-depth", "0", "-profile", path, "-color", "never"}, tree, io.Discard),
+	)
 
 	assert.Equal(t, "66.67\n", total.String())
 	assert.Contains(t, tree.String(), "66.67", "the tree reports the same figure")
@@ -1010,14 +1072,20 @@ func TestRunAcceptsMaxDepth(t *testing.T) {
 	}{
 		{name: "the default is one level below the top row", wantRows: 2},
 		{name: "max reaches the bottom", args: []string{"-depth", "max"}, wantRows: 4},
-		{name: "a number past the bottom reaches it too", args: []string{"-depth", "9"}, wantRows: 4},
+		{
+			name:     "a number past the bottom reaches it too",
+			args:     []string{"-depth", "9"},
+			wantRows: 4,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			args := append([]string{"-profile", writeProfile(t, fourLevels), "-color", "never"}, tc.args...)
+			args := append(
+				[]string{"-profile", writeProfile(t, fourLevels), "-color", "never"},
+				tc.args...)
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
@@ -1115,9 +1183,18 @@ func TestRunHideCovered(t *testing.T) {
 		args []string
 		want string
 	}{
-		"unset":     {args: nil, want: " m - 92.86\n ├ done - 100.00\n └ work - 90.00\n   └ deep - 0.00\n"},
-		"bare":      {args: []string{"-hide-covered"}, want: " m - 92.86\n └ work - 90.00\n   └ deep - 0.00\n"},
-		"threshold": {args: []string{"-hide-covered=90"}, want: " m - 92.86\n └ work - 90.00\n   └ deep - 0.00\n"},
+		"unset": {
+			args: nil,
+			want: " m - 92.86\n ├ done - 100.00\n └ work - 90.00\n   └ deep - 0.00\n",
+		},
+		"bare": {
+			args: []string{"-hide-covered"},
+			want: " m - 92.86\n └ work - 90.00\n   └ deep - 0.00\n",
+		},
+		"threshold": {
+			args: []string{"-hide-covered=90"},
+			want: " m - 92.86\n └ work - 90.00\n   └ deep - 0.00\n",
+		},
 	}
 
 	for name, tc := range tests {
@@ -1127,7 +1204,11 @@ func TestRunHideCovered(t *testing.T) {
 			path := writeProfile(t, shaped)
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-			code := app.Run(append(tc.args, "-depth", "max", "-profile", path, "-color", "never"), stdout, stderr)
+			code := app.Run(
+				append(tc.args, "-depth", "max", "-profile", path, "-color", "never"),
+				stdout,
+				stderr,
+			)
 
 			assert.Equal(t, codeOK, code)
 			assert.Equal(t, tc.want, stdout.String())
@@ -1153,7 +1234,13 @@ func TestRunSaysWhenHideCoveredTookEveryRow(t *testing.T) {
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
-		"-hide-covered=80", "-depth", "0", "-profile", writeProfile(t, holdsWork), "-color", "never",
+		"-hide-covered=80",
+		"-depth",
+		"0",
+		"-profile",
+		writeProfile(t, holdsWork),
+		"-color",
+		"never",
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
@@ -1165,7 +1252,13 @@ func TestRunSaysWhenHideCoveredTookEveryRow(t *testing.T) {
 	// And the deeper run proves it.
 	deep, deepErr := &bytes.Buffer{}, &bytes.Buffer{}
 	require.Equal(t, codeOK, app.Run([]string{
-		"-hide-covered=80", "-depth", "max", "-profile", writeProfile(t, holdsWork), "-color", "never",
+		"-hide-covered=80",
+		"-depth",
+		"max",
+		"-profile",
+		writeProfile(t, holdsWork),
+		"-color",
+		"never",
 	}, deep, deepErr))
 	assert.Equal(t, " m - 90.00\n └ lo - 0.00\n", deep.String())
 	assert.Empty(t, deepErr.String())
@@ -1204,7 +1297,11 @@ func TestRunHideCoveredPercentage(t *testing.T) {
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			code := app.Run([]string{
-				"-hide-covered=" + tc.value, "-profile", writeProfile(t, profile), "-color", "never",
+				"-hide-covered=" + tc.value,
+				"-profile",
+				writeProfile(t, profile),
+				"-color",
+				"never",
 			}, stdout, stderr)
 
 			assert.Equal(t, tc.wantCode, code)
@@ -1246,4 +1343,98 @@ func TestRunHideCoveredReadsZeroAsAPercentageNotAsOff(t *testing.T) {
 			assert.Equal(t, tc.wantOut, stdout.String())
 		})
 	}
+}
+
+// -misses replaces the report: positions on stdout, no tree, and the gate still reads the tree.
+func TestRunMisses(t *testing.T) {
+	t.Parallel()
+
+	// own.go belongs to m itself; deep/ is a level further down.
+	shaped := "mode: set\n" +
+		"m/own.go:5.2,6.3 1 0\n" +
+		"m/deep/a.go:9.2,10.3 1 0\n" +
+		"m/deep/a.go:11.2,12.3 1 0\n" +
+		"m/covered/c.go:3.2,4.3 1 1\n"
+
+	// covered/c.go is in the profile and not in any of these: a covered block is not a miss. The
+	// two blocks of deep/a.go abut, so they are one position carrying both statements.
+	const (
+		whole = "m/deep/a.go:9:2: 2 uncovered\n" +
+			"m/own.go:5:2: 1 uncovered\n"
+		topOnly = "m/own.go:5:2: 1 uncovered\n"
+	)
+
+	tests := map[string]struct {
+		args []string
+		want string
+	}{
+		"the whole tree": {args: []string{"-depth", "max"}, want: whole},
+		"one level":      {args: []string{"-depth", "0"}, want: topOnly},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run(append(tc.args, "-misses",
+				"-profile", writeProfile(t, shaped), "-color", "never"), stdout, stderr)
+
+			assert.Equal(t, codeOK, code)
+			assert.Equal(t, tc.want, stdout.String())
+			assert.Empty(t, stderr.String(), "no tree, and nothing to say about it")
+		})
+	}
+}
+
+// The gate reads the tree, not the rows, so -fail-under means the same beside the positions as it
+// does beside the table.
+func TestRunMissesStillGrades(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-misses", "-fail-under", "80", "-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeBelow, code)
+	assert.NotEmpty(t, stdout.String(), "the positions still go out")
+	assert.Contains(t, stderr.String(), "total coverage 60.00% is below 80.00%")
+}
+
+// A fully covered profile has no positions to print, which is news rather than a failure — an empty
+// stdout from a command that exits 0 reads as one that did not run.
+func TestRunMissesSaysWhenThereAreNone(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-misses",
+		"-profile",
+		writeProfile(t, "mode: set\nm/a.go:1.1,2.2 3 1\n"),
+		"-color",
+		"never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "nothing left to cover in what this depth draws")
+}
+
+// -exclude acts on the profile before the tree, so an excluded block is not a miss — which is what
+// makes the two compose: the positions this prints are the coordinates that flag takes.
+func TestRunMissesHonoursExclude(t *testing.T) {
+	t.Parallel()
+
+	shaped := "mode: set\nm/a.go:9.2,10.3 1 0\nm/b.go:40.2,41.3 1 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-misses", "-depth", "max", "-exclude", `a\.go:9`,
+		"-profile", writeProfile(t, shaped), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Equal(t, "m/b.go:40:2: 1 uncovered\n", stdout.String())
+	assert.Contains(t, stderr.String(), `-exclude "a\\.go:9" left out 1 statement in 1 block`)
 }

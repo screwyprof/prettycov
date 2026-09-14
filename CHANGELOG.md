@@ -10,6 +10,48 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Added
+
+- `-misses` prints where the uncovered statements are, one `file:line:col: N uncovered` per run of
+  them. That is the shape `go vet` uses and the one an editor's error format parses, so it pipes
+  into `vim -q -`; a line range would read well to a person and be dropped without a word by
+  everything else. The count after the position is what makes the column survive — without a message
+  the format falls back to `file:line:message` and reads the column as the text — and it is the
+  number a position cannot carry, since one untaken branch and a whole untested function look alike
+  until you see it. It is the other half of what golang/go#78205 asks for — a summary and the
+  uncovered ranges, in a terminal, without a browser — and the tree was already the summary.
+
+  It replaces the report rather than decorating it. The tree is the summary and these are the
+  drill-down, so printing both would answer the question the default invocation already answered.
+
+  Abutting blocks fold into one entry, because `cmd/cover` emits one per branch: 2,610 uncovered
+  blocks on a profile at 1.7% coverage are 1,344 regions. The gain is all in the badly covered case
+  — 4% on a profile at 91%, nothing at 99%, where misses are scattered single statements with
+  nothing adjacent to fold. A block declaring no statements is not a miss.
+
+  `-depth` and `-hide-covered` narrow it as they narrow the tree, being the same traversal: `-depth`
+  lists the misses of the packages it draws, `-hide-covered` leaves out subtrees already at the bar.
+  `-exclude` removes them from the profile before any of it, and takes the same coordinates this
+  prints — which is the workflow golang/go#53271 was declined in favour of.
+
+  The paths are the profile's, which names packages rather than files on disk, so `-new=.` is what
+  makes them openable.
+
+### Go API
+
+- `Misses` and `DisplayMisses` are the second printer over the same traversal as `Rows` and
+  `DisplayTree`, and both printers now have one shape — `(io.Writer, *PathTree, Options) int` — so a
+  caller selects one without knowing which it holds. `Miss` carries `EndLine` and `Statements` as
+  well as the position, for a consumer that speaks ranges: GitHub annotations and LSP diagnostics
+  both do, where the terminal does not.
+
+- `Block` gains `EndLine`. `-exclude` still matches on the start and only the start, so a pattern
+  naming a line means the block that opens there however far it runs.
+
+- `PathTree.Blocks` holds a file leaf's blocks, so the tree can answer where as well as how much.
+
 ## [0.11.0] — 2026-09-12
 
 ### Added
@@ -460,6 +502,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[Unreleased]: https://github.com/screwyprof/prettycov/compare/v0.11.0...HEAD
 [0.11.0]: https://github.com/screwyprof/prettycov/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/screwyprof/prettycov/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/screwyprof/prettycov/compare/v0.8.0...v0.9.0
