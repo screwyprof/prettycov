@@ -86,38 +86,44 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	// summary: printing both would answer the question the default invocation already answered, and
 	// a tree row can be read as a location by whatever parses this, since a label may carry a colon.
 	//
-	// Both printers have the same shape — (writer, tree, options) returning what they drew — so
-	// nothing below here knows which one it is holding.
-	//
-	// accounts is how many uncovered statements a full output would have reported, which is the one
-	// thing the two printers differ about and so is settled here beside the selection rather than in
-	// a message apiece. A tree carries its subtree's count on every row, so the rows it draws
-	// account for all of them at any depth — that is what makes a shallow tree a summary rather than
-	// a fragment. A list has no such row, so a shallow one is simply shorter, and only the number
-	// says which.
-	draw, accounts := prettycov.DisplayTree, 0
+	// Both printers have the same shape — (writer, tree, options) returning what they drew — so the
+	// call below does not know which one it is holding. What they return is each one's own unit,
+	// rows against statements, and the only thing they promise in common is that it is zero exactly
+	// when nothing was written.
+	draw := prettycov.DisplayTree
 	if cfg.Misses {
-		draw, accounts = prettycov.DisplayMisses, tree.Coverage.Uncovered
+		draw = prettycov.DisplayMisses
 	}
 
 	shown := draw(stdout, tree, opts)
 
-	// Either printer can come up empty, and a command that prints nothing reads as one that failed.
-	// The exit code is unchanged and the report is correct; this says what emptied it.
-	//
-	// Short is the other half of that, and the quieter mistake: `file:line:col` is the shape every
-	// linter and compiler emits, and in all of them it is everything they found, so a list that
-	// stops early reads as a clean bill. The advertised consumer makes it concrete — pipe eight of
-	// thirty-four into `vim -q -`, fix them, and the quickfix says there is nothing left.
-	switch {
-	case shown == 0:
-		_, _ = fmt.Fprintln(stderr, cfg.whyNothingShown(tree))
-	case shown < accounts:
-		_, _ = fmt.Fprintf(stderr, "%s lists %d of %s\n",
-			cfg.outputFilters(), shown, plural(accounts, "uncovered statement"))
-	}
+	// A command that prints nothing, or less than everything, reads as one that ran clean.
+	cfg.reportOutput(tree, shown, stderr)
 
 	return checkThreshold(cfg.FailUnder, tree, stderr)
+}
+
+// reportOutput says what the printer produced when that is not evident from the output itself. The
+// exit code is unchanged and the report is correct either way.
+//
+// Printing nothing is the shared case and stays printer-blind: both can be emptied, and by the same
+// filters. Being a fragment is not shared — a tree carries its subtree's count on every row, so the
+// rows it draws account for every statement at any depth, which is what makes a shallow one a
+// summary rather than a short list. So that is asked of the one printer it can happen to, and shown
+// is read as that printer's own unit rather than as a count the two have to agree on.
+//
+// Short is the quieter mistake of the two. `file:line:col` is the shape every linter and compiler
+// emits, and in all of them it is everything they found, so a list that stops early reads as a clean
+// bill: pipe eight of thirty-four into `vim -q -`, fix them, and the quickfix says there is nothing
+// left. On stderr, so the pipe carries only the list.
+func (c config) reportOutput(tree *prettycov.PathTree, shown int, stderr io.Writer) {
+	switch {
+	case shown == 0:
+		_, _ = fmt.Fprintln(stderr, c.whyNothingShown(tree))
+	case c.Misses && shown < tree.Coverage.Uncovered:
+		_, _ = fmt.Fprintf(stderr, "%s lists %d of %s\n",
+			c.outputFilters(), shown, plural(tree.Coverage.Uncovered, "uncovered statement"))
+	}
 }
 
 // reportRename reports whether -old named a package the profile does not hold — a typo, or a module

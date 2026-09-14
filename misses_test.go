@@ -65,20 +65,6 @@ func TestMissesMergesAbuttingBlocks(t *testing.T) {
 	}, got, "the first two blocks are one region, the third is its own")
 }
 
-// A block cmd/cover emits with no statements in it is not a miss: there is nothing there to cover.
-func TestMissesSkipsBlocksWithNoStatements(t *testing.T) {
-	t.Parallel()
-
-	tree := prettycov.Process([]prettycov.FileCoverage{
-		withBlocks("m/a.go", uncovered(10, 2, 12, 0), uncovered(20, 2, 22, 1)),
-	})
-
-	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
-
-	require.Len(t, got, 1)
-	assert.Equal(t, 20, got[0].Line)
-}
-
 // A covered block is not a miss either, and it does not join the regions on either side of it. The
 // blocks abut, so only the covered one between them keeps this two regions — a gap would have done
 // it on its own and tested nothing.

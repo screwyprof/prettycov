@@ -28,8 +28,8 @@ tags.
 
   Abutting blocks fold into one entry, because `cmd/cover` emits one per branch: 2,610 uncovered
   blocks on a profile at 1.7% coverage are 1,344 regions. The gain is all in the badly covered case
-  — 4% on a profile at 91%, nothing at 99%, where misses are scattered single statements with
-  nothing adjacent to fold. A block declaring no statements is not a miss, and a covered block
+  — nothing at 91% or 99%, where misses are scattered single statements with nothing adjacent to
+  fold. A block declaring no statements is not a miss, and a covered block
   between two uncovered ones stops the fold rather than being swallowed by it.
 
   `-depth` and `-hide-covered` narrow it as they narrow the tree, being the same filtering: a file is
@@ -71,9 +71,10 @@ tags.
 
 - `Misses` and `DisplayMisses` are the second printer over the same traversal as `Rows` and
   `DisplayTree`, and both printers now have one shape — `(io.Writer, *PathTree, Options) int` — so a
-  caller selects one without knowing which it holds. `Miss` carries `EndLine` and `Statements` as
-  well as the position, for a consumer that speaks ranges: GitHub annotations and LSP diagnostics
-  both do, where the terminal does not.
+  caller selects one and calls it without a branch. What each returns is its own unit — rows against
+  statements — and all they promise in common is that it is zero exactly when nothing was written.
+  `Miss` carries `EndLine` and `Statements` as well as the position, for a consumer that speaks
+  ranges: GitHub annotations and LSP diagnostics both do, where the terminal does not.
 
 - `Block` gains `EndLine`. `-exclude` still matches on the start and only the start, so a pattern
   naming a line means the block that opens there however far it runs.

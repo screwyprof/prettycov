@@ -99,16 +99,18 @@ func (a *arena) child(nodes *map[string]*PathTree, name string) *PathTree {
 // Indexed rather than appended, so a full chunk can only be replaced and never grown. Growing is
 // not unsafe — the tree holds pointers into the old array, which stays alive and correct — it is
 // waste: append copies every node into the new array, nothing reads the copies, and the originals
-// keep the old array anyway. Measured at 36.9MB against 22.7MB on a 30,000-file profile.
+// keep the old array anyway. Measured at 36.9MB against 22.7MB on a 30,000-file profile, before
+// Blocks was added to the node.
 type arena struct {
 	chunk []PathTree
 	used  int
 }
 
-// chunkNodes is 16KB at PathTree's current size. That is also the floor: the first node allocates
-// a whole chunk, so a one-file profile pays 16KB where it used to pay one node. Measured across
-// 64..32768, time is flat for a large profile and bytes scale with the chunk for a small one, so
-// this trades a fixed 16KB against an allocation per node.
+// chunkNodes is 28KB at PathTree's current size, which Blocks took from 32 bytes to 56. That is
+// also the floor: the first node allocates a whole chunk, so a one-file profile pays the 28KB where
+// it used to pay one node. Measured across 64..32768, time is flat for a large profile and bytes
+// scale with the chunk for a small one, so this trades a fixed chunk against an allocation per
+// node.
 const chunkNodes = 512
 
 func (a *arena) next() *PathTree {

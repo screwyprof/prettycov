@@ -126,9 +126,8 @@ type FileCoverage struct {
 //
 // Line and Col are the block's identity. -exclude matches against them and nothing else, so a
 // pattern like `a\.go:3` means "the block that opens on line 3" however far the block runs.
-// EndLine is how far it runs, which Misses needs to tell one region from the next: a block spanning
-// lines 44 to 51 reaches the one that opens on 52, where comparing openings would not. On a profile
-// at 1.7% coverage that is 1,344 regions against 2,087.
+// EndLine is how far it runs, which is what Misses folds on — see merge for why the end rather than
+// the opening, and what it is worth.
 type Block struct {
 	Line, Col int
 	EndLine   int
@@ -142,10 +141,15 @@ type Block struct {
 //
 // Neither spelling depends on the pattern, so callers build them once per block and ask every
 // pattern about the pair.
+//
+// Sliced rather than built twice: position is the single spelling and the line-only form is a
+// prefix of it, so cutting at the last colon shares the backing array. Building both meant running
+// Itoa on the line a second time and copying the file name into a second string — 300,000 extra
+// allocations on a profile of that many blocks.
 func (b Block) at(file string) (withCol, toLine string) {
-	toLine = file + ":" + strconv.Itoa(b.Line)
+	withCol = position(file, b.Line, b.Col)
 
-	return position(file, b.Line, b.Col), toLine
+	return withCol, withCol[:strings.LastIndexByte(withCol, ':')]
 }
 
 // position names a place in a file the way a compiler does. One spelling, because -exclude matches

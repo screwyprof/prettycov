@@ -67,12 +67,7 @@ func Rows(tree *PathTree, opts Options) []Row {
 
 	rows := make([]Row, 0, len(shown))
 	for _, d := range shown {
-		rows = append(rows, Row{
-			Prefix:   d.Prefix,
-			Label:    d.Label,
-			Level:    int(d.Level),
-			Coverage: d.Coverage,
-		})
+		rows = append(rows, d.Row)
 	}
 
 	return rows
@@ -135,18 +130,16 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) int {
 // below it, so re-deriving the subtree stage 4 has already decided against would be one field
 // access away and nothing would catch it — which is the way the two of them came to disagree twice.
 type drawn struct {
-	// Coverage is the node's, rolled up. Blocks is empty unless the row stands for a file.
-	Coverage CoverageStats
-	Blocks   []Block
-	Label    string
-	// Path is the node's whole path, which Label alone is not: a row is drawn with its own segment,
-	// so `httpkit` says nothing about the `pkg` above it. Misses needs all of it, because what it
-	// prints has to name a file. Built from the sanitised segments, so the two printers spell one
-	// path the same way — see sanitize for why a position is scrubbed as a row is.
-	Path  string
-	Level Depth
-	// Prefix is the indent and glyph placing the row.
-	Prefix string
+	// Row is what the tree printer needs, embedded rather than restated: the two held the same four
+	// fields and Rows copied them across one by one, which is a pair that can drift.
+	Row
+	// Blocks is empty unless the row stands for a file.
+	Blocks []Block
+	// Path is the node's whole path, which Row.Label alone is not: a row is drawn with its own
+	// segment, so `httpkit` says nothing about the `pkg` above it. Misses needs all of it, because
+	// what it prints has to name a file. Built from the sanitised segments, so the two printers spell
+	// one path the same way — see sanitize for why a position is scrubbed as a row is.
+	Path string
 }
 
 // walker holds what stays the same for the whole traversal, so the recursion carries only what
@@ -182,15 +175,30 @@ type entry struct {
 	node *PathTree
 }
 
-// visible is what to draw below tree: the entries, minus the ones already at the bar, sorted — map
-// order is randomised and this output gets diffed between runs.
+// visible is what to draw below tree: everything it holds that could be a row, minus the ones
+// already at the bar, sanitised and sorted — map order is randomised and this output gets diffed
+// between runs.
 func (b *walker) visible(tree *PathTree, level Depth) []entry {
-	entries := b.entries(tree)
+	size := len(tree.Children)
+	if b.withFiles {
+		size += len(tree.Files)
+	}
 
-	if b.hiding {
-		// Asked of the node the row draws, which is the one collapse merged to, so a run judged
-		// here is judged by the number the reader would have seen.
-		entries = slices.DeleteFunc(entries, func(e entry) bool { return b.allCovered(e.node, level) })
+	entries := make([]entry, 0, size)
+
+	for e := range b.below(tree) {
+		// The bar first, so a row nobody draws is never scanned. Asked of the node the row draws,
+		// which is the one collapse merged to, so a run judged here is judged by the number the
+		// reader would have seen.
+		if b.hiding && b.allCovered(e.node, level) {
+			continue
+		}
+
+		// Sanitised here and not in below: a replaced rune sorts where the replacement does, so the
+		// label has to be the drawn one before the sort below. allCovered reads no label, which is
+		// what lets the bar go first — the scan is per rune of every name that survives it.
+		e.label = sanitize(e.label)
+		entries = append(entries, e)
 	}
 
 	// Sorted by the label the reader sees rather than by the name it started as, or a merged row
@@ -262,32 +270,6 @@ func (b *walker) allCovered(node *PathTree, level Depth) bool {
 // two drifting is how a collapsed run came to cost allCovered more levels than it cost the report.
 func (b *walker) drawsAt(level Depth) bool { return level <= b.depth }
 
-// entries is everything below tree that could be a row: its directories with any run below them
-// merged in, and its files when -files draws them. In map order, and without the bar — whether a
-// row is worth drawing is allCovered's question, and asking it here would recurse back through it.
-//
-// The one place collapse and -files are read. They were read here and again inside allCovered, and
-// the same decision written twice is how the depth cut-off and collapse came to disagree once
-// already: allCovered spent a level per directory where the report spends one per row.
-func (b *walker) entries(tree *PathTree) []entry {
-	size := len(tree.Children)
-	if b.withFiles {
-		size += len(tree.Files)
-	}
-
-	out := make([]entry, 0, size)
-
-	for e := range b.below(tree) {
-		// Sanitised here and not in below: a replaced rune sorts where the replacement does, so the
-		// label has to be the drawn one before visible sorts it. allCovered reads no label, and the
-		// scan is per rune of every name in the profile.
-		e.label = sanitize(e.label)
-		out = append(out, e)
-	}
-
-	return out
-}
-
 // below yields what the node holds that could be a row: its directories with any run beneath them
 // merged in, and its files when the output includes them.
 //
@@ -343,15 +325,17 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		here := path.Join(parent, e.label)
 
 		b.out = append(b.out, drawn{
-			Coverage: e.node.Coverage,
-			Blocks:   e.node.Blocks,
-			Label:    e.label,
-			Path:     here,
-			Level:    level,
-			// string() copies, so the visitor owns its prefix and padding stays reusable. Built
-			// here even for a visitor that ignores it: a row's indent depends on whether every
-			// ancestor was a last child, which cannot be rebuilt from the level alone.
-			Prefix: string(append(padding, symbol(root, getBoxType(at, len(entries)))...)),
+			Row: Row{
+				Coverage: e.node.Coverage,
+				Label:    e.label,
+				Level:    int(level),
+				// string() copies, so the visitor owns its prefix and padding stays reusable. Built
+				// here even for a visitor that ignores it: a row's indent depends on whether every
+				// ancestor was a last child, which cannot be rebuilt from the level alone.
+				Prefix: string(append(padding, symbol(root, getBoxType(at, len(entries)))...)),
+			},
+			Blocks: e.node.Blocks,
+			Path:   here,
 		})
 
 		// Grown for the child and truncated after it, so siblings share one buffer instead of each

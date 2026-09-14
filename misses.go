@@ -66,9 +66,9 @@ func Misses(tree *PathTree, opts Options) []Miss {
 		misses = merge(misses, d.Path, d.Blocks)
 	}
 
-	// Sorted by position, so the list is diffable between runs and reads down a file the way the
-	// file does. Map order over Files is randomised, and a caller pipes this into a tool that will
-	// not sort it back.
+	// prepare hands these over in the order the report draws them, which is depth-first: a package's
+	// own files come after the subpackages sorted above them. Flattening that into one list means
+	// sorting it again, or b.go would follow deep/a.go and a reader would lose their place.
 	slices.SortFunc(misses, func(x, y Miss) int {
 		return cmp.Or(cmp.Compare(x.File, y.File), cmp.Compare(x.Line, y.Line), cmp.Compare(x.Col, y.Col))
 	})
@@ -178,8 +178,9 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 // statements it accounted for.
 //
 // The same shape as DisplayTree — (writer, tree, options) returning what it drew — so a caller picks
-// a printer and calls it without knowing which it holds. That is the whole of the -misses mode: one
-// selection, not a second path through the report.
+// a printer and calls it without a branch. That is the whole of the -misses mode: one selection,
+// not a second path through the report. What each returns is its own unit, and all they promise in
+// common is that it is zero exactly when nothing was written.
 //
 // Statements rather than lines, which is the number a caller can do something with. A tree says how
 // much is uncovered in its top row whatever depth it is drawn at, so a reader can always tell a

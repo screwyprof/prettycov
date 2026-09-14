@@ -382,9 +382,11 @@ func fileRowsWithMisses(tree *prettycov.PathTree, files []prettycov.FileCoverage
 		}
 	}
 
-	var named []string
+	rows := rowInfos(prettycov.Rows(tree, opts))
 
-	for _, r := range rowInfos(prettycov.Rows(tree, opts)) {
+	named := make([]string, 0, len(rows))
+
+	for _, r := range rows {
 		if unrun[r.path] {
 			named = append(named, r.path)
 		}
@@ -395,22 +397,12 @@ func fileRowsWithMisses(tree *prettycov.PathTree, files []prettycov.FileCoverage
 	return named
 }
 
-// missedFiles names the distinct files the misses point into.
+// missedFiles names the distinct files the misses point into. Misses already orders them by file,
+// so Compact is enough to drop the repeats a file with several regions leaves.
 func missedFiles(tree *prettycov.PathTree, opts prettycov.Options) []string {
-	seen := map[string]bool{}
+	named := missPaths(prettycov.Misses(tree, opts))
 
-	var named []string
-
-	for _, f := range missPaths(prettycov.Misses(tree, opts)) {
-		if !seen[f] {
-			seen[f] = true
-			named = append(named, f)
-		}
-	}
-
-	slices.Sort(named)
-
-	return named
+	return slices.Compact(named)
 }
 
 // withUnrunBlocks gives a fixture built by hand the blocks a parsed profile carries, so a file with
