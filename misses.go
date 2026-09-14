@@ -41,6 +41,12 @@ type Miss struct {
 // leaves out the ones already at the bar. -files is not among them — a miss is a file position
 // whether or not a file is drawn as a row.
 //
+// Which means the list narrows with -depth the way the tree does *with -files*, not the way the
+// default tree does. Asking for files is also what lets collapse merge a package holding one into a
+// single row, so `-misses -depth=2` reaches m/deep/deeper/b.go where `-depth=2` alone draws the
+// deeper package and stops. Same traversal, one option set differently, and that option is the
+// one the list has no choice about.
+//
 // -exclude and a renamed root are not read here. They act on the profile before the tree is built,
 // so an excluded block is not a miss and a shortened path is what these carry — which is what makes
 // them useful, since the profile's own module paths do not resolve on disk and `-new=.` makes them
@@ -138,8 +144,15 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 			continue
 		}
 
+		// Floored at the block's own opening. A profile always gives an end at or past it, but Block
+		// is exported and EndLine is new, so a caller assembling its own FileCoverage — which is the
+		// documented way to use Exclude — leaves it zero. That made an inverted Miss{Line: 62,
+		// EndLine: 0}, which is the one field a range consumer reads and which GitHub rejects
+		// outright, and it killed folding for such a caller besides: nothing starts at or before 1.
+		end := max(block.Line, block.EndLine)
+
 		if open >= 0 && block.Line <= out[open].EndLine+1 {
-			out[open].EndLine = max(out[open].EndLine, block.EndLine)
+			out[open].EndLine = max(out[open].EndLine, end)
 			out[open].Statements += block.Coverage.Uncovered
 
 			continue
@@ -149,7 +162,7 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 			File:       file,
 			Line:       block.Line,
 			Col:        block.Col,
-			EndLine:    block.EndLine,
+			EndLine:    end,
 			Statements: block.Coverage.Uncovered,
 		})
 		open = len(out) - 1

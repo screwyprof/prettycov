@@ -716,6 +716,22 @@ func TestRunDoesNotBlameFlagsForAnEmptyProfile(t *testing.T) {
 	}
 }
 
+// -total and -misses each say what the whole of stdout is, so one had to win silently: -total
+// returns before a printer is chosen, so this printed a percentage, dropped every position and said
+// nothing about it. Refused, as for any other argument mistake.
+func TestRunRefusesTotalAndMissesTogether(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-total", "-misses", "-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Empty(t, stdout.String(), "neither output, rather than the one that happened to win")
+	assert.Contains(t, stderr.String(), "-total and -misses each replace the whole report; pick one")
+}
+
 // -old and -new are one rename between them. Alone, either silently did nothing: `-new=.` looks
 // like it shortens every label, and an unset `-old=$(MODULE)` leaves the report full of paths its
 // author believed were gone.

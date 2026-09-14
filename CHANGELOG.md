@@ -45,6 +45,10 @@ tags.
   The paths are the profile's, which names packages rather than files on disk, so `-new=.` is what
   makes them openable.
 
+  `-total` and `-misses` together are refused. Each says what the whole of stdout is, so one had to
+  win silently — it printed the percentage and dropped every position without a word. Exit 2, as for
+  any other argument mistake.
+
 - **Breaking:** `-fail-under=100` no longer passes a profile that is one statement short of complete.
   The gate compared the ratio while the report asks the counts, and past a certain size the two
   differ: a profile missing one statement of 2^56 divides to exactly 100 in float64, so the gate

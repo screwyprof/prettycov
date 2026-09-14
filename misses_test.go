@@ -106,6 +106,29 @@ func TestMissesLeavesCoveredBlocksOut(t *testing.T) {
 	}, got, "the covered block between them is not a bridge")
 }
 
+// Block is exported and EndLine is new, so a caller assembling its own FileCoverage — the
+// documented way to use Exclude — leaves it zero. A region ending before it starts is the one field
+// a range consumer reads, and GitHub rejects an annotation with end_line below start_line outright.
+// Folding died for such a caller too: nothing starts at or before line 1.
+func TestMissesFloorTheEndAtTheBlocksOwnLine(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{{
+		File:     "m/a.go",
+		Coverage: prettycov.CoverageStats{Uncovered: 2},
+		Blocks: []prettycov.Block{
+			{Line: 62, Col: 2, Coverage: prettycov.CoverageStats{Uncovered: 1}},
+			{Line: 63, Col: 2, Coverage: prettycov.CoverageStats{Uncovered: 1}},
+		},
+	}})
+
+	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
+
+	assert.Equal(t, []prettycov.Miss{
+		{File: "m/a.go", Line: 62, Col: 2, EndLine: 63, Statements: 2},
+	}, got, "a single-line region each, and they abut, so they fold")
+}
+
 // A block cmd/cover declares with no statements is neither covered nor unrun, so it does not
 // separate the regions on either side of it. It emits one per case expression of a type switch —
 // delegator has nine, at subscriber.go:76-83 — and they land exactly where an untested switch's

@@ -29,6 +29,7 @@ var (
 	errBadPercentage   = errors.New("want a percentage from 0 to 100")
 	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
 	errRootNamesNoPkg  = errors.New("-old names no package")
+	errTotalAndMisses  = errors.New("-total and -misses each replace the whole report; pick one")
 )
 
 // parsePercentage reads a threshold both -fail-under and -hide-covered accept. ParseFloat alone
@@ -289,6 +290,18 @@ func parseFlags(args []string) (config, error) {
 
 	if (cfg.CurrentRoot == "") != (cfg.NewRoot == "") {
 		return cfg, fmt.Errorf("%w: got %s", errHalfARename, given(cfg.CurrentRoot, cfg.NewRoot))
+	}
+
+	// Both name what the whole of stdout is, so one of them would have to win silently: -total
+	// returns before a printer is ever chosen, so `-misses -total` printed a percentage and dropped
+	// the positions with nothing on stderr. Refused rather than ranked, as for any other argument
+	// mistake — there is no report either could give that answers both.
+	if cfg.Total && cfg.Misses {
+		// The two beside it quote the root they were given, since a root is a value that can be
+		// empty-looking or carry a control byte. Both of these are booleans, so naming them is the
+		// whole of the message and there is nothing to quote back.
+		//nolint:wrapcheck // a sentinel of this package's own, with no value to add to it.
+		return cfg, errTotalAndMisses
 	}
 
 	return cfg, nil

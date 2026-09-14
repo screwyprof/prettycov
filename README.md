@@ -274,10 +274,13 @@ arrives as a dozen of them. That halves the list on a badly covered profile and 
 nothing on a good one, where misses are scattered single statements. A covered block between two
 uncovered ones stops the fold, or the entry would claim a statement the tests do reach.
 
-`-depth` and `-hide-covered` narrow it exactly as they narrow the tree, being the same filtering: a
-file is an entry of the package holding it, so it sits one level below that package — the default
-`-depth=1` gives 8 of the 32 entries above, and `-depth=max` gives all of them. `-hide-covered=90`
-leaves out the ones in subtrees already at the bar.
+`-depth` and `-hide-covered` narrow it as they narrow the tree under `-files`, being the same
+filtering with that one option set for you: a file is an entry of the package holding it, so it sits
+one level below that package — the default `-depth=1` gives 8 of the 32 entries above, and
+`-depth=max` gives all of them. `-hide-covered=90` leaves out the ones in subtrees already at the
+bar. Against the *default* tree the two part company, since asking for files is also what merges a
+package holding one into a single row: `-misses -depth=2` reaches a file that `-depth=2` alone
+stops one row above.
 
 That level is worth counting before reaching for `-depth`. `-new=.` above leaves packages at the top
 level and their files one below, which the default draws; without a rename the module path is a top
