@@ -257,8 +257,6 @@ func (b *walker) allCovered(node *PathTree, level Depth) bool {
 	return true
 }
 
-// draws reports whether the tree puts a row where this entry is. Every entry is visited; only a
-// file needs asking about, and only because -files is what turns one into a row.
 // drawsAt reports whether the report puts rows at this level. One definition, because walk asks it
 // of the level it is about to draw and allCovered of the level below the one it is judging, and the
 // two drifting is how a collapsed run came to cost allCovered more levels than it cost the report.

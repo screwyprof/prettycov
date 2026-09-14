@@ -2,6 +2,7 @@ package prettycov_test
 
 import (
 	"bytes"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -152,6 +153,30 @@ func TestMissesFoldAcrossABlockWithNoStatements(t *testing.T) {
 	assert.Equal(t, []prettycov.Miss{
 		{File: "m/a.go", Line: 10, Col: 2, EndLine: 13, Statements: 2},
 	}, got, "nothing to reach between them, so they are one region")
+}
+
+// cover bounds no line number, so a profile can name one that leaves no room to add to. Asking
+// whether the next block starts at or before the end, rather than whether the end plus one reaches
+// it, is the same test without the wrap — which turned every later block into a region nested
+// inside the first.
+func TestMissesFoldPastTheLargestLineNumber(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{{
+		File:     "m/a.go",
+		Coverage: prettycov.CoverageStats{Uncovered: 3},
+		Blocks: []prettycov.Block{
+			uncovered(10, 2, math.MaxInt, 1),
+			uncovered(20, 2, 21, 1),
+			uncovered(30, 2, 31, 1),
+		},
+	}})
+
+	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
+
+	assert.Equal(t, []prettycov.Miss{
+		{File: "m/a.go", Line: 10, Col: 2, EndLine: math.MaxInt, Statements: 3},
+	}, got, "the first block runs to the end of everything, so the rest are inside it")
 }
 
 // A covered block inside an open region does not close it. The region came from a single block

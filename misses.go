@@ -151,7 +151,10 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 		// outright, and it killed folding for such a caller besides: nothing starts at or before 1.
 		end := max(block.Line, block.EndLine)
 
-		if open >= 0 && block.Line <= out[open].EndLine+1 {
+		// Line-1 rather than EndLine+1, which is the same test without the overflow: cover bounds no
+		// line number, so a profile naming 9223372036854775807 wrapped the end to MinInt, failed the
+		// abut test for every later block and returned regions nested inside the first one.
+		if open >= 0 && block.Line-1 <= out[open].EndLine {
 			out[open].EndLine = max(out[open].EndLine, end)
 			out[open].Statements += block.Coverage.Uncovered
 
