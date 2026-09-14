@@ -282,7 +282,8 @@ leaves out the ones in subtrees already at the bar.
 That level is worth counting before reaching for `-depth`. `-new=.` above leaves packages at the top
 level and their files one below, which the default draws; without a rename the module path is a top
 row of its own and everything moves down one, so `prettycov -misses` alone lists only the files in
-your module root. When the list comes out empty it says which flag emptied it.
+your module root. When the list comes out empty it names the filters in play — `nothing to show at
+-depth=1; 34 uncovered statements left` — rather than guessing which of them did it.
 
 `-files` says nothing here. It adds files to the *tree's* output; a list of positions is made of them
 either way.

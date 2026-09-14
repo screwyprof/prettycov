@@ -106,6 +106,55 @@ func TestMissesLeavesCoveredBlocksOut(t *testing.T) {
 	}, got, "the covered block between them is not a bridge")
 }
 
+// A block cmd/cover declares with no statements is neither covered nor unrun, so it does not
+// separate the regions on either side of it. It emits one per case expression of a type switch —
+// delegator has nine, at subscriber.go:76-83 — and they land exactly where an untested switch's
+// misses abut, so reading them as covered takes that switch's regions apart.
+func TestMissesFoldAcrossABlockWithNoStatements(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{{
+		File:     "m/a.go",
+		Coverage: prettycov.CoverageStats{Uncovered: 2},
+		Blocks: []prettycov.Block{
+			uncovered(10, 2, 11, 1),
+			// `76.47,76.47 0 5` in the profile: a count, and nothing for it to have counted.
+			{Line: 11, Col: 3, EndLine: 12},
+			uncovered(12, 2, 13, 1),
+		},
+	}})
+
+	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
+
+	assert.Equal(t, []prettycov.Miss{
+		{File: "m/a.go", Line: 10, Col: 2, EndLine: 13, Statements: 2},
+	}, got, "nothing to reach between them, so they are one region")
+}
+
+// A covered block inside an open region does not close it. The region came from a single block
+// spanning its whole range, so it already holds that covered statement — closing here would leave
+// the next block to open a second region nested in the first, and Misses only sorts, so nothing
+// downstream unpicks overlapping ranges.
+func TestMissesDoNotOverlapWhenACoveredBlockSitsInsideARegion(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{{
+		File:     "m/a.go",
+		Coverage: prettycov.CoverageStats{Covered: 1, Uncovered: 2},
+		Blocks: []prettycov.Block{
+			uncovered(10, 2, 20, 1), // one block, spanning ten lines
+			covered(12, 4, 14, 1),   // inside it, so the region already holds it
+			uncovered(15, 2, 16, 1),
+		},
+	}})
+
+	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
+
+	assert.Equal(t, []prettycov.Miss{
+		{File: "m/a.go", Line: 10, Col: 2, EndLine: 20, Statements: 2},
+	}, got, "one region; the alternative is 10-20 with 15-16 nested inside it")
+}
+
 // cmd/cover nests blocks: a function's run block spans the branch blocks inside it, so a covered
 // block is nearly always open when an uncovered one starts. Only one that begins between two
 // uncovered regions separates them; one that began before the first is what encloses it.

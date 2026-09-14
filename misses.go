@@ -108,18 +108,32 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 	//
 	// open is the region still able to take another block, or -1 for none. An index rather than a
 	// line number and a length: it starts closed, so a region from the file before cannot be
-	// extended into this one, and a covered block closes it rather than being remembered and
-	// compared against later.
+	// extended into this one, and a covered block closes it outright rather than being remembered
+	// and compared against every later block.
 	open := -1
 
 	for _, block := range blocks {
+		// A block declaring no statements is neither covered nor unrun: there is nothing in it to
+		// reach, so it is neither a miss nor a thing that separates two. cmd/cover emits one per
+		// case expression of a type switch — delegator has nine, at subscriber.go:76-83 — and they
+		// sit exactly where an untested switch's misses abut, so reading them as covered took the
+		// regions of one apart.
+		if block.Coverage.Total() == 0 {
+			continue
+		}
+
 		if block.Coverage.Uncovered == 0 {
-			// Any of them closes the region, without asking where it starts. cmd/cover nests blocks
-			// — a run block spans the branch blocks inside it — but a block that encloses a region
-			// opens at or before it and so is walked before the region exists, when there is nothing
-			// to close. One reached with a region open is one that starts after it did, which is
-			// what "between" means here.
-			open = -1
+			// Closed by a covered block that starts at or past the region's end, which is what puts
+			// it between this region and whatever comes next.
+			//
+			// Not by one that starts inside the region. cmd/cover nests blocks, and a region opened
+			// by a single 10.2,20.x already spans its own whole range — closing there would leave
+			// the next block to open a second region inside the first, and nothing downstream
+			// unpicks overlapping ranges. An enclosing run block opens at or before the region and
+			// is walked before it exists, so it never reaches this at all.
+			if open >= 0 && block.Line >= out[open].EndLine {
+				open = -1
+			}
 
 			continue
 		}
