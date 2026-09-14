@@ -171,11 +171,18 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 	return out
 }
 
-// DisplayMisses writes one position per line, as a compiler does, and reports how many it wrote.
+// DisplayMisses writes one position per line, as a compiler does, and reports how many uncovered
+// statements it accounted for.
 //
 // The same shape as DisplayTree — (writer, tree, options) returning what it drew — so a caller picks
 // a printer and calls it without knowing which it holds. That is the whole of the -misses mode: one
 // selection, not a second path through the report.
+//
+// Statements rather than lines, which is the number a caller can do something with. A tree says how
+// much is uncovered in its top row whatever depth it is drawn at, so a reader can always tell a
+// summary from the whole; a list has no such row, and eight positions look the same whether they are
+// all of them or a quarter. Comparing this against the tree's own count is what answers that, and
+// every region holds at least one statement, so it is still zero exactly when nothing was written.
 //
 // `file:line:col: message`, which is the shape go vet emits and an editor's error format parses.
 // Every part of it is load-bearing:
@@ -191,17 +198,20 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 func DisplayMisses(w io.Writer, tree *PathTree, opts Options) int {
 	buf := bufio.NewWriter(w)
 
-	misses := Misses(tree, opts)
-	for _, m := range misses {
+	listed := 0
+
+	for _, m := range Misses(tree, opts) {
 		// position, not a spelling of its own: -exclude matches its patterns against exactly this,
 		// so the two have to agree for a line printed here to work as a pattern there.
 		_, _ = buf.WriteString(position(m.File, m.Line, m.Col))
 		_, _ = buf.WriteString(": ")
 		_, _ = buf.WriteString(strconv.Itoa(m.Statements))
 		_, _ = buf.WriteString(" uncovered\n")
+
+		listed += m.Statements
 	}
 
 	_ = buf.Flush()
 
-	return len(misses)
+	return listed
 }

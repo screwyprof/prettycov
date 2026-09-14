@@ -1290,11 +1290,18 @@ func TestRunMisses(t *testing.T) {
 	)
 
 	tests := map[string]struct {
-		args []string
-		want string
+		args     []string
+		want     string
+		wantNote string
 	}{
 		"the whole tree": {args: []string{"-depth", "max"}, want: whole},
-		"one level":      {args: []string{"-depth", "1"}, want: topOnly},
+		// A list that stops early looks exactly like a short one, so the count is the only thing
+		// that tells them apart: two of the three statements are a level below what this draws.
+		"one level": {
+			args:     []string{"-depth", "1"},
+			want:     topOnly,
+			wantNote: "-depth=1 lists 1 of 3 uncovered statements\n",
+		},
 	}
 
 	for name, tc := range tests {
@@ -1307,7 +1314,7 @@ func TestRunMisses(t *testing.T) {
 
 			assert.Equal(t, codeOK, code)
 			assert.Equal(t, tc.want, stdout.String())
-			assert.Empty(t, stderr.String(), "no tree, and nothing to say about it")
+			assert.Equal(t, tc.wantNote, stderr.String(), "a full list has nothing to say about itself")
 		})
 	}
 }

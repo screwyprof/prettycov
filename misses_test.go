@@ -366,5 +366,26 @@ func TestDisplayMissesWritesOnePositionPerLine(t *testing.T) {
 	n := prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll))
 
 	assert.Equal(t, "m/a.go:9:2: 3 uncovered\nm/b.go:40:16: 1 uncovered\n", buf.String())
-	assert.Equal(t, 2, n, "the count is what tells a caller the list was empty")
+
+	// Statements, not lines: two positions here and four statements between them. It is what a
+	// caller weighs against the tree's own count to tell a whole list from a shallow one, and every
+	// region holds at least one, so it is still zero exactly when nothing was written.
+	assert.Equal(t, 4, n)
+}
+
+// Zero when there is nothing to list, which is the other thing the count is for: a command printing
+// nothing reads as one that failed, and only this tells the caller it happened.
+func TestDisplayMissesCountsNothingWhenFullyCovered(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{{
+		File:     "m/a.go",
+		Coverage: prettycov.CoverageStats{Covered: 3},
+		Blocks:   []prettycov.Block{covered(9, 2, 11, 3)},
+	}})
+
+	var buf bytes.Buffer
+
+	assert.Equal(t, 0, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
+	assert.Empty(t, buf.String())
 }

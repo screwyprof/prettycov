@@ -285,8 +285,23 @@ stops one row above.
 That level is worth counting before reaching for `-depth`. `-new=.` above leaves packages at the top
 level and their files one below, which the default draws; without a rename the module path is a top
 row of its own and everything moves down one, so `prettycov -misses` alone lists only the files in
-your module root. When the list comes out empty it names the filters in play — `nothing to show at
--depth=1; 34 uncovered statements left` — rather than guessing which of them did it.
+your module root.
+
+You are told when that happens, because a short list and a whole one look alike:
+
+```shell
+❯ prettycov -misses -old=github.com/screwyprof/delegator -new=.
+pkg/httpkit/httpkit.go:62:2: 1 uncovered
+…
+-depth=1 lists 10 of 34 uncovered statements        # on stderr
+```
+
+A tree carries its subtree's count on every row, so a shallow one is a summary and says so. A list
+has no such row, and eight positions read the same whether they are all of them or a quarter —
+which matters most where it is piped, since a quickfix list that stops early looks like one you have
+finished. The count is on stderr, so the pipe is unaffected. An empty list names the filters the
+same way, rather than guessing which of them did it: `nothing to show at -depth=1; 34 uncovered
+statements left`.
 
 `-files` says nothing here. It adds files to the *tree's* output; a list of positions is made of them
 either way.

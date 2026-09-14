@@ -49,6 +49,13 @@ tags.
   win silently — it printed the percentage and dropped every position without a word. Exit 2, as for
   any other argument mistake.
 
+  A list the filters cut short says so — `-depth=1 lists 10 of 34 uncovered statements`, on stderr,
+  so a pipe is unaffected. A tree carries its subtree's count on every row, so a shallow one is a
+  summary and reads as one; a list has no such row, and eight positions look the same whether they
+  are all of them or a quarter. `file:line:col` is the shape every linter and compiler emits, and in
+  all of them it is everything they found, so a list that stops early reads as a clean bill — pipe
+  eight of thirty-four into `vim -q -`, fix them, and the quickfix says there is nothing left.
+
 - **Breaking:** `-fail-under=100` no longer passes a profile that is one statement short of complete.
   The gate compared the ratio while the report asks the counts, and past a certain size the two
   differ: a profile missing one statement of 2^56 divides to exactly 100 in float64, so the gate
