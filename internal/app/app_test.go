@@ -1253,14 +1253,23 @@ func TestRunMisses(t *testing.T) {
 	t.Parallel()
 
 	// own.go belongs to m itself; deep/ is a level further down.
+	// deep/ holds two files, so it does not merge into one of them and its files sit a level below
+	// it — which is what lets the depth tell the two cases apart.
 	shaped := "mode: set\n" +
 		"m/own.go:5.2,6.3 1 0\n" +
 		"m/deep/a.go:9.2,10.3 1 0\n" +
 		"m/deep/a.go:11.2,12.3 1 0\n" +
+		"m/deep/b.go:3.2,4.3 1 1\n" +
 		"m/covered/c.go:3.2,4.3 1 1\n"
 
-	// covered/c.go is in the profile and not in any of these: a covered block is not a miss. The
-	// two blocks of deep/a.go abut, so they are one position carrying both statements.
+	// covered/c.go and deep/b.go are in the profile and in none of these: a covered block is not a
+	// miss. The two blocks of deep/a.go abut, so they are one position carrying both statements.
+	//
+	// A file is an entry of the package holding it, as -files draws it, so own.go is a row at depth
+	// 1 and deep/a.go one at depth 2.
+	//
+	// A file sits a level below the package holding it, as -files draws it, so own.go arrives at
+	// depth 1 and deep/a.go at depth 2 — which the whole tree covers.
 	const (
 		whole = "m/deep/a.go:9:2: 2 uncovered\n" +
 			"m/own.go:5:2: 1 uncovered\n"
@@ -1272,7 +1281,7 @@ func TestRunMisses(t *testing.T) {
 		want string
 	}{
 		"the whole tree": {args: []string{"-depth", "max"}, want: whole},
-		"one level":      {args: []string{"-depth", "0"}, want: topOnly},
+		"one level":      {args: []string{"-depth", "1"}, want: topOnly},
 	}
 
 	for name, tc := range tests {

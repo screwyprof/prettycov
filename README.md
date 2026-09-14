@@ -225,7 +225,7 @@ tests never reached, as `file:line:col: N uncovered` — the shape `go vet` prin
 error format parses, so it pipes straight into `vim -q -` or `reviewdog`:
 
 ```shell
-❯ prettycov -misses -old=github.com/screwyprof/delegator -new=.
+❯ prettycov -misses -depth=max -old=github.com/screwyprof/delegator -new=.
 pkg/httpkit/httpkit.go:62:2: 1 uncovered
 pkg/logger/logger.go:22:16: 1 uncovered
 pkg/logger/logger.go:44:26: 1 uncovered
@@ -237,6 +237,21 @@ scraper/service.go:94:16: 2 uncovered
 scraper/service.go:158:20: 1 uncovered
 scraper/service.go:165:16: 1 uncovered
 scraper/service.go:188:16: 1 uncovered
+scraper/store/pgxstore/store.go:44:35: 2 uncovered
+scraper/store/pgxstore/store.go:56:27: 1 uncovered
+scraper/store/pgxstore/store.go:64:16: 1 uncovered
+scraper/store/pgxstore/store.go:69:51: 1 uncovered
+scraper/store/pgxstore/store.go:73:56: 1 uncovered
+scraper/store/pgxstore/store.go:77:56: 1 uncovered
+scraper/store/pgxstore/store.go:81:65: 1 uncovered
+scraper/store/pgxstore/store.go:85:38: 1 uncovered
+scraper/store/pgxstore/store.go:104:16: 1 uncovered
+scraper/store/pgxstore/store.go:118:16: 1 uncovered
+scraper/store/pgxstore/store.go:132:16: 1 uncovered
+scraper/store/pgxstore/store.go:147:16: 1 uncovered
+web/handler/bind/bind.go:26:16: 1 uncovered
+web/handler/bind/bind.go:31:16: 1 uncovered
+web/handler/bind/bind.go:36:16: 1 uncovered
 web/handler/tezos_get_delegations.go:40:16: 1 uncovered
 web/handler/tezos_get_delegations.go:46:16: 1 uncovered
 web/handler/tezos_get_delegations.go:52:16: 1 uncovered
@@ -257,12 +272,17 @@ Blocks that abut fold into one entry — `cmd/cover` emits one per branch, so a 
 arrives as a dozen of them. That halves the list on a badly covered profile and changes almost
 nothing on a good one, where misses are scattered single statements.
 
-`-depth` and `-hide-covered` narrow it the way they narrow the tree: `-depth` lists the misses of the
-packages you can see, and `-hide-covered` leaves out the ones in subtrees already at the bar. On the
-profile above that is 16 entries at the default depth, 31 at `-depth=max`, and 25 with
-`-hide-covered=90`. `-exclude` removes them outright, since it acts on the profile before any of
-this — and it takes the same `file:line:col` this prints, so a position you judge unreachable can be
-pasted back as a pattern.
+`-depth` and `-hide-covered` narrow it exactly as they narrow the tree, being the same filtering: a
+file is an entry of the package holding it, so it sits one level below that package — the default
+`-depth=1` gives 8 of the 31 entries above, and `-depth=max` gives all of them. `-hide-covered=90`
+leaves out the ones in subtrees already at the bar.
+
+`-files` says nothing here. It adds files to the *tree's* output; a list of positions is made of them
+either way.
+
+`-exclude` removes them outright, since it acts on the profile before any of this — and it takes the
+same `file:line:col` this prints, so a position you judge unreachable can be pasted back as a
+pattern.
 
 ## Stop counting code you never meant to test
 

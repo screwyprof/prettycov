@@ -256,7 +256,7 @@ func TestProcessAddsUpAFileNamedTwice(t *testing.T) {
 	assert.Equal(t, prettycov.CoverageStats{Covered: 1, Uncovered: 3}, node.Files["a.go"].Coverage)
 
 	// And the second file's blocks are there beside the first's, which only the positions can show.
-	misses := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll})
+	misses := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true})
 	assert.Equal(t, []prettycov.Miss{
 		{File: "m/a.go", Line: 9, Col: 2, EndLine: 10, Statements: 1},
 		{File: "m/a.go", Line: 40, Col: 2, EndLine: 41, Statements: 2},

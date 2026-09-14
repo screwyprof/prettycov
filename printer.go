@@ -62,34 +62,34 @@ type Row struct {
 // which rows there are and ignores the rest. Pure: no writer, no colour, no terminal. DisplayTree
 // is the one that decides how a Row looks.
 func Rows(tree *PathTree, opts Options) []Row {
-	var rows []Row
+	shown := prepare(tree, opts, opts.Files)
 
-	// No test for whether the node is drawn: asking for no file leaves is asking only for what the
-	// tree draws, since a leaf is the one thing -files can leave out of it. A guard here would be
-	// one no traversal can reach.
-	visit(tree, opts, false, func(d drawn) {
+	rows := make([]Row, 0, len(shown))
+	for _, d := range shown {
 		rows = append(rows, Row{
 			Prefix:   d.Prefix,
 			Label:    d.Label,
 			Level:    int(d.Level),
 			Coverage: d.Node.Coverage,
 		})
-	})
+	}
 
 	return rows
 }
 
-// visit walks tree and hands every node the options decide to show to the visitor, in the order a
-// report draws them. The one place -depth, -files and -hide-covered are read, so no two emitters
-// can answer differently.
+// prepare is the whole of the output filtering: it reads -depth, -files and -hide-covered and
+// returns the nodes left, in the order a report draws them, each carrying what a renderer needs.
 //
-// wantFiles says the visitor reads file leaves and the path each node sits at — Misses does, Rows
-// does not. It changes no rule about what is visible: a node -hide-covered hides is hidden either
-// way, and a row -depth cuts is cut either way. It only stops the traversal enumerating, sorting and
-// naming leaves that one of the two emitters throws away, which on a 30,000-file profile is 13x the
-// work of the default report.
-func visit(tree *PathTree, opts Options, wantFiles bool, v func(drawn)) {
-	b := walker{opts: opts, visit: v, wantFiles: wantFiles}
+// The one place those are read. A renderer takes this list and shapes it — it filters nothing, so
+// two renderers cannot answer differently about what the report contains. Both bugs this seam was
+// built for were that: a file above the bar listed by one and left out by the other, and a merged
+// row drawn by one and lost by the other.
+//
+// withFiles is whether the output this is for includes files. The tree always holds them; what
+// varies is the output. -files puts them in the tree's, and a list of positions is made of them, so
+// the two renderers ask for different things without either of them filtering.
+func prepare(tree *PathTree, opts Options, withFiles bool) []drawn {
+	b := walker{opts: opts, withFiles: withFiles}
 	if opts.HideCovered != nil {
 		b.hiding, b.hideAt = true, *opts.HideCovered
 	}
@@ -100,6 +100,8 @@ func visit(tree *PathTree, opts Options, wantFiles bool, v func(drawn)) {
 	padding[0] = ' '
 
 	b.walk(tree, 0, "", padding)
+
+	return b.out
 }
 
 // DisplayTree writes tree as an indented report and reports how many rows it drew. A collapsed run
@@ -153,8 +155,8 @@ type drawn struct {
 // that decision, because two would drift — collapse and the depth cut-off already disagreed once,
 // and every emitter added is another chance at it.
 type walker struct {
-	opts  Options
-	visit func(drawn)
+	opts Options
+	out  []drawn
 
 	// hiding says -hide-covered was given at all and hideAt is the threshold, read once rather than
 	// through the pointer at every node. What "at least this much" means is CoverageStats', not
@@ -162,8 +164,8 @@ type walker struct {
 	hiding bool
 	hideAt float64
 
-	// wantFiles is the visitor's, not the options': see visit.
-	wantFiles bool
+	// withFiles is the output's, not the options': see prepare.
+	withFiles bool
 }
 
 // entry is one row to draw: the node, and the label it will carry once any run below it has been
@@ -171,10 +173,6 @@ type walker struct {
 // by name alone.
 type entry struct {
 	label string
-	// file marks an entry that came from Files rather than Children, which decides whether the tree
-	// draws it — and only that. It is visited either way, because a miss lives in a file and a file
-	// is a row only when -files asks for one.
-	file bool
 	// name is what the map called this before any merging, kept only to break a tie between two
 	// labels that came out the same. Within one map it is unique, so it is a total order there.
 	name string
@@ -186,33 +184,12 @@ type entry struct {
 // level and no glyph rather than being filtered out later: without that the last package under a
 // directory would draw the branch glyph of a middle one whenever a file sorted after it.
 func (b *walker) visible(tree *PathTree, level Depth) []entry {
-	entries := make([]entry, 0, len(tree.Children)+len(tree.Files))
+	entries := b.entries(tree)
 
-	for name, node := range tree.Children {
-		label, merged := collapse(name, node, b.opts.Files)
-
+	if b.hiding {
 		// Asked of the node the row draws, which is the one collapse merged to, so a run judged
 		// here is judged by the number the reader would have seen.
-		if b.hiding && b.allCovered(merged, level) {
-			continue
-		}
-
-		// The filesystem root is the one node with no name of its own: an absolute path splits to
-		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
-		// there is something below to fold. When there is not — a root holding two files — the
-		// label is left empty, and a blank row says nothing. Decided here rather than at the row,
-		// so the sort below sees the label the reader will: "/" belongs after ".", and sorting on
-		// the empty string put it first.
-		if label == "" {
-			label = "/"
-		}
-
-		entries = append(entries, entry{label: sanitize(label), name: name, node: merged})
-	}
-
-	// Only when they will be read: drawn as rows, or asked for by a visitor that wants leaves.
-	if b.wantFiles || b.opts.Files {
-		entries = append(entries, b.files(tree, level)...)
+		entries = slices.DeleteFunc(entries, func(e entry) bool { return b.allCovered(e.node, level) })
 	}
 
 	// Sorted by the label the reader sees rather than by the name it started as, or a merged row
@@ -261,7 +238,7 @@ func (b *walker) allCovered(node *PathTree, level Depth) bool {
 	}
 
 	// Past the last level the report draws, so nothing below can speak for itself.
-	if level >= b.opts.Depth {
+	if !b.drawsAt(level + 1) {
 		return true
 	}
 
@@ -270,22 +247,11 @@ func (b *walker) allCovered(node *PathTree, level Depth) bool {
 	// budget several levels early — the recursion then stopped above rows the report does draw and
 	// called the subtree covered. Single-child directories are the norm in Go, so that hid real
 	// gaps: `chain/inner` over a `low` at 0.00 went at -depth=2, which draws it.
-	for name, child := range node.Children {
-		if _, merged := collapse(name, child, b.opts.Files); !b.allCovered(merged, level+1) {
+	// The same rows the report would draw here, so a level spent below is a level the report spends
+	// too. A file among them has nothing under it, so the recursion stops at its own bar check.
+	for _, e := range b.entries(node) {
+		if !b.allCovered(e.node, level+1) {
 			return false
-		}
-	}
-
-	// Files are only rows when -files asks for them, and a row that is never drawn cannot justify
-	// its parent — the same reason the depth cut-off above exists.
-	//
-	// Graded directly rather than recursed into: add only ever puts a leaf in Files, so a file has
-	// nothing below it to ask about, and passing it a level would be arithmetic no test could reach.
-	if b.opts.Files {
-		for _, file := range node.Files {
-			if !file.Coverage.AtLeast(b.hideAt) {
-				return false
-			}
 		}
 	}
 
@@ -294,85 +260,63 @@ func (b *walker) allCovered(node *PathTree, level Depth) bool {
 
 // draws reports whether the tree puts a row where this entry is. Every entry is visited; only a
 // file needs asking about, and only because -files is what turns one into a row.
-func (b *walker) draws(e entry) bool { return !e.file || b.opts.Files }
+// drawsAt reports whether the report puts rows at this level. One definition, because walk asks it
+// of the level it is about to draw and allCovered of the level below the one it is judging, and the
+// two drifting is how a collapsed run came to cost allCovered more levels than it cost the report.
+func (b *walker) drawsAt(level Depth) bool { return level <= b.opts.Depth }
 
-// under names an entry below parent, for the visitor that prints names. Rows draws a label and an
-// indent and never a path, and joining one per node is two allocations it would throw away.
-func (b *walker) under(parent, label string) string {
-	if !b.wantFiles {
-		return ""
-	}
-
-	return path.Join(parent, label)
-}
-
-// files is what the node holds directly, whether or not a row is drawn for any of it. A file is
-// where a miss is, so leaving them out here would put the decision somewhere else as well, and the
-// same question answered twice is how the depth cut-off and collapse came to disagree.
+// entries is everything below tree that could be a row: its directories with any run below them
+// merged in, and its files when -files draws them. In map order, and without the bar — whether a
+// row is worth drawing is allCovered's question, and asking it here would recurse back through it.
 //
-// Its own function because walk needs it on both sides of the depth cut and needs nothing else past
-// it: a file takes no level, so it is still visited there, while a directory below the cut is not
-// drawn and holds nothing that could be.
-func (b *walker) files(tree *PathTree, level Depth) []entry {
-	entries := make([]entry, 0, len(tree.Files))
+// The one place collapse and -files are read. They were read here and again inside allCovered, and
+// the same decision written twice is how the depth cut-off and collapse came to disagree once
+// already: allCovered spent a level per directory where the report spends one per row.
+func (b *walker) entries(tree *PathTree) []entry {
+	out := make([]entry, 0, len(tree.Children)+len(tree.Files))
 
-	for name, node := range tree.Files {
-		if b.hiding && b.allCovered(node, level) {
-			continue
+	for name, node := range tree.Children {
+		label, merged := collapse(name, node, b.withFiles)
+
+		// The filesystem root is the one node with no name of its own: an absolute path splits to
+		// a leading empty component, which collapse turns back into the "/" of "/home/x" whenever
+		// there is something below to fold. When there is not — a root holding two files — the
+		// label is left empty, and a blank row says nothing. Decided here rather than at the row,
+		// so the sort in visible sees the label the reader will: "/" belongs after ".", and sorting
+		// on the empty string put it first.
+		if label == "" {
+			label = "/"
 		}
 
-		entries = append(entries, entry{label: sanitize(name), name: name, file: true, node: node})
+		out = append(out, entry{label: sanitize(label), name: name, node: merged})
 	}
 
-	return entries
+	// Files are simply not enumerated when they are not being shown, so they cost no level and no
+	// glyph rather than being filtered out later: without that the last package under a directory
+	// would draw the branch glyph of a middle one whenever a file sorted after it.
+	if b.withFiles {
+		for name, node := range tree.Files {
+			out = append(out, entry{label: sanitize(name), name: name, node: node})
+		}
+	}
+
+	return out
 }
 
 // walk adds one row per child of tree, then recurses. The top row carries no glyph, which is what
 // level 0 means — it is not tracked separately, since a second flag can only drift from it.
 func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte) {
-	if tree == nil {
-		return
-	}
-
-	// A file takes no level, so the depth cut cannot be what keeps one from being visited: the
-	// files of the deepest package a report draws are exactly one step past that cut, and a miss in
-	// one of them belongs to a package the reader can see. Nothing else is past it — a directory
-	// there is not drawn and holds nothing that could be — so this enumerates files and stops,
-	// which is also what keeps a shallow render from walking the whole profile.
-	if level > b.opts.Depth {
-		if !b.wantFiles {
-			return
-		}
-
-		for _, e := range b.files(tree, level) {
-			b.visit(drawn{Node: e.node, Label: e.label, Path: b.under(parent, e.label), Level: level})
-		}
-
+	if tree == nil || !b.drawsAt(level) {
 		return
 	}
 
 	entries := b.visible(tree, level)
-
-	// A file that -files does not draw is still visited, for the reason above: it costs no level.
-	// Dropped from the entries rather than skipped below, so the glyphs count what is drawn — an
-	// undrawn file must not take one, or the last package under a directory draws the branch glyph
-	// of a middle one. entries is this call's own slice, so trimming it is local.
-	entries = slices.DeleteFunc(entries, func(e entry) bool {
-		if b.draws(e) {
-			return false
-		}
-
-		b.visit(drawn{Node: e.node, Label: e.label, Path: b.under(parent, e.label), Level: level})
-
-		return true
-	})
-
 	root := level == 0
 
 	for at, e := range entries {
-		here := b.under(parent, e.label)
+		here := path.Join(parent, e.label)
 
-		b.visit(drawn{
+		b.out = append(b.out, drawn{
 			Node:  e.node,
 			Label: e.label,
 			Path:  here,

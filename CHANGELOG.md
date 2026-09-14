@@ -31,8 +31,10 @@ tags.
   — 4% on a profile at 91%, nothing at 99%, where misses are scattered single statements with
   nothing adjacent to fold. A block declaring no statements is not a miss.
 
-  `-depth` and `-hide-covered` narrow it as they narrow the tree, being the same traversal: `-depth`
-  lists the misses of the packages it draws, `-hide-covered` leaves out subtrees already at the bar.
+  `-depth` and `-hide-covered` narrow it as they narrow the tree, being the same filtering: a file is
+  an entry of the package holding it, so it sits one level below that package and the default depth
+  gives 8 of delegator's 31 where `-depth=max` gives all. `-files` says nothing here — it adds files
+  to the tree's output, and a list of positions is made of them either way.
   `-exclude` removes them from the profile before any of it, and takes the same coordinates this
   prints — which is the workflow golang/go#53271 was declined in favour of.
 

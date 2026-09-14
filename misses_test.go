@@ -15,6 +15,12 @@ import (
 // uncovered builds one unrun block of the profile, the way cmd/cover writes it: a start position,
 // an end line, and the statements between them. Distinct from exclude_test.go's block, which takes
 // a covered count and no end — that one predates Misses needing to know where a block stops.
+// missOpts is how the CLI runs this mode: a miss is a file position, and a file is a row only when
+// -files draws one, so -misses turns it on before anything is filtered.
+func missOpts(depth prettycov.Depth) prettycov.Options {
+	return prettycov.Options{Depth: depth, Files: true}
+}
+
 func missPaths(misses []prettycov.Miss) []string {
 	out := make([]string, 0, len(misses))
 	for _, m := range misses {
@@ -53,7 +59,7 @@ func TestMissesMergesAbuttingBlocks(t *testing.T) {
 		),
 	})
 
-	got := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll})
+	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
 
 	assert.Equal(t, []prettycov.Miss{
 		{File: "m/pkg/a.go", Line: 44, Col: 35, EndLine: 54, Statements: 3},
@@ -69,7 +75,7 @@ func TestMissesSkipsBlocksWithNoStatements(t *testing.T) {
 		withBlocks("m/a.go", uncovered(10, 2, 12, 0), uncovered(20, 2, 22, 1)),
 	})
 
-	got := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll})
+	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
 
 	require.Len(t, got, 1)
 	assert.Equal(t, 20, got[0].Line)
@@ -89,7 +95,7 @@ func TestMissesLeavesCoveredBlocksOut(t *testing.T) {
 		},
 	}})
 
-	got := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll})
+	got := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
 
 	assert.Len(t, got, 2, "the covered block between them is not a bridge")
 }
@@ -107,11 +113,16 @@ func TestMissesFollowTheDepth(t *testing.T) {
 	})
 
 	paths := func(d prettycov.Depth) []string {
-		return missPaths(prettycov.Misses(tree, prettycov.Options{Depth: d}))
+		return missPaths(prettycov.Misses(tree, missOpts(d)))
 	}
 
-	assert.Equal(t, []string{"m/own.go"}, paths(0), "only the top row's own files")
-	assert.Equal(t, []string{"m/deep/a.go", "m/own.go"}, paths(1))
+	// A file is an entry of the package holding it, so it sits one level below that package — the
+	// same level -files gives it, since that is the mode this always runs in.
+	assert.Empty(t, paths(0), "the top row alone, and a file is a level below one")
+	assert.Equal(t, []string{"m/own.go"}, paths(1))
+	// deeper/ holds one file, so the two merge into a single row and b.go arrives at level 2 with
+	// a.go rather than a level below it.
+	assert.Equal(t, []string{"m/deep/a.go", "m/deep/deeper/b.go", "m/own.go"}, paths(2))
 	assert.Equal(t, []string{"m/deep/a.go", "m/deep/deeper/b.go", "m/own.go"}, paths(prettycov.DepthAll))
 }
 
@@ -131,11 +142,14 @@ func TestMissesFollowHideCovered(t *testing.T) {
 		withBlocks("m/bad/b.go", uncovered(5, 2, 6, 4)),
 	})
 
-	all := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll})
+	all := prettycov.Misses(tree, missOpts(prettycov.DepthAll))
 	require.Len(t, all, 2)
 
 	// nearly/ is 95%, so a bar of 90 takes it and the miss inside it.
-	focused := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, HideCovered: at(90)})
+	bar := missOpts(prettycov.DepthAll)
+	bar.HideCovered = at(90)
+
+	focused := prettycov.Misses(tree, bar)
 	require.Len(t, focused, 1)
 	assert.Equal(t, "m/bad/b.go", focused[0].File)
 }
@@ -145,8 +159,7 @@ func TestMissesFollowHideCovered(t *testing.T) {
 // middleware.go at 98.77: at -hide-covered=90 the tree draws logger.go alone, and the misses have to
 // agree — listing middleware.go's one uncovered statement contradicts the report beside it.
 //
-// -files is what puts the two files in play at all: without it neither is a row, so neither speaks
-// for the package, and the whole of logger/ goes — which the misses agree with by saying nothing.
+// The bar is asked of each file, not only of the package holding it.
 func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 	t.Parallel()
 
@@ -169,16 +182,14 @@ func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 		},
 	})
 
-	opts := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: at(90)}
+	opts := missOpts(prettycov.DepthAll)
+	opts.HideCovered = at(90)
 
-	got := missPaths(prettycov.Misses(tree, opts))
+	assert.Equal(t, []string{"m/logger/logger.go"}, missPaths(prettycov.Misses(tree, opts)))
 
-	assert.Equal(t, []string{"m/logger/logger.go"}, got)
-
-	// Without -files the package itself goes: nothing under it is a row, so nothing under it speaks
-	// for it, and the misses agree with the tree by saying nothing either.
-	opts.Files = false
-	assert.Empty(t, prettycov.Misses(tree, opts))
+	// And the bar is asked of the file, not only of the package holding it: logger/ is 96.88 and
+	// below the bar only because of logger.go.
+	assert.NotContains(t, missPaths(prettycov.Misses(tree, opts)), "m/logger/middleware.go")
 }
 
 // A package holding one file merges into a single row, and that row is the file — so the node the
@@ -211,7 +222,7 @@ func TestMissesAreSortedByPosition(t *testing.T) {
 		withBlocks("m/a.go", uncovered(40, 2, 41, 1), uncovered(9, 2, 10, 1)),
 	})
 
-	got := missPaths(prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll}))
+	got := missPaths(prettycov.Misses(tree, missOpts(prettycov.DepthAll)))
 
 	assert.Equal(t, []string{"m/a.go", "m/a.go", "m/z.go"}, got,
 		"a.go's two blocks are 30 lines apart, so they stay two regions despite arriving reversed")
@@ -230,7 +241,7 @@ func TestDisplayMissesWritesOnePositionPerLine(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	n := prettycov.DisplayMisses(&buf, tree, prettycov.Options{Depth: prettycov.DepthAll})
+	n := prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll))
 
 	assert.Equal(t, "m/a.go:9:2: 3 uncovered\nm/b.go:40:16: 1 uncovered\n", buf.String())
 	assert.Equal(t, 2, n, "the count is what tells a caller the list was empty")

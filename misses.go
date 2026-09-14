@@ -41,6 +41,10 @@ type Miss struct {
 // leaves out the ones already at the bar. -files is not among them — a miss is a file position
 // whether or not a file is drawn as a row.
 //
+// -files is not read. The tree holds the files either way; that flag adds them to the tree's output,
+// and a list of positions is made of them — so this asks for them and leaves the flag to the report
+// it is about.
+//
 // -exclude and a renamed root are not read here. They act on the profile before the tree is built,
 // so an excluded block is not a miss and a shortened path is what these carry — which is what makes
 // them useful, since the profile's own module paths do not resolve on disk and `-new=.` makes them
@@ -51,9 +55,9 @@ type Miss struct {
 func Misses(tree *PathTree, opts Options) []Miss {
 	var misses []Miss
 
-	visit(tree, opts, true, func(d drawn) {
+	for _, d := range prepare(tree, opts, true) {
 		misses = merge(misses, d.Path, d.Node.Blocks)
-	})
+	}
 
 	// Sorted by position, so the list is diffable between runs and reads down a file the way the
 	// file does. Map order over Files is randomised, and a caller pipes this into a tool that will
