@@ -15,12 +15,18 @@ tags.
 ### Added
 
 - `-misses` prints where the uncovered statements are, one `file:line:col: N uncovered` per run of
-  them. That is the shape `go vet` uses and the one an editor's error format parses, so it pipes
+  them. That is `sourcefile:lineno:column: message`, one of the two forms the [GNU coding
+  standards](https://www.gnu.org/prep/standards/html_node/Errors.html) give a compiler for naming a
+  column, and what `go vet`, `gcc` and `golangci-lint` emit, so it pipes
   into `vim -q -`; a line range would read well to a person and be dropped without a word by
   everything else. The count after the position is what makes the column survive — without a message
   the format falls back to `file:line:message` and reads the column as the text — and it is the
   number a position cannot carry, since one untaken branch and a whole untested function look alike
-  until you see it. It is the other half of what golang/go#78205 asks for — a summary and the
+  until you see it. The column is a byte offset with a tab worth one, as
+  [`go/token`](https://pkg.go.dev/go/token#Position) documents and `go vet` prints — Emacs assumes
+  display columns and needs `compilation-error-screen-columns` nil, which is true of every Go tool
+  rather than this one. It is the other half of what golang/go#78205
+  asks for — a summary and the
   uncovered ranges, in a terminal, without a browser — and the tree was already the summary.
 
   It replaces the report rather than decorating it. The tree is the summary and these are the

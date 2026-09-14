@@ -260,10 +260,35 @@ web/store/pgxstore/store.go:43:16: 1 uncovered
 web/store/pgxstore/store.go:50:16: 1 uncovered
 ```
 
+`sourcefile:lineno:column: message` is one of the two forms the [GNU coding
+standards](https://www.gnu.org/prep/standards/html_node/Errors.html) give for a compiler naming a
+column, and it is the one `go vet`, `gcc` and `golangci-lint` all emit.
+
 The count is not decoration. Without a message after the position, that error format cannot match
 and falls back to `file:line:message`, reading the column as the text — so `a.go:62:2` opens line 62
-at column 1 and the column is lost. It is also the number a position cannot carry: one untaken
+at column 1 and the column is lost. Vim's default
+[`errorformat`](https://vimhelp.org/quickfix.txt.html#errorformat) tries `%f:%l:%c:%m` before
+`%f:%l:%m`, and Emacs' `gnu` rule in
+[`compile.el`](https://github.com/emacs-mirror/emacs/blob/master/lisp/progmodes/compile.el) wants the
+same trailing colon, so both need it. It is also the number a position cannot carry: one untaken
 branch and a whole untested function look alike until you see it.
+
+The column is a byte offset, counting a tab as one —
+[`go/token.Position.Column`](https://pkg.go.dev/go/token#Position) is documented that way, `go vet`
+[prints it unchanged](https://cs.opensource.google/go/x/tools/+/master:internal/analysis/driverutil/print.go),
+and golangci-lint
+[indexes the line by byte](https://github.com/golangci/golangci-lint/blob/main/pkg/printers/text.go)
+to place its own `^`. prettycov passes through what `cmd/cover` recorded, so it agrees with those.
+The GNU text says to count display width instead, with tab stops every 8, which is what Emacs
+assumes:
+[`compilation-error-screen-columns`](https://www.gnu.org/software/emacs/manual/html_node/emacs/Compilation-Mode.html)
+defaults to `t`. On gofmt'd source — tab-indented, so nearly every line — that puts the cursor inside
+the leading tabs. Setting it to `nil` reads the column as Go writes it, and fixes `go vet` and
+golangci-lint output in the same stroke.
+
+Editors that hyperlink terminal output rather than parse an error format are looser: VS Code's
+[`terminalLinkParsing.ts`](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/terminalContrib/links/browser/terminalLinkParsing.ts)
+also takes `file(12,3)`, `file#12` and `file on line 12`, and needs no message at all.
 
 It replaces the report rather than decorating it: the tree is the summary, these are the drill-down.
 The path comes from the profile, which names Go packages rather than files on disk, so `-new=.`

@@ -194,17 +194,27 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 // all of them or a quarter. Comparing this against the tree's own count is what answers that, and
 // every region holds at least one statement, so it is still zero exactly when nothing was written.
 //
-// `file:line:col: message`, which is the shape go vet emits and an editor's error format parses.
-// Every part of it is load-bearing:
+// `file:line:col: message` is `sourcefile:lineno:column: message`, one of the two spellings the GNU
+// coding standards give a compiler for naming a column, and the one go vet, gcc and golangci-lint
+// all emit. See https://www.gnu.org/prep/standards/html_node/Errors.html. Every part of it is
+// load-bearing:
 //
 //   - the position rather than the range. A range is not a location to that format and is dropped
 //     without a word, taking the miss with it.
 //   - the message. Without one the format cannot match and falls back to `file:line:message`, which
 //     reads the column as the text: `a.go:62:2` opens line 62 at column 1, and the column is gone.
-//     That is why go vet always has something to say.
+//     Vim tries %f:%l:%c:%m before %f:%l:%m and Emacs' gnu rule wants the same trailing colon, so
+//     both need it. That is why go vet always has something to say.
 //
 // The statements are what the message says, because that is the number the position cannot carry —
 // one uncovered branch and a whole untested function look alike until you see it.
+//
+// The column is whatever cmd/cover recorded, which go/token documents as a byte count with a tab
+// worth one — https://pkg.go.dev/go/token#Position. That is what go vet prints and what
+// golangci-lint byte-indexes to place its own caret, so this agrees with the tools a reader is
+// already piping. It disagrees with the GNU text, which asks for display width with tab stops every
+// 8 — and so with Emacs, whose compilation-error-screen-columns defaults to t. Converting would put
+// prettycov alone among Go tools; the README names the setting instead.
 func DisplayMisses(w io.Writer, tree *PathTree, opts Options) int {
 	buf := bufio.NewWriter(w)
 
