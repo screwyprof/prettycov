@@ -2,6 +2,7 @@ package prettycov_test
 
 import (
 	"bytes"
+	"io"
 	"math"
 	"testing"
 
@@ -450,4 +451,29 @@ func TestDisplayMissesCountsNothingWhenFullyCovered(t *testing.T) {
 
 	assert.Equal(t, 0, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
 	assert.Empty(t, buf.String())
+}
+
+// The same traversal as the tree benchmarks, plus folding every unrun block in the profile.
+func BenchmarkMisses(b *testing.B) {
+	tree := prettycov.Process(syntheticProfile(b, benchFiles))
+	opts := missOpts(prettycov.DepthAll)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		_ = prettycov.Misses(tree, opts)
+	}
+}
+
+func BenchmarkDisplayMisses(b *testing.B) {
+	tree := prettycov.Process(syntheticProfile(b, benchFiles))
+	opts := missOpts(prettycov.DepthAll)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		prettycov.DisplayMisses(io.Discard, tree, opts)
+	}
 }

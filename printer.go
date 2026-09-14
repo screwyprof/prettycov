@@ -63,14 +63,26 @@ type Row struct {
 // which rows there are and ignores the rest. Pure: no writer, no colour, no terminal. DisplayTree
 // is the one that decides how a Row looks.
 func Rows(tree *PathTree, opts Options) []Row {
-	shown := prepare(tree, opts, opts.Files)
+	var rows []Row
 
-	rows := make([]Row, 0, len(shown))
-	for _, d := range shown {
+	for d := range prepare(tree, opts, shape{files: opts.Files}) {
 		rows = append(rows, d.Row)
 	}
 
 	return rows
+}
+
+// shape is what a renderer reads off each row, and so what the traversal is asked to build. The two
+// halves are disjoint — a tree row is placed by its Prefix, a position is named by its Path — and
+// building both for every node cost a 30,000-file tree at -depth=max 137% of its memory and 165% of
+// its allocations for a field Rows never reads. Named fields at the two call sites, so the pair
+// cannot be handed over the wrong way round.
+type shape struct {
+	// files draws the profile's files as well as its packages. -files for a tree; always, for a
+	// list of positions.
+	files bool
+	// positions builds Path and leaves Prefix empty, rather than the other way about.
+	positions bool
 }
 
 // prepare is the whole of the output filtering: it reads -depth, -files and -hide-covered and
@@ -81,23 +93,29 @@ func Rows(tree *PathTree, opts Options) []Row {
 // built for were that: a file above the bar listed by one and left out by the other, and a merged
 // row drawn by one and lost by the other.
 //
-// withFiles is whether the output this is for includes files. The tree always holds them; what
-// varies is the output. -files puts them in the tree's, and a list of positions is made of them, so
-// the two renderers ask for different things without either of them filtering.
-func prepare(tree *PathTree, opts Options, withFiles bool) []drawn {
-	b := walker{depth: opts.Depth, withFiles: withFiles}
-	if opts.HideCovered != nil {
-		b.hiding, b.hideAt = true, *opts.HideCovered
+// want is what the calling renderer reads, which is the output's question rather than any flag's:
+// the tree always holds files, and -files decides whether the tree's output shows them, while a list
+// of positions is made of them either way. Neither renderer filters, so asking for different things
+// here cannot make the two disagree about what the report contains.
+// Yielded rather than returned as a slice. Every row was materialised into a []drawn that each
+// renderer then copied out of, so a 30,000-file tree at -depth=max allocated 96 bytes per row twice
+// over — once growing that slice by doubling, once for the []Row it became. Nothing needs it to be a
+// slice: both renderers read each row once, in order. The seam is unchanged, and the renderers still
+// cannot filter, because all they can do with this is receive.
+func prepare(tree *PathTree, opts Options, want shape) iter.Seq[drawn] {
+	return func(yield func(drawn) bool) {
+		b := walker{depth: opts.Depth, withFiles: want.files, withPaths: want.positions, yield: yield}
+		if opts.HideCovered != nil {
+			b.hiding, b.hideAt = true, *opts.HideCovered
+		}
+
+		// One leading space, with room to grow two bytes per level. Deep enough for any real path;
+		// append handles a deeper one correctly if it comes.
+		padding := make([]byte, 1, 128)
+		padding[0] = ' '
+
+		b.walk(tree, 0, "", padding)
 	}
-
-	// One leading space, with room to grow two bytes per level. Deep enough for any real path;
-	// append handles a deeper one correctly if it comes.
-	padding := make([]byte, 1, 128)
-	padding[0] = ' '
-
-	b.walk(tree, 0, "", padding)
-
-	return b.out
 }
 
 // DisplayTree writes tree as an indented report and reports how many rows it drew. A collapsed run
@@ -152,11 +170,15 @@ type drawn struct {
 // asked as withFiles, which is the output's question rather than the flag's, and leaving the struct
 // in scope would put the wrong answer one field access away on every line of the walk.
 type walker struct {
-	out []drawn
+	// yield takes each row as it is decided. It reports false when the consumer has stopped, which
+	// unwinds the recursion through stopped rather than by returning up the stack.
+	yield   func(drawn) bool
+	stopped bool
 
 	depth Depth
-	// withFiles is the output's, not the options': see prepare.
+	// withFiles and withPaths are the output's questions, not the options': see prepare and shape.
 	withFiles bool
+	withPaths bool
 	// hiding says -hide-covered was given at all and hideAt is the threshold, read once rather than
 	// through the pointer at every node. What "at least this much" means is CoverageStats', not
 	// ours: the answer at 100 is about the counts, not the ratio.
@@ -322,21 +344,34 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 	root := level == 0
 
 	for at, e := range entries {
-		here := path.Join(parent, e.label)
+		// Both of these allocate, and each is read by one renderer only, so the one nobody asked
+		// for is not built. A path has to be built for every node even so — a child's is its
+		// parent's plus a segment — where a prefix is needed only by the row it places.
+		var here, prefix string
 
-		b.out = append(b.out, drawn{
+		if b.withPaths {
+			here = path.Join(parent, e.label)
+		} else {
+			// string() copies, so the visitor owns its prefix and padding stays reusable. A row's
+			// indent depends on whether every ancestor was a last child, which cannot be rebuilt
+			// from the level alone, so it is built here rather than by the renderer.
+			prefix = string(append(padding, symbol(root, getBoxType(at, len(entries)))...))
+		}
+
+		if !b.yield(drawn{
 			Row: Row{
 				Coverage: e.node.Coverage,
 				Label:    e.label,
 				Level:    int(level),
-				// string() copies, so the visitor owns its prefix and padding stays reusable. Built
-				// here even for a visitor that ignores it: a row's indent depends on whether every
-				// ancestor was a last child, which cannot be rebuilt from the level alone.
-				Prefix: string(append(padding, symbol(root, getBoxType(at, len(entries)))...)),
+				Prefix:   prefix,
 			},
 			Blocks: e.node.Blocks,
 			Path:   here,
-		})
+		}) {
+			b.stopped = true
+
+			return
+		}
 
 		// Grown for the child and truncated after it, so siblings share one buffer instead of each
 		// concatenating a string. The walk is depth-first, so the child is done with its padding
@@ -345,6 +380,15 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		padding = append(padding, symbol(root, childSymbol(at, len(entries)))...)
 		b.walk(e.node, level+1, here, padding)
 		padding = padding[:depth]
+
+		// Asked after the descent, which is the only place it needs asking: a consumer that stopped
+		// inside this child unwinds through every ancestor's loop, and each would otherwise carry
+		// on to its next sibling. range-over-func panics on a yield after the loop has been left,
+		// so this is the difference between stopping and crashing. Nothing tests it on entry —
+		// walk is never called with it set, because this returns first.
+		if b.stopped {
+			return
+		}
 	}
 }
 

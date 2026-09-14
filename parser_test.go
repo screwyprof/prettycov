@@ -188,3 +188,16 @@ func TestParseProfileKeepsBlockPositions(t *testing.T) {
 
 	assert.Equal(t, items[0].Coverage, sum)
 }
+
+func BenchmarkParseProfile(b *testing.B) {
+	path := writeSyntheticProfile(b, benchFiles)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		if _, err := prettycov.ParseProfile(path); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

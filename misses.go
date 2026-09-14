@@ -62,7 +62,7 @@ func Misses(tree *PathTree, opts Options) []Miss {
 	// worse than the regrowths.
 	var misses []Miss
 
-	for _, d := range prepare(tree, opts, true) {
+	for d := range prepare(tree, opts, shape{files: true, positions: true}) {
 		misses = merge(misses, d.Path, d.Blocks)
 	}
 

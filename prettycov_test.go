@@ -617,3 +617,14 @@ func file(name string, covered, uncovered int) prettycov.FileCoverage {
 		Coverage: prettycov.CoverageStats{Covered: covered, Uncovered: uncovered},
 	}
 }
+
+func BenchmarkProcess(b *testing.B) {
+	files := syntheticProfile(b, benchFiles)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		_ = prettycov.Process(files)
+	}
+}
