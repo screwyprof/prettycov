@@ -209,9 +209,27 @@ lint-all: require-golangci ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
 	golangci-lint run ./... --new-from-rev=""
 
-gates: ## run every quality gate and print the block to paste into a PR description
-	@echo -e "$(OK_COLOR)==> Gates$(NO_COLOR)" >&2
-	@echo '$$ make test'
+# check runs every gate and prints one line per figure, so a PR description quotes the tools rather
+# than being retyped from them. Six descriptions in this repo have claimed numbers the tree did not
+# give, all of them hand-copied from these same targets.
+#
+# The binary is a gate too: it is built with netgo and static linking that `go test` never exercises,
+# so asking it for its version proves the artifact runs and not merely that the package compiles.
+#
+# gobco prints the same sentence for each package and nothing in it says which, so the two condition
+# lines are labelled here. That is the one thing copying by hand could not get wrong and reading the
+# output could.
+#
+# Every line is a pipe, so without pipefail the status would be grep's and a failing gate would
+# still print a clean-looking block and exit 0. Scoped to this target, so no other recipe changes.
+check: SHELL := /usr/bin/env bash
+check: .SHELLFLAGS := -o pipefail -c
+check: ## run every quality gate and print the block to paste into a PR description
+	@echo -e "$(OK_COLOR)==> Checking$(NO_COLOR)" >&2
+	@echo '$$ make build'
+	@$(MAKE) --no-print-directory build >/dev/null
+	@$(PWD)/$(BINARY) -version
+	@echo; echo '$$ make test'
 	@$(MAKE) --no-print-directory test 2>&1 | grep 'coverage:' | grep -v '/cmd/' | tr -s '\t' ' '
 	@echo; echo '$$ make lint-all'
 	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
@@ -285,4 +303,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-all gates install hooks nix-hash release publish clean help
+.PHONY: lint lint-all check install hooks nix-hash release publish clean help
