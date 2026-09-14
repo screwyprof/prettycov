@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -322,4 +323,109 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 	}
 
 	return cases
+}
+
+// The two printers are two readings of one traversal, so they have to agree about which files they
+// account for. Both times this went wrong they disagreed silently: a file above -hide-covered's bar
+// had its misses listed while the tree left the row out, and a package merged into its single file
+// was drawn while its misses were lost — the row is the file there, and a file has no Files to read.
+//
+// With -files every file the report accounts for is a row of its own, which makes the claim exact:
+// the rows that name a file holding unrun statements are precisely the files the misses name.
+func TestRowsAndMissesAccountForTheSameFiles(t *testing.T) {
+	t.Parallel()
+
+	for name, files := range crosscheckProfiles(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			// The hand-built cases carry no blocks, having been written for the totals; a miss
+			// needs somewhere to point, so they get the ones a parsed profile would have had.
+			files = withUnrunBlocks(files)
+			tree := prettycov.Process(files)
+
+			// Every depth, because depth is what decides which nodes are visited, and the bar as
+			// well, because it is the other half of that decision.
+			for _, depth := range []prettycov.Depth{0, 1, 2, 3, prettycov.DepthAll} {
+				for _, bar := range []*float64{nil, at(100), at(90), at(50)} {
+					opts := prettycov.Options{Depth: depth, Files: true, HideCovered: bar}
+
+					assert.Equal(t, fileRowsWithMisses(tree, files, opts), missedFiles(tree, opts),
+						"depth=%v bar=%v", depth, bar)
+				}
+			}
+		})
+	}
+}
+
+// fileRowsWithMisses names every row the report draws that stands for a file with unrun statements
+// in it. Read off the rendered rows rather than the tree, so it is the report being compared and
+// not the data both printers happen to share.
+func fileRowsWithMisses(tree *prettycov.PathTree, files []prettycov.FileCoverage, opts prettycov.Options) []string {
+	unrun := map[string]bool{}
+
+	for _, f := range files {
+		if f.Coverage.Uncovered > 0 {
+			unrun[path.Clean(f.File)] = true
+		}
+	}
+
+	var named []string
+
+	for _, r := range rowInfos(prettycov.Rows(tree, opts)) {
+		if unrun[r.path] {
+			named = append(named, r.path)
+		}
+	}
+
+	slices.Sort(named)
+
+	return named
+}
+
+// missedFiles names the distinct files the misses point into.
+func missedFiles(tree *prettycov.PathTree, opts prettycov.Options) []string {
+	seen := map[string]bool{}
+
+	var named []string
+
+	for _, m := range prettycov.Misses(tree, opts) {
+		if !seen[m.File] {
+			seen[m.File] = true
+			named = append(named, m.File)
+		}
+	}
+
+	slices.Sort(named)
+
+	return named
+}
+
+// withUnrunBlocks gives a fixture built by hand the blocks a parsed profile carries, so a file with
+// unrun statements has a position for a miss to name. Left alone when there are blocks already,
+// which is every profile read off disk.
+func withUnrunBlocks(files []prettycov.FileCoverage) []prettycov.FileCoverage {
+	out := make([]prettycov.FileCoverage, len(files))
+
+	for i, f := range files {
+		if len(f.Blocks) == 0 {
+			if f.Coverage.Covered > 0 {
+				f.Blocks = append(f.Blocks, prettycov.Block{
+					Line: 1, Col: 1, EndLine: 1,
+					Coverage: prettycov.CoverageStats{Covered: f.Coverage.Covered},
+				})
+			}
+
+			if f.Coverage.Uncovered > 0 {
+				f.Blocks = append(f.Blocks, prettycov.Block{
+					Line: 10, Col: 1, EndLine: 10,
+					Coverage: prettycov.CoverageStats{Uncovered: f.Coverage.Uncovered},
+				})
+			}
+		}
+
+		out[i] = f
+	}
+
+	return out
 }

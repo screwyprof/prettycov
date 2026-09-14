@@ -120,8 +120,6 @@ func TestMissesFollowHideCovered(t *testing.T) {
 		withBlocks("m/bad/b.go", uncovered(5, 2, 6, 4)),
 	})
 
-	at := func(pct float64) *float64 { return &pct }
-
 	all := prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll})
 	require.Len(t, all, 2)
 
@@ -160,7 +158,6 @@ func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 		},
 	})
 
-	at := func(pct float64) *float64 { return &pct }
 	opts := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: at(90)}
 
 	found := prettycov.Misses(tree, opts)
