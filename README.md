@@ -69,7 +69,7 @@ Turn on the two flags that say more, and go a level deeper:
 | `-files` | draw the profile's files as well as its packages |
 | `-hide-covered[=N]` | leave out subtrees with nothing left to do — fully covered, or at `N`% and above. Shapes the report only |
 | `-counts` | show `uncovered/total` statements beside each percentage |
-| `-total` | print only the number, for a Makefile or a badge |
+| `-total[=PATH]` | print only the number, for a Makefile or a badge. With a path, that package's or file's |
 | `-misses` | print only where the uncovered statements are, as `file:line:col`, for an editor or a pipe |
 | `-fail-under=N` | exit 1 when total coverage is below N, so prettycov can gate CI |
 | `-exclude=REGEXP` | leave out files whose path matches, or blocks whose `file:line:col` matches, before anything is totalled. Repeatable |
@@ -217,6 +217,46 @@ test, so it is only printed when every statement is covered. Everything else rou
 A profile with nothing to cover has no total, so it exits 2 with a message rather than printing
 `n/a` or `0.00` into your variable — unless `-fail-under` was given, in which case that reports the
 shortfall and exits 1 instead.
+
+### One package's number, or one file's
+
+`-total` on its own reports the whole tree. Given a path it reports that node — the number the
+report already draws, which nothing else could hand back:
+
+```shell
+❯ prettycov -old=github.com/screwyprof/delegator -new=. -depth=3 -files
+ pkg - 96.41
+ ├ clock/clock.go - 100.00
+ ├ httpkit/httpkit.go - 97.50
+ ├ logger - 96.88
+ │ ├ logger.go - 86.67
+ │ └ middleware.go - 98.77
+ …
+
+❯ prettycov … -total                       94.01
+❯ prettycov … -total=pkg/logger             96.88
+❯ prettycov … -total=pkg/logger/logger.go   86.67
+```
+
+The path is spelled the way the report prints it, because this looks up the tree the report was
+drawn from — so `-old`/`-new` apply first. That is the opposite of `-exclude`, which matches the
+profile's own paths, and it is the right way round here: you read a row, then ask for its number.
+A path the profile does not hold is exit 2 rather than `0.00`, which a script would read as a real
+and terrible figure.
+
+Because it is one flag with one value, "two packages at once" is not expressible — which is the
+point, since the output is a single number. It composes with `-fail-under`, and the number graded is
+the number printed:
+
+```shell
+❯ prettycov … -total=scraper/store -fail-under=85
+77.97
+total coverage 77.97% is below 85.00%      # exit 1
+```
+
+That gates one package without building a second profile. `-depth`, `-files`, `-counts`,
+`-hide-covered` and `-color` say nothing here, as they say nothing to a bare `-total`: there is no
+report being drawn, only a number being read.
 
 ## Where the uncovered statements are
 

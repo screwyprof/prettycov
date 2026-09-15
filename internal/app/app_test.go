@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -911,6 +912,155 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 
 			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
 			assert.Equal(t, tc.want, stdout.String())
+		})
+	}
+}
+
+// -total=path reports one node of the tree, which is the number the report already draws and
+// nothing could hand back. The path is spelled the way the report prints it, so it is read off a row
+// — which is why this fixture renames the root first, exactly as the README's examples do.
+func TestRunTotalOfOnePath(t *testing.T) {
+	t.Parallel()
+
+	// m/pkg/logger holds two files of differing coverage, so a package total is not any one file's.
+	const shaped = "mode: set\n" +
+		"m/pkg/logger/logger.go:1.1,2.2 8 1\n" +
+		"m/pkg/logger/logger.go:3.1,4.2 2 0\n" +
+		"m/pkg/logger/middleware.go:1.1,2.2 10 1\n" +
+		"m/web/handler.go:1.1,2.2 5 1\n" +
+		"m/web/handler.go:3.1,4.2 5 0\n"
+
+	tests := map[string]struct {
+		args []string
+		want string
+	}{
+		// 23 of 30 statements across the tree, which is not what any one node reports. The paths
+		// carry the module root because this fixture does not rename one; with -new=. they would be
+		// spelled the way the report prints them, which is the point of looking up the built tree.
+		"bare is the whole tree": {args: []string{"-total"}, want: "76.67\n"},
+		"the root by name":       {args: []string{"-total=m"}, want: "76.67\n"},
+		"a package":              {args: []string{"-total=m/pkg/logger"}, want: "90.00\n"},
+		"a package one level up": {args: []string{"-total=m/pkg"}, want: "90.00\n"},
+		"a file":                 {args: []string{"-total=m/pkg/logger/logger.go"}, want: "80.00\n"},
+		"the other file":         {args: []string{"-total=m/pkg/logger/middleware.go"}, want: "100.00\n"},
+		"a package of one file":  {args: []string{"-total=m/web"}, want: "50.00\n"},
+		"and the file inside it": {args: []string{"-total=m/web/handler.go"}, want: "50.00\n"},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			args := slices.Concat(tc.args,
+				[]string{"-profile", writeProfile(t, shaped), "-color", "never"})
+
+			assert.Equal(t, codeOK, app.Run(args, stdout, stderr), stderr.String())
+			assert.Equal(t, tc.want, stdout.String())
+			assert.Empty(t, stderr.String())
+		})
+	}
+}
+
+// The gate grades the node that was printed. Two lookups would be two chances to disagree, and this
+// tool has already shipped a -fail-under that passed a run whose own report contradicted it.
+func TestRunTotalOfOnePathIsWhatFailUnderGrades(t *testing.T) {
+	t.Parallel()
+
+	// The tree is at 76.67 and web is at 50.00, so a threshold between them tells which was graded.
+	const shaped = "mode: set\n" +
+		"m/pkg/logger/logger.go:1.1,2.2 8 1\n" +
+		"m/pkg/logger/logger.go:3.1,4.2 2 0\n" +
+		"m/pkg/logger/middleware.go:1.1,2.2 10 1\n" +
+		"m/web/handler.go:1.1,2.2 5 1\n" +
+		"m/web/handler.go:3.1,4.2 5 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-total=m/web", "-fail-under", "70",
+		"-profile", writeProfile(t, shaped), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeBelow, code, "web is 50.00, under the bar; the tree at 76.67 is not")
+	assert.Equal(t, "50.00\n", stdout.String(), "and the number printed is the one graded")
+	assert.Contains(t, stderr.String(), "total coverage 50.00% is below 70.00%")
+}
+
+// A path the profile does not hold is an argument mistake, not a coverage of zero: printing 0.00
+// into `COVERAGE := $(shell ...)` would read as a real and terrible number.
+func TestRunTotalRefusesAPathTheTreeDoesNotHold(t *testing.T) {
+	t.Parallel()
+
+	const shaped = "mode: set\nm/pkg/a.go:1.1,2.2 1 1\n"
+
+	for _, path := range []string{"nope", "m/nope", "m/pkg/a.go/deeper"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{
+				"-total=" + path, "-profile", writeProfile(t, shaped), "-color", "never",
+			}, stdout, stderr)
+
+			assert.Equal(t, codeFailed, code)
+			assert.Empty(t, stdout.String(), "nothing a script could mistake for a percentage")
+			assert.Contains(t, stderr.String(), "-total names no package or file in the profile: "+path)
+		})
+	}
+}
+
+// A package whose files declare no statements has no percentage, which the whole tree cannot be by
+// here but one node can. "n/a" in a variable is worse than saying so.
+func TestRunTotalRefusesANodeWithNothingToCover(t *testing.T) {
+	t.Parallel()
+
+	const shaped = "mode: set\nm/pkg/a.go:1.1,2.2 1 1\nm/doc/doc.go:1.1,2.2 0 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-total=m/doc", "-profile", writeProfile(t, shaped), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "-total names a package with no statements to cover: m/doc")
+}
+
+// -total is still a boolean to the flag package, so every spelling of off has to turn it off rather
+// than be read as a path. The bare form passes "true", which is how `-total=$WANT` reaches here.
+func TestRunTotalTakesTheBooleanSpellings(t *testing.T) {
+	t.Parallel()
+
+	const shaped = "mode: set\nm/pkg/a.go:1.1,2.2 1 1\n"
+
+	for _, tc := range []struct {
+		arg      string
+		wantTree bool
+	}{
+		{arg: "-total", wantTree: false},
+		{arg: "-total=true", wantTree: false},
+		{arg: "-total=false", wantTree: true},
+		{arg: "-total=FALSE", wantTree: true},
+		{arg: "-total=0", wantTree: true},
+		{arg: "-total=1", wantTree: false},
+	} {
+		t.Run(tc.arg, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{
+				tc.arg, "-profile", writeProfile(t, shaped), "-color", "never",
+			}, stdout, stderr)
+
+			require.Equal(t, codeOK, code, stderr.String())
+
+			if tc.wantTree {
+				assert.Contains(t, stdout.String(), " - ", "a tree row, not a bare number")
+
+				return
+			}
+
+			assert.Equal(t, "100.00\n", stdout.String())
 		})
 	}
 }

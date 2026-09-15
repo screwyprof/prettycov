@@ -68,6 +68,18 @@ tags.
   all of them it is everything they found, so a list that stops early reads as a clean bill — pipe
   eight of thirty-four into `vim -q -`, fix them, and the quickfix says there is nothing left.
 
+- `-total` takes an optional path — `-total=pkg/logger`, `-total=pkg/logger/logger.go` — and reports
+  that node instead of the whole tree. It is the one number the report already draws and nothing
+  could hand back: `prettycov -depth=max` prints `web/handler - 89.66` and there was no way to get
+  89.66 out of it. With `-fail-under` it gates one package without building a second profile, and the
+  number graded is the number printed.
+
+  The path names a node of the built tree, so it is spelled as the report prints it and `-old`/`-new`
+  apply first — the opposite of `-exclude`, which matches the profile's own paths. A path the tree
+  does not hold exits 2 rather than printing `0.00`, which a script would read as a real figure. One
+  flag with one value, so two packages at once is unrepresentable, which suits an output of one
+  number. The display flags say nothing to it, as they already said nothing to a bare `-total`.
+
 - **Breaking:** `-fail-under=100` no longer passes a profile that is one statement short of complete.
   The gate compared the ratio while the report asks the counts, and past a certain size the two
   differ: a profile missing one statement of 2^56 divides to exactly 100 in float64, so the gate

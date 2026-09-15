@@ -124,21 +124,32 @@ func (a *arena) next() *PathTree {
 	return node
 }
 
-// Get returns the directory at key, or nil if the tree has no such path — including when there is
-// no tree, so that a miss can be chained: Get("a").Get("b") is nil where it used to panic.
+// Get returns the node at key, or nil if the tree has no such path — including when there is no
+// tree, so that a miss can be chained: Get("a").Get("b") is nil where it used to panic.
 //
-// Files are reached through the Files map of the directory holding them, so that a name which is
-// both answers unambiguously. That map is a field rather than a method, so nothing can make it
-// nil-safe the way this is: a caller reading one still has to check what Get handed back.
+// The last segment may name a file, and a file wins: a path ending in one is what a reader types
+// off a row, and only a file can be there. A directory of the same name in the same parent cannot
+// also exist — no filesystem holds two entries under one name — so a profile that claims both was
+// not written by cmd/cover, and the tree draws both either way.
+//
+// Files are still a map of their own rather than more Children, so that a name belonging to both
+// stays two nodes. That map is a field rather than a method, so nothing can make it nil-safe the
+// way this is: a caller reading one still has to check what Get handed back.
 func (n *PathTree) Get(key string) *PathTree {
 	if n == nil {
 		return nil
 	}
 
 	node := n
-	parts := strings.SplitSeq(key, "/")
+	parts := strings.Split(key, "/")
 
-	for part := range parts {
+	for i, part := range parts {
+		if i == len(parts)-1 {
+			if file, ok := node.Files[part]; ok {
+				return file
+			}
+		}
+
 		if node = node.Children[part]; node == nil {
 			return nil
 		}

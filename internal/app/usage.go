@@ -33,6 +33,9 @@ Leave out what is finished, or anything already above a bar (the bar needs '='):
 	prettycov -hide-covered=90 -depth=max
 Print just the number, for a Makefile or a badge:
 	prettycov -total
+Or one package's, or one file's, spelled as the report prints it:
+	prettycov -total=pkg/logger -new=. -old=$(MODULE)
+	prettycov -total=pkg/logger/logger.go -fail-under=90 -new=. -old=$(MODULE)
 Print where the uncovered statements are, for an editor:
 	prettycov -misses -depth=max
 	prettycov -misses -depth=max | vim -q -

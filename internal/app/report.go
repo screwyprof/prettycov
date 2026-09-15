@@ -236,15 +236,38 @@ func (c config) outputFilters() string {
 	return filters
 }
 
-// showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
-// There is always a number by here: showReport has already refused a profile with nothing to
-// cover, so `COVERAGE := $(shell prettycov -total)` never picks up an "n/a" or a bare 0.00.
+// showTotal writes one percentage and nothing else, for a caller reading it into a variable.
+//
+// -total=path reports a node of the tree rather than the whole of it, which is the one number the
+// report shows and nothing could hand back: `prettycov -depth=max` draws `web/handler - 89.66` and
+// there was no way to get 89.66 out. The path is spelled as the report prints it, because the tree
+// is built from shortened paths and this looks the node up in that tree.
+//
+// The same node is printed and graded. Two lookups would be two chances to disagree, which is
+// exactly how -fail-under=100 came to pass a run whose own report read 99.99.
 func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
-	pct, _ := tree.Coverage.Percentage()
+	node := tree
+	if cfg.TotalOf != "" {
+		if node = tree.Get(cfg.TotalOf); node == nil {
+			_, _ = fmt.Fprintf(stderr, "%v: %s\n", errNoSuchPath, cfg.TotalOf)
+
+			return exitFailed
+		}
+	}
+
+	// A node with no statements has no percentage, which the whole tree cannot be by here — an empty
+	// profile is refused above — but one package can: a directory of files that declare none.
+	// Printing "n/a" into a variable is worse than saying so.
+	pct, ok := node.Coverage.Percentage()
+	if !ok {
+		_, _ = fmt.Fprintf(stderr, "%v: %s\n", errNothingToCover, cfg.TotalOf)
+
+		return exitFailed
+	}
 
 	_, _ = fmt.Fprintln(stdout, pct)
 
-	return checkThreshold(cfg.FailUnder, tree, stderr)
+	return checkThreshold(cfg.FailUnder, node, stderr)
 }
 
 // reportExclusions says what each pattern took out, on stderr so the report itself stays pipeable.

@@ -539,7 +539,48 @@ func TestPathTreeKeepsFilesAndDirectoriesApart(t *testing.T) {
 
 	assert.Equal(t, []string{"sub"}, slices.Sorted(maps.Keys(pkg.Children)), "directories only")
 	assert.Equal(t, []string{"own.go"}, slices.Sorted(maps.Keys(pkg.Files)), "and the files it holds")
-	assert.Nil(t, tree.Get("m/x/own.go"), "a file is not a directory, so Get does not find one")
+
+	// Two maps, so a name belonging to both stays two nodes — but Get reaches through to the file,
+	// since the last segment of a path a reader typed off a row is the row they were looking at.
+	own := tree.Get("m/x/own.go")
+	require.NotNil(t, own, "the last segment may name a file")
+	assert.Same(t, pkg.Files["own.go"], own, "and it is the file, not something rebuilt")
+	assert.Empty(t, own.Children, "a file holds nothing")
+}
+
+// A file wins the last segment, which only matters for a profile no filesystem could have produced:
+// one directory cannot hold a file and a directory of one name. cmd/cover cannot write it, so the
+// rule is here to be predictable rather than to arbitrate a real case — and a path ending in .go is
+// a file to whoever typed it.
+func TestPathTreeGetPrefersAFileOnTheLastSegment(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/a.go", 1, 9),      // the file
+		file("m/a.go/b.go", 9, 1), // a directory of the same name
+	})
+
+	got := tree.Get("m/a.go")
+	require.NotNil(t, got)
+
+	pct, ok := got.Coverage.Percentage()
+	require.True(t, ok)
+	assert.InDelta(t, 10.00, pct.Float(), ratioTolerance, "the file, not the directory's 90.00")
+
+	// The directory is still there, and still reachable through what it holds.
+	assert.NotNil(t, tree.Get("m/a.go/b.go"), "the directory is not shadowed, only its own name is")
+}
+
+// Nothing at all is nil rather than a zero node, so a caller can tell "no such path" from "nothing
+// covered" — the two print very differently and only one is a mistake.
+func TestPathTreeGetMissesAreNil(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/x/own.go", 1, 1)})
+
+	for _, key := range []string{"", "nope", "m/nope", "m/x/own.go/deeper", "m/x/own.go/"} {
+		assert.Nil(t, tree.Get(key), "Get(%q)", key)
+	}
 }
 
 // A name that is both is two nodes, one in each map, and neither has to answer for the other. That
