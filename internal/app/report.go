@@ -66,7 +66,7 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 		return refuseEmpty(cfg, "-exclude left nothing to report", stderr)
 	}
 
-	if cfg.Total {
+	if cfg.Total != nil {
 		return showTotal(cfg, tree, stdout, stderr)
 	}
 
@@ -241,28 +241,32 @@ func (c config) outputFilters() string {
 // -total=path reports a node of the tree rather than the whole of it, which is the one number the
 // report shows and nothing could hand back: `prettycov -depth=max` draws `web/handler - 89.66` and
 // there was no way to get 89.66 out. The path is spelled as the report prints it, because the tree
-// is built from shortened paths and this looks the node up in that tree.
+// is built from shortened paths and this looks the node up in that tree — the opposite of -exclude,
+// which matches the profile's own paths, and the right way round here: you read a row, then ask for
+// its number.
 //
 // The same node is printed and graded. Two lookups would be two chances to disagree, which is
 // exactly how -fail-under=100 came to pass a run whose own report read 99.99.
 func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
-	node := tree
-	if cfg.TotalOf != "" {
-		if node = tree.Get(cfg.TotalOf); node == nil {
-			_, _ = fmt.Fprintf(stderr, "%v: %s\n", errNoSuchPath, cfg.TotalOf)
+	node, want := tree, *cfg.Total
+
+	if want != "" {
+		// Quoted, as every message quoting something the reader typed is: a path can be
+		// empty-looking or carry a control byte, and argv is where both arrive from.
+		if node = tree.Get(want); node == nil {
+			_, _ = fmt.Fprintf(stderr, "-total names no package or file in the profile: %q\n", want)
 
 			return exitFailed
 		}
 	}
 
-	// A node with no statements has no percentage, which the whole tree cannot be by here — an empty
-	// profile is refused above — but one package can: a directory of files that declare none.
-	// Printing "n/a" into a variable is worse than saying so.
+	// A node with no statements has no percentage. The whole tree cannot be one by here — an empty
+	// profile is refused above — but one node can: a directory whose files declare none. Refused
+	// through refuseEmpty rather than here, so that a gate reads the same for a node as for the
+	// tree: exit 1 and the shortfall, not exit 2 as though prettycov could not run.
 	pct, ok := node.Coverage.Percentage()
 	if !ok {
-		_, _ = fmt.Fprintf(stderr, "%v: %s\n", errNothingToCover, cfg.TotalOf)
-
-		return exitFailed
+		return refuseEmpty(cfg, fmt.Sprintf("-total names nothing with statements to cover: %q", want), stderr)
 	}
 
 	_, _ = fmt.Fprintln(stdout, pct)
@@ -333,22 +337,24 @@ func plural(n int, thing string) string {
 	return fmt.Sprintf("%d %ss", n, thing)
 }
 
-// checkThreshold grades the total against want, which is nil when no gate was asked for.
+// checkThreshold grades node's coverage against want, which is nil when no gate was asked for. The
+// node is the whole tree for every caller but -total=path, which hands over the one it printed —
+// grading a second lookup would be a second chance to disagree with the number on screen.
 //
 // CoverageStats answers whether the total is at the bar, rather than this comparing the ratio
 // itself: at 100 the two differ. A profile one statement short of complete divides to exactly 100
 // in float64 once the counts are large enough, so comparing ratios passed -fail-under=100 for a
 // report that reads 99.99 — the gate and the figure beside it disagreeing about the same run.
 //
-// There is always a number by here: showReport refuses a profile with nothing to cover before
-// either caller reaches this, and says what emptied it, which this cannot.
-func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) int {
+// There is always a number by here: showReport refuses a profile with nothing to cover before any
+// caller reaches this, and showTotal refuses a node with none, each saying what this cannot.
+func checkThreshold(want *float64, node *prettycov.PathTree, stderr io.Writer) int {
 	if want == nil {
 		return exitOK
 	}
 
-	if !tree.Coverage.AtLeast(*want) {
-		pct, _ := tree.Coverage.Percentage()
+	if !node.Coverage.AtLeast(*want) {
+		pct, _ := node.Coverage.Percentage()
 
 		// Percentage renders the coverage figure, as it does everywhere else, so this message and
 		// the report cannot show different numbers for the same thing.

@@ -69,7 +69,7 @@ Turn on the two flags that say more, and go a level deeper:
 | `-files` | draw the profile's files as well as its packages |
 | `-hide-covered[=N]` | leave out subtrees with nothing left to do — fully covered, or at `N`% and above. Shapes the report only |
 | `-counts` | show `uncovered/total` statements beside each percentage |
-| `-total[=PATH]` | print only the number, for a Makefile or a badge. With a path, that package's or file's |
+| `-total[=PATH]` | print only the number, for a Makefile or a badge. With a path, that package's or file's number |
 | `-misses` | print only where the uncovered statements are, as `file:line:col`, for an editor or a pipe |
 | `-fail-under=N` | exit 1 when total coverage is below N, so prettycov can gate CI |
 | `-exclude=REGEXP` | leave out files whose path matches, or blocks whose `file:line:col` matches, before anything is totalled. Repeatable |

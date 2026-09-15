@@ -30,8 +30,6 @@ var (
 	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
 	errRootNamesNoPkg  = errors.New("-old names no package")
 	errTotalAndMisses  = errors.New("-total and -misses each replace the whole report; pick one")
-	errNoSuchPath      = errors.New("-total names no package or file in the profile")
-	errNothingToCover  = errors.New("-total names a package with no statements to cover")
 )
 
 // parsePercentage reads a threshold both -fail-under and -hide-covered accept. ParseFloat alone
@@ -95,10 +93,11 @@ type config struct {
 	Counts      bool
 	Files       bool
 	Misses      bool
-	// Total says the output is one number. TotalOf names which node's, empty for the whole tree,
-	// and is only read when Total is set — a path cannot be given without asking for the number.
-	Total   bool
-	TotalOf string
+	// Total is the output being one number: nil for the report, empty for the whole tree, and a
+	// path for one node of it. A pointer for the reason FailUnder and HideCovered are — the value
+	// cannot say whether the flag was given, and here it also makes "a path without the flag"
+	// unrepresentable rather than a rule written in a comment.
+	Total   *string
 	Help    bool
 	Version bool
 }
@@ -190,9 +189,8 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 // refinement rather than a separate flag. One flag with one value also means "two packages at once"
 // is unrepresentable, which is right — the output is a single number.
 //
-// The path is a node of the built tree, so it is spelled the way the report prints it: after -old
-// and -new, not before. That is the opposite of -exclude, which matches the profile's own paths, and
-// it is the better end of the trade here — you read a row, then ask for its number.
+// The path names a node of the built tree rather than a pattern over the profile; showTotal, which
+// looks it up, says what follows from that.
 func total(set *flag.FlagSet, cfg *config) {
 	// BoolFunc for the reason -hide-covered is one: it lets -total stand bare without eating the
 	// profile path behind it. `-total pkg/logger` would read the path as the profile, so the help
@@ -204,12 +202,15 @@ func total(set *flag.FlagSet, cfg *config) {
 			// spellings of off. Unlike -hide-covered there is no collision to carve out: no value
 			// ParseBool takes is a path anyone would name, and "0"/"1" are not paths either.
 			if on, err := strconv.ParseBool(s); err == nil {
-				cfg.Total, cfg.TotalOf = on, ""
+				cfg.Total = nil
+				if on {
+					cfg.Total = new(string)
+				}
 
 				return nil
 			}
 
-			cfg.Total, cfg.TotalOf = true, s
+			cfg.Total = &s
 
 			return nil
 		})
@@ -331,7 +332,7 @@ func parseFlags(args []string) (config, error) {
 	// returns before a printer is ever chosen, so `-misses -total` printed a percentage and dropped
 	// the positions with nothing on stderr. Refused rather than ranked, as for any other argument
 	// mistake — there is no report either could give that answers both.
-	if cfg.Total && cfg.Misses {
+	if cfg.Total != nil && cfg.Misses {
 		// The two beside it quote the root they were given, since a root is a value that can be
 		// empty-looking or carry a control byte. Both of these are booleans, so naming them is the
 		// whole of the message and there is nothing to quote back.

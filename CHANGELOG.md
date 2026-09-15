@@ -94,6 +94,15 @@ tags.
   `Miss` carries `EndLine` and `Statements` as well as the position, for a consumer that speaks
   ranges: GitHub annotations and LSP diagnostics both do, where the terminal does not.
 
+- **Breaking:** `Get` resolves a file on the last segment, so `Get("m/x/a.go")` is the file where
+  0.9.0 made it nil. That reverses 0.9.0's own **Breaking** entry, and deliberately: the two maps it
+  introduced are what mattered — a name belonging to a file and a directory is still two nodes, and
+  `Children` still holds directories only — while the lookup returning nil for a path the report
+  draws was a consequence nobody wanted. It also removes the footgun that entry had to warn about,
+  since `Get("m/x").Files["a.go"]` panics for a profile with no `m/x` and `Get("m/x/a.go")` does not.
+  A file wins the segment: one directory cannot hold a file and a directory of one name, so a
+  profile claiming both did not come from `cmd/cover`.
+
 - `Block` gains `EndLine`. `-exclude` still matches on the start and only the start, so a pattern
   naming a line means the block that opens there however far it runs.
 

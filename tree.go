@@ -140,20 +140,26 @@ func (n *PathTree) Get(key string) *PathTree {
 		return nil
 	}
 
+	// Cut rather than Split, which allocates a slice to walk once. Cut also says where the last
+	// segment is without a second scan: the one that has no separator after it, which is where a
+	// file can be. Comparing against a precomputed last segment instead would be wrong — "a/x/a"
+	// would probe Files at the first "a" and hand back a file two levels early.
 	node := n
-	parts := strings.Split(key, "/")
 
-	for i, part := range parts {
-		if i == len(parts)-1 {
+	for {
+		part, rest, more := strings.Cut(key, "/")
+		if !more {
 			if file, ok := node.Files[part]; ok {
 				return file
 			}
+
+			return node.Children[part]
 		}
 
 		if node = node.Children[part]; node == nil {
 			return nil
 		}
-	}
 
-	return node
+		key = rest
+	}
 }

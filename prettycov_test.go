@@ -571,6 +571,27 @@ func TestPathTreeGetPrefersAFileOnTheLastSegment(t *testing.T) {
 	assert.NotNil(t, tree.Get("m/a.go/b.go"), "the directory is not shadowed, only its own name is")
 }
 
+// A segment repeated further down must not resolve early. Get walks with Cut and only asks Files
+// where there is no separator left, so "a/x/a" is the file two levels down; comparing each segment
+// against a precomputed last one would match the first "a" and hand back a file from the top.
+func TestPathTreeGetDoesNotResolveARepeatedSegmentEarly(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("a/x/a", 1, 9),         // a file named "a", inside a directory also named "a"
+		file("a/x/a/deep.go", 9, 1), // and a directory of that name beside it
+	})
+
+	deep := tree.Get("a/x/a")
+	require.NotNil(t, deep)
+
+	pct, ok := deep.Coverage.Percentage()
+	require.True(t, ok)
+	assert.InDelta(t, 10.00, pct.Float(), ratioTolerance, "the file two levels down, not the root")
+
+	assert.NotNil(t, tree.Get("a/x/a/deep.go"), "and the walk still passes through the directory")
+}
+
 // Nothing at all is nil rather than a zero node, so a caller can tell "no such path" from "nothing
 // covered" — the two print very differently and only one is a mistake.
 func TestPathTreeGetMissesAreNil(t *testing.T) {
