@@ -124,25 +124,81 @@ func (a *arena) next() *PathTree {
 	return node
 }
 
-// Get returns the directory at key, or nil if the tree has no such path — including when there is
-// no tree, so that a miss can be chained: Get("a").Get("b") is nil where it used to panic.
+// Get returns the node at key, or nil if the tree has no such path — including when there is no
+// tree, so that a miss can be chained: Get("a").Get("b") is nil where it used to panic.
 //
-// Files are reached through the Files map of the directory holding them, so that a name which is
-// both answers unambiguously. That map is a field rather than a method, so nothing can make it
-// nil-safe the way this is: a caller reading one still has to check what Get handed back.
+// The last segment may name a file, and a file wins: a path ending in one is what a reader types
+// off a row, and only a file can be there. A directory of the same name in the same parent cannot
+// also exist — no filesystem holds two entries under one name — so a profile that claims both was
+// not written by cmd/cover, and the tree draws both either way.
+//
+// Files are still a map of their own rather than more Children, so that a name belonging to both
+// stays two nodes. That map is a field rather than a method, so nothing can make it nil-safe the
+// way this is: a caller reading one still has to check what Get handed back.
 func (n *PathTree) Get(key string) *PathTree {
 	if n == nil {
 		return nil
 	}
 
-	node := n
-	parts := strings.SplitSeq(key, "/")
+	// "./x" is x. That is how a package whose name strconv.ParseBool reads — t, f, true, false, 1,
+	// 0 and their spellings, all of them legal directory names — can be named at all: -total settles
+	// the value before this ever sees it, so -total=t is the bare flag and -total=./t is the
+	// package. Nothing else needs the prefix, and stripping it changes no other answer, since "./x"
+	// and "x" name one node.
+	if rest, found := strings.CutPrefix(key, "./"); found && rest != "" {
+		key = rest
+	}
 
-	for part := range parts {
+	if node := n.walk(key); node != nil {
+		return node
+	}
+
+	// A key read off a row may be spelled as the report draws it rather than as the tree holds it.
+	// The renderer makes exactly two substitutions, and these undo them.
+	//
+	// The filesystem root has no name of its own — an absolute path splits to a leading empty
+	// component — and draws as "/".
+	if key == "/" {
+		return n.Children[""]
+	}
+
+	// A file the profile gave no directory lands under ".", which path.Dir returns for a bare name.
+	// That row draws as "." on its own, and merged with its file as just the file — path.Clean
+	// drops the component — so "main.go" is a label with no matching path.
+	if dot := n.Children["."]; dot != nil {
+		return dot.walk(key)
+	}
+
+	return nil
+}
+
+// walk resolves key against this node, directories all the way but for the last segment, where a
+// file wins.
+//
+// Cut rather than Split, which allocates a slice to walk once, and rather than the SplitSeq this
+// replaced, which cannot say where the last segment is. Not a speedup: SplitSeq allocated nothing
+// either, and probing Files on the last segment costs what the new answer is worth — BenchmarkGet
+// puts it at 3% over the three shapes, on a call made once per invocation.
+//
+// Comparing against a precomputed last segment instead would be wrong: "a/x/a" would probe Files at
+// the first "a" and hand back a file two levels early.
+func (n *PathTree) walk(key string) *PathTree {
+	node := n
+
+	for {
+		part, rest, more := strings.Cut(key, "/")
+		if !more {
+			if file, ok := node.Files[part]; ok {
+				return file
+			}
+
+			return node.Children[part]
+		}
+
 		if node = node.Children[part]; node == nil {
 			return nil
 		}
-	}
 
-	return node
+		key = rest
+	}
 }

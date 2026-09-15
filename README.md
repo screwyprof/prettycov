@@ -69,7 +69,7 @@ Turn on the two flags that say more, and go a level deeper:
 | `-files` | draw the profile's files as well as its packages |
 | `-hide-covered[=N]` | leave out subtrees with nothing left to do — fully covered, or at `N`% and above. Shapes the report only |
 | `-counts` | show `uncovered/total` statements beside each percentage |
-| `-total` | print only the number, for a Makefile or a badge |
+| `-total[=PATH]` | print only the number, for a Makefile or a badge. With a path, that package's or file's number |
 | `-misses` | print only where the uncovered statements are, as `file:line:col`, for an editor or a pipe |
 | `-fail-under=N` | exit 1 when total coverage is below N, so prettycov can gate CI |
 | `-exclude=REGEXP` | leave out files whose path matches, or blocks whose `file:line:col` matches, before anything is totalled. Repeatable |
@@ -218,6 +218,56 @@ A profile with nothing to cover has no total, so it exits 2 with a message rathe
 `n/a` or `0.00` into your variable — unless `-fail-under` was given, in which case that reports the
 shortfall and exits 1 instead.
 
+### One package's number, or one file's
+
+`-total` on its own reports the whole tree. Given a path it reports that node — the number the
+report already draws, which nothing else could hand back:
+
+```shell
+❯ prettycov -old=github.com/screwyprof/delegator -new=. -depth=3 -files
+ pkg - 93.33
+ ├ clock/clock.go - 100.00
+ ├ httpkit/httpkit.go - 96.30
+ ├ logger - 92.50
+ │ ├ logger.go - 86.67
+ │ └ middleware.go - 96.00
+ …
+
+❯ prettycov … -total                       91.54
+❯ prettycov … -total=pkg/logger             92.50
+❯ prettycov … -total=pkg/logger/logger.go   86.67
+```
+
+The path runs from the top row down — a row is drawn with its own segment only, so
+`github.com/screwyprof/delegator/pkg` rather than the `pkg` you see indented under it. `-new=.`
+strips the root and makes the two the same, which is why the examples above use it. A row that
+`-files` merges into one label (`main.go` for a file the profile gave no directory) answers to that
+label as well as to its full path. `-total=` with nothing after it is refused rather than read as the whole tree, so an
+unset `-total=$PKG` fails instead of quietly gating the repository. That is the opposite of `-exclude`, which matches the
+profile's own paths, and it is the right way round here: you read a row, then ask for its number.
+A path the profile does not hold is exit 2 rather than `0.00`, which a script would read as a real
+and terrible figure.
+
+One name it cannot take is a package spelled the way `strconv.ParseBool` reads — `t`, `f`, `true`,
+`1` and the rest, every one a legal Go directory name. `-total` settles its value before the tree is
+consulted, so `-total=t` is the bare flag. Write `-total=./t`, which resolves to the same node and is
+a spelling the flag never claims. `-hide-covered` carves out `0` and `1` the same way; a percentage
+is a narrow shape where a path is any string, so here the escape has to do the work.
+
+Because it is one flag with one value, "two packages at once" is not expressible — which is the
+point, since the output is a single number. It composes with `-fail-under`, and the number graded is
+the number printed:
+
+```shell
+❯ prettycov … -total=scraper/store -fail-under=85
+74.51
+total coverage 74.51% is below 85.00%      # exit 1
+```
+
+That gates one package without building a second profile. `-depth`, `-files`, `-counts`,
+`-hide-covered` and `-color` say nothing here, as they say nothing to a bare `-total`: there is no
+report being drawn, only a number being read.
+
 ## Where the uncovered statements are
 
 A percentage says how much is untested; `-misses` says where. One line per run of statements the
@@ -335,6 +385,26 @@ either way.
 same `file:line:col` spelling, so a position you judge unreachable pastes back as a pattern. It
 matches the paths the profile holds, so paste the position as printed when you are not renaming, and
 the profile's own path when you are.
+
+**Anchor it with `$`.** Patterns are unanchored, so the column is a prefix like the line is:
+`a\.go:9:2` also matches `a\.go:9:24`, which is an ordinary second block on the same line — `if err
+!= nil {` at column 2 and a closure at column 24. Pasting the position bare drops both, and the
+denominator moves with them:
+
+```shell
+❯ prettycov -profile testdata/two-blocks-one-line.out -total
+20.00
+❯ prettycov -profile testdata/two-blocks-one-line.out -exclude='a\.go:9:2' -total
+-exclude "a\\.go:9:2" left out 4 statements in 2 blocks
+100.00
+❯ prettycov -profile testdata/two-blocks-one-line.out -exclude='a\.go:9:2$' -total
+-exclude "a\\.go:9:2$" left out 1 statement in 1 block
+25.00
+```
+
+Four of the five statements left the denominator on the first pattern, and 100.00 is not a coverage
+figure — it is what remains after a pattern took more than was meant. Anchoring is what makes the
+round trip exact.
 
 What it matches is the block that opens there, not the whole region. A position is the *first* block
 of a fold while the count beside it is the region's, so excluding one that reads `2 uncovered` takes

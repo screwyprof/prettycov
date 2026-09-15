@@ -442,3 +442,34 @@ func BenchmarkExclude(b *testing.B) {
 		_, _ = prettycov.Exclude(files, patterns)
 	}
 }
+
+// A column is a prefix as a line is, so a position pasted out of -misses takes every block whose
+// column starts with those digits: a.go:9:2 also matches a.go:9:24, which is an ordinary second
+// block on one line — `if err != nil {` at column 2 and a closure at column 24.
+//
+// The round trip -misses advertises is therefore exact only when anchored. Pinned because the cost
+// is silent and upward: the statements go out of the denominator, so coverage rises.
+func TestExcludeMatchesAColumnAsAPrefixUnlessAnchored(t *testing.T) {
+	t.Parallel()
+
+	files := []prettycov.FileCoverage{{
+		File:     "m/a.go",
+		Coverage: prettycov.CoverageStats{Uncovered: 4},
+		Blocks: []prettycov.Block{
+			uncovered(9, 2, 10, 1),  // the position -misses prints
+			uncovered(9, 24, 12, 3), // a closure on the same line
+		},
+	}}
+
+	// Both blocks go, so nothing of the file is left and it drops out of the profile altogether.
+	bare, spent := prettycov.Exclude(files, []*regexp.Regexp{regexp.MustCompile(`m/a\.go:9:2`)})
+	assert.Empty(t, bare, "the whole file, from a pattern naming one block")
+	require.Len(t, spent, 1)
+	assert.Equal(t, 4, spent[0].Statements, "four statements out of the denominator, not one")
+
+	anchored, meant := prettycov.Exclude(files, []*regexp.Regexp{regexp.MustCompile(`m/a\.go:9:2$`)})
+	require.Len(t, anchored, 1)
+	assert.Equal(t, prettycov.CoverageStats{Uncovered: 3}, anchored[0].Coverage, "only the one meant")
+	require.Len(t, meant, 1)
+	assert.Equal(t, 1, meant[0].Statements)
+}
