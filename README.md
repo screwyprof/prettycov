@@ -238,10 +238,11 @@ report already draws, which nothing else could hand back:
 ❯ prettycov … -total=pkg/logger/logger.go   86.67
 ```
 
-The path is spelled the way the report prints it, because this looks up the tree the report was
-drawn from — so `-old`/`-new` apply first, and a row that `-files` merges into one label
-(`main.go` for a file the profile gave no directory) answers to that label as well as to its
-full path. `-total=` with nothing after it is refused rather than read as the whole tree, so an
+The path runs from the top row down — a row is drawn with its own segment only, so
+`github.com/screwyprof/delegator/pkg` rather than the `pkg` you see indented under it. `-new=.`
+strips the root and makes the two the same, which is why the examples above use it. A row that
+`-files` merges into one label (`main.go` for a file the profile gave no directory) answers to that
+label as well as to its full path. `-total=` with nothing after it is refused rather than read as the whole tree, so an
 unset `-total=$PKG` fails instead of quietly gating the repository. That is the opposite of `-exclude`, which matches the
 profile's own paths, and it is the right way round here: you read a row, then ask for its number.
 A path the profile does not hold is exit 2 rather than `0.00`, which a script would read as a real
@@ -378,6 +379,19 @@ either way.
 same `file:line:col` spelling, so a position you judge unreachable pastes back as a pattern. It
 matches the paths the profile holds, so paste the position as printed when you are not renaming, and
 the profile's own path when you are.
+
+**Anchor it with `$`.** Patterns are unanchored, so the column is a prefix like the line is:
+`a\.go:9:2` also matches `a\.go:9:24`, which is an ordinary second block on the same line — `if err
+!= nil {` at column 2 and a closure at column 24. Pasting the position bare drops both, and the
+denominator moves with them:
+
+```shell
+❯ prettycov -exclude='a\.go:9:2'  -total      100.00   # two blocks gone, four statements
+❯ prettycov -exclude='a\.go:9:2$' -total       25.00   # the one you meant
+```
+
+The first number is not a coverage figure, it is the tool measuring what is left after a pattern
+took more than was intended. Anchoring is what makes the round trip exact.
 
 What it matches is the block that opens there, not the whole region. A position is the *first* block
 of a fold while the count beside it is the region's, so excluding one that reads `2 uncovered` takes

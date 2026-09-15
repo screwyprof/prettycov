@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"path"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -124,6 +125,33 @@ func (c config) reportOutput(tree *prettycov.PathTree, shown int, stderr io.Writ
 		_, _ = fmt.Fprintf(stderr, "%s lists %d of %s\n",
 			c.outputFilters(), shown, plural(tree.Coverage.Uncovered, "uncovered statement"))
 	}
+}
+
+// underRoot suggests the path with the module root in front of it, when that is what resolves.
+//
+// A row is drawn with its own segment, so reading `pkg - 96.41` off a report and asking for "pkg"
+// is the obvious next thing to type and the wrong one: the tree holds it under the whole module
+// path. Saying so costs a lookup that has already failed once, and only fires when it turns the
+// miss into a hit, so it can never send anyone somewhere that is not there.
+//
+// The root is a run of single-child directories rather than one node — a module path spends three
+// of them on github.com, the owner and the repository — so this descends that run the way collapse
+// does, which is exactly the run the report draws as its top row. It stops where the tree branches
+// or holds a file, because past there is a choice and there is no one prefix to suggest.
+func underRoot(tree *prettycov.PathTree, want string) string {
+	root := ""
+
+	for node := tree; len(node.Children) == 1 && len(node.Files) == 0; {
+		for name, child := range node.Children {
+			root, node = path.Join(root, name), child
+		}
+
+		if full := path.Join(root, want); tree.Get(full) != nil {
+			return fmt.Sprintf(", did you mean %q?", full)
+		}
+	}
+
+	return ""
 }
 
 // reportRename reports whether -old named a package the profile does not hold — a typo, or a module
@@ -254,7 +282,8 @@ func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) i
 		// Quoted, as every message quoting something the reader typed is: a path can be
 		// empty-looking or carry a control byte, and argv is where both arrive from.
 		if node = tree.Get(want); node == nil {
-			_, _ = fmt.Fprintf(stderr, "-total names no package or file in the profile: %q\n", want)
+			_, _ = fmt.Fprintf(stderr, "-total names no package or file in the profile: %q%s\n",
+				want, underRoot(tree, want))
 
 			return exitFailed
 		}

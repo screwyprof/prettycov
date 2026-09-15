@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1008,6 +1009,43 @@ func TestRunTotalRefusesAPathTheTreeDoesNotHold(t *testing.T) {
 	assert.Equal(t, codeFailed, code)
 	assert.Empty(t, stdout.String(), "nothing a script could mistake for a percentage")
 	assert.Equal(t, "-total names no package or file in the profile: \"m/nope\"\n", stderr.String())
+}
+
+// A row is drawn with its own segment, so reading `pkg - 96.41` off a report and asking for "pkg"
+// is the obvious next thing to type and the wrong one — the tree holds it under the whole module
+// path. The message says so when saying so is certain, which is when the prefixed path resolves.
+func TestRunTotalSuggestsThePathUnderTheRoot(t *testing.T) {
+	t.Parallel()
+
+	// The root is a run of single-child directories, as a module path is, so the suggestion has to
+	// descend it rather than look one level down.
+	const shaped = "mode: set\n" +
+		"example.com/m/pkg/a.go:1.1,2.2 1 1\n" +
+		"example.com/m/web/b.go:1.1,2.2 1 1\n"
+
+	tests := map[string]struct{ want, suggest string }{
+		"a row's own label":      {want: "pkg", suggest: `, did you mean "example.com/m/pkg"?`},
+		"a deeper path":          {want: "web/b.go", suggest: `, did you mean "example.com/m/web/b.go"?`},
+		"nothing like it":        {want: "nope", suggest: ""},
+		"right root, wrong leaf": {want: "pkg/nope", suggest: ""},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{
+				"-total=" + tc.want, "-profile", writeProfile(t, shaped), "-color", "never",
+			}, stdout, stderr)
+
+			assert.Equal(t, codeFailed, code)
+			assert.Empty(t, stdout.String())
+			assert.Equal(t,
+				"-total names no package or file in the profile: "+strconv.Quote(tc.want)+tc.suggest+"\n",
+				stderr.String())
+		})
+	}
 }
 
 // A node whose files declare no statements has no percentage, which the whole tree cannot be by here
