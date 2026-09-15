@@ -584,6 +584,10 @@ func TestPathTreeGetTakesTheSpellingTheReportDraws(t *testing.T) {
 		file("pkg/a.go", 2, 0),
 	})
 
+	// "./" alone is not a path to anything: stripping it would leave the empty key, which names the
+	// root and would hand back the whole tree for what reads as a typo.
+	assert.Nil(t, bare.Get("./"), `"./" names nothing`)
+
 	for _, key := range []string{"main.go", "./main.go", "."} {
 		node := bare.Get(key)
 		require.NotNilf(t, node, "Get(%q)", key)
@@ -606,6 +610,31 @@ func TestPathTreeGetTakesTheSpellingTheReportDraws(t *testing.T) {
 	assert.InDelta(t, 60.00, pct.Float(), ratioTolerance)
 
 	assert.NotNil(t, rooted.Get("/a.go"), "and a file under it")
+}
+
+// A package named as strconv.ParseBool reads it — t, f, true, 1 and their spellings, every one a
+// legal Go directory name — cannot be asked for by name, because -total settles the value before
+// the tree is consulted. "./t" is the escape, and it is the only one: the flag cannot tell them
+// apart, so the library has to offer a spelling the flag never claims.
+func TestPathTreeGetTakesADotSlashEscape(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("t/a.go", 2, 0),
+		file("f/b.go", 0, 2),
+	})
+
+	for key, want := range map[string]float64{"t": 100, "./t": 100, "f": 0, "./f": 0} {
+		node := tree.Get(key)
+		require.NotNilf(t, node, "Get(%q)", key)
+
+		pct, ok := node.Coverage.Percentage()
+		require.True(t, ok)
+		assert.InDeltaf(t, want, pct.Float(), ratioTolerance, "Get(%q)", key)
+	}
+
+	// The prefix is stripped, not resolved against a directory called ".": this tree has none.
+	assert.Nil(t, tree.Get("./nope"))
 }
 
 // A segment repeated further down must not resolve early. Get walks with Cut and only asks Files
@@ -724,5 +753,28 @@ func BenchmarkProcess(b *testing.B) {
 
 	for b.Loop() {
 		_ = prettycov.Process(files)
+	}
+}
+
+// Get is called once per invocation, so this exists to hold a claim rather than to chase a cost:
+// the walk allocates nothing, for a hit, a file hit and a miss alike.
+func BenchmarkGet(b *testing.B) {
+	tree := prettycov.Process(syntheticProfile(b))
+
+	for _, bc := range []struct {
+		name string
+		key  string
+	}{
+		{name: "package", key: "github.com/acme/monorepo/unit3/pkg/logger"},
+		{name: "file", key: "github.com/acme/monorepo/unit3/pkg/logger/logger.go"},
+		{name: "miss", key: "github.com/acme/monorepo/unit3/pkg/nope"},
+	} {
+		b.Run(bc.name, func(b *testing.B) {
+			b.ReportAllocs()
+
+			for b.Loop() {
+				_ = tree.Get(bc.key)
+			}
+		})
 	}
 }

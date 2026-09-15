@@ -225,16 +225,16 @@ report already draws, which nothing else could hand back:
 
 ```shell
 ❯ prettycov -old=github.com/screwyprof/delegator -new=. -depth=3 -files
- pkg - 96.41
+ pkg - 93.33
  ├ clock/clock.go - 100.00
- ├ httpkit/httpkit.go - 97.50
- ├ logger - 96.88
+ ├ httpkit/httpkit.go - 96.30
+ ├ logger - 92.50
  │ ├ logger.go - 86.67
- │ └ middleware.go - 98.77
+ │ └ middleware.go - 96.00
  …
 
-❯ prettycov … -total                       94.01
-❯ prettycov … -total=pkg/logger             96.88
+❯ prettycov … -total                       91.54
+❯ prettycov … -total=pkg/logger             92.50
 ❯ prettycov … -total=pkg/logger/logger.go   86.67
 ```
 
@@ -248,14 +248,20 @@ profile's own paths, and it is the right way round here: you read a row, then as
 A path the profile does not hold is exit 2 rather than `0.00`, which a script would read as a real
 and terrible figure.
 
+One name it cannot take is a package spelled the way `strconv.ParseBool` reads — `t`, `f`, `true`,
+`1` and the rest, every one a legal Go directory name. `-total` settles its value before the tree is
+consulted, so `-total=t` is the bare flag. Write `-total=./t`, which resolves to the same node and is
+a spelling the flag never claims. `-hide-covered` carves out `0` and `1` the same way; a percentage
+is a narrow shape where a path is any string, so here the escape has to do the work.
+
 Because it is one flag with one value, "two packages at once" is not expressible — which is the
 point, since the output is a single number. It composes with `-fail-under`, and the number graded is
 the number printed:
 
 ```shell
 ❯ prettycov … -total=scraper/store -fail-under=85
-77.97
-total coverage 77.97% is below 85.00%      # exit 1
+74.51
+total coverage 74.51% is below 85.00%      # exit 1
 ```
 
 That gates one package without building a second profile. `-depth`, `-files`, `-counts`,

@@ -26,6 +26,10 @@ tags.
   flag with one value, so two packages at once is unrepresentable, which suits an output of one
   number. The display flags say nothing to it, as they already said nothing to a bare `-total`.
 
+  A package named as `strconv.ParseBool` reads it — `t`, `f`, `true`, `1`, all legal directory names
+  — is the bare flag rather than that package, because the value is settled before the tree is
+  consulted. `-total=./t` is the escape and resolves to the same node.
+
   Every label the report draws resolves, including the two it spells differently from the tree: a
   file the profile gave no directory merges into a row named for the file alone, and the filesystem
   root draws as `/`. `-total=` with nothing after it is refused rather than read as the whole tree —

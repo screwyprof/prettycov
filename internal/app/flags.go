@@ -197,7 +197,8 @@ func total(set *flag.FlagSet, cfg *config) {
 	// profile path behind it. `-total pkg/logger` would read the path as the profile, so the help
 	// says "=".
 	set.BoolFunc("total",
-		"print only the total percentage, for scripts; -total=pkg/logger reports one node's",
+		"print only the total percentage, for scripts; -total=pkg/logger reports one node's, "+
+			"-total=./t a package named like a boolean",
 		func(s string) error {
 			// Refused rather than read as the whole tree, which is what -total=$PKG means when
 			// PKG is unset or misspelled — and the whole tree passing a gate the package would
@@ -209,8 +210,13 @@ func total(set *flag.FlagSet, cfg *config) {
 			}
 
 			// The bare form passes "true", and a shell writing -total=$WANT wants the other
-			// spellings of off. Unlike -hide-covered there is no collision to carve out: no value
-			// ParseBool takes is a path anyone would name, and "0"/"1" are not paths either.
+			// spellings of off.
+			//
+			// Which collides, and cannot be carved out the way -hide-covered carves out "0" and "1":
+			// a percentage is a narrow shape and a path is any string, so `t`, `f`, `true`, `1` and
+			// the rest are read as the flag and not as the packages of those names — every one of
+			// which is a legal Go directory. The escape is `-total=./t`, which Get reads as `t`;
+			// the usage line says so, because nothing here can tell the two apart.
 			if on, err := strconv.ParseBool(s); err == nil {
 				cfg.Total = nil
 				if on {

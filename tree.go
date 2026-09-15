@@ -140,6 +140,15 @@ func (n *PathTree) Get(key string) *PathTree {
 		return nil
 	}
 
+	// "./x" is x. That is how a package whose name strconv.ParseBool reads — t, f, true, false, 1,
+	// 0 and their spellings, all of them legal directory names — can be named at all: -total settles
+	// the value before this ever sees it, so -total=t is the bare flag and -total=./t is the
+	// package. Nothing else needs the prefix, and stripping it changes no other answer, since "./x"
+	// and "x" name one node.
+	if rest, found := strings.CutPrefix(key, "./"); found && rest != "" {
+		key = rest
+	}
+
 	if node := n.walk(key); node != nil {
 		return node
 	}
@@ -166,10 +175,13 @@ func (n *PathTree) Get(key string) *PathTree {
 // walk resolves key against this node, directories all the way but for the last segment, where a
 // file wins.
 //
-// Cut rather than Split, which allocates a slice to walk once. Cut also says where the last segment
-// is without a second scan: the one with no separator after it. Comparing against a precomputed last
-// segment instead would be wrong — "a/x/a" would probe Files at the first "a" and hand back a file
-// two levels early.
+// Cut rather than Split, which allocates a slice to walk once, and rather than the SplitSeq this
+// replaced, which cannot say where the last segment is. Not a speedup: SplitSeq allocated nothing
+// either, and probing Files on the last segment costs what the new answer is worth — BenchmarkGet
+// puts it at 3% over the three shapes, on a call made once per invocation.
+//
+// Comparing against a precomputed last segment instead would be wrong: "a/x/a" would probe Files at
+// the first "a" and hand back a file two levels early.
 func (n *PathTree) walk(key string) *PathTree {
 	node := n
 
