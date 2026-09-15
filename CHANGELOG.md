@@ -10,6 +10,38 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Added
+
+- `-total` takes an optional path — `-total=pkg/logger`, `-total=pkg/logger/logger.go` — and reports
+  that node instead of the whole tree. It is the one number the report already draws and nothing
+  could hand back: `prettycov -depth=max` prints `web/handler - 89.66` and there was no way to get
+  89.66 out of it. With `-fail-under` it gates one package without building a second profile, and the
+  number graded is the number printed.
+
+  The path names a node of the built tree, so it is spelled as the report prints it and `-old`/`-new`
+  apply first — the opposite of `-exclude`, which matches the profile's own paths. A path the tree
+  does not hold exits 2 rather than printing `0.00`, which a script would read as a real figure. One
+  flag with one value, so two packages at once is unrepresentable, which suits an output of one
+  number. The display flags say nothing to it, as they already said nothing to a bare `-total`.
+
+  Every label the report draws resolves, including the two it spells differently from the tree: a
+  file the profile gave no directory merges into a row named for the file alone, and the filesystem
+  root draws as `/`. `-total=` with nothing after it is refused rather than read as the whole tree —
+  an unset `-total=$PKG` would otherwise gate the repository instead of the package it names.
+
+### Go API
+
+- **Breaking:** `Get` resolves a file on the last segment, so `Get("m/x/a.go")` is the file where
+  0.9.0 made it nil. That reverses 0.9.0's own **Breaking** entry, and deliberately: the two maps it
+  introduced are what mattered — a name belonging to a file and a directory is still two nodes, and
+  `Children` still holds directories only — while the lookup returning nil for a path the report
+  draws was a consequence nobody wanted. It also removes the footgun that entry had to warn about,
+  since `Get("m/x").Files["a.go"]` panics for a profile with no `m/x` and `Get("m/x/a.go")` does not.
+  A file wins the segment: one directory cannot hold a file and a directory of one name, so a
+  profile claiming both did not come from `cmd/cover`.
+
 ## [0.12.0] — 2026-09-15
 
 ### Added
@@ -68,23 +100,6 @@ tags.
   all of them it is everything they found, so a list that stops early reads as a clean bill — pipe
   eight of thirty-four into `vim -q -`, fix them, and the quickfix says there is nothing left.
 
-- `-total` takes an optional path — `-total=pkg/logger`, `-total=pkg/logger/logger.go` — and reports
-  that node instead of the whole tree. It is the one number the report already draws and nothing
-  could hand back: `prettycov -depth=max` prints `web/handler - 89.66` and there was no way to get
-  89.66 out of it. With `-fail-under` it gates one package without building a second profile, and the
-  number graded is the number printed.
-
-  The path names a node of the built tree, so it is spelled as the report prints it and `-old`/`-new`
-  apply first — the opposite of `-exclude`, which matches the profile's own paths. A path the tree
-  does not hold exits 2 rather than printing `0.00`, which a script would read as a real figure. One
-  flag with one value, so two packages at once is unrepresentable, which suits an output of one
-  number. The display flags say nothing to it, as they already said nothing to a bare `-total`.
-
-  Every label the report draws resolves, including the two it spells differently from the tree: a
-  file the profile gave no directory merges into a row named for the file alone, and the filesystem
-  root draws as `/`. `-total=` with nothing after it is refused rather than read as the whole tree —
-  an unset `-total=$PKG` would otherwise gate the repository instead of the package it names.
-
 - **Breaking:** `-fail-under=100` no longer passes a profile that is one statement short of complete.
   The gate compared the ratio while the report asks the counts, and past a certain size the two
   differ: a profile missing one statement of 2^56 divides to exactly 100 in float64, so the gate
@@ -98,15 +113,6 @@ tags.
   statements — and all they promise in common is that it is zero exactly when nothing was written.
   `Miss` carries `EndLine` and `Statements` as well as the position, for a consumer that speaks
   ranges: GitHub annotations and LSP diagnostics both do, where the terminal does not.
-
-- **Breaking:** `Get` resolves a file on the last segment, so `Get("m/x/a.go")` is the file where
-  0.9.0 made it nil. That reverses 0.9.0's own **Breaking** entry, and deliberately: the two maps it
-  introduced are what mattered — a name belonging to a file and a directory is still two nodes, and
-  `Children` still holds directories only — while the lookup returning nil for a path the report
-  draws was a consequence nobody wanted. It also removes the footgun that entry had to warn about,
-  since `Get("m/x").Files["a.go"]` panics for a profile with no `m/x` and `Get("m/x/a.go")` does not.
-  A file wins the segment: one directory cannot hold a file and a directory of one name, so a
-  profile claiming both did not come from `cmd/cover`.
 
 - `Block` gains `EndLine`. `-exclude` still matches on the start and only the start, so a pattern
   naming a line means the block that opens there however far it runs.
