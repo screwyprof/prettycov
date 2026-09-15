@@ -80,6 +80,11 @@ tags.
   flag with one value, so two packages at once is unrepresentable, which suits an output of one
   number. The display flags say nothing to it, as they already said nothing to a bare `-total`.
 
+  Every label the report draws resolves, including the two it spells differently from the tree: a
+  file the profile gave no directory merges into a row named for the file alone, and the filesystem
+  root draws as `/`. `-total=` with nothing after it is refused rather than read as the whole tree —
+  an unset `-total=$PKG` would otherwise gate the repository instead of the package it names.
+
 - **Breaking:** `-fail-under=100` no longer passes a profile that is one statement short of complete.
   The gate compared the ratio while the report asks the counts, and past a certain size the two
   differ: a profile missing one statement of 2^56 divides to exactly 100 in float64, so the gate

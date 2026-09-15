@@ -30,6 +30,7 @@ var (
 	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
 	errRootNamesNoPkg  = errors.New("-old names no package")
 	errTotalAndMisses  = errors.New("-total and -misses each replace the whole report; pick one")
+	errEmptyTotalPath  = errors.New("want a path, or -total on its own for the whole tree")
 )
 
 // parsePercentage reads a threshold both -fail-under and -hide-covered accept. ParseFloat alone
@@ -198,6 +199,15 @@ func total(set *flag.FlagSet, cfg *config) {
 	set.BoolFunc("total",
 		"print only the total percentage, for scripts; -total=pkg/logger reports one node's",
 		func(s string) error {
+			// Refused rather than read as the whole tree, which is what -total=$PKG means when
+			// PKG is unset or misspelled — and the whole tree passing a gate the package would
+			// have failed is the one way this flag can be silently wrong in CI. -hide-covered=
+			// is a flag error for the same reason.
+			if s == "" {
+				//nolint:wrapcheck // a sentinel of this package's own, phrased for the flag package.
+				return errEmptyTotalPath
+			}
+
 			// The bare form passes "true", and a shell writing -total=$WANT wants the other
 			// spellings of off. Unlike -hide-covered there is no collision to carve out: no value
 			// ParseBool takes is a path anyone would name, and "0"/"1" are not paths either.

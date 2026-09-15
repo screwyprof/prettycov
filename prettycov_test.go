@@ -571,6 +571,43 @@ func TestPathTreeGetPrefersAFileOnTheLastSegment(t *testing.T) {
 	assert.NotNil(t, tree.Get("m/a.go/b.go"), "the directory is not shadowed, only its own name is")
 }
 
+// A key read off a row resolves, and the report draws two labels the tree does not hold under that
+// name: path.Clean drops a "." component, so a file the profile gave no directory of its own merges
+// into a row spelled as just the file; and the filesystem root has no name of its own, so it draws
+// as "/". Both are the renderer's substitutions, and Get undoes them — otherwise -total=main.go is
+// refused for a row the tool printed one line above.
+func TestPathTreeGetTakesTheSpellingTheReportDraws(t *testing.T) {
+	t.Parallel()
+
+	bare := prettycov.Process([]prettycov.FileCoverage{
+		file("main.go", 3, 1), // no directory at all: lands under "."
+		file("pkg/a.go", 2, 0),
+	})
+
+	for _, key := range []string{"main.go", "./main.go", "."} {
+		node := bare.Get(key)
+		require.NotNilf(t, node, "Get(%q)", key)
+
+		pct, ok := node.Coverage.Percentage()
+		require.True(t, ok)
+		assert.InDeltaf(t, 75.00, pct.Float(), ratioTolerance, "Get(%q)", key)
+	}
+
+	rooted := prettycov.Process([]prettycov.FileCoverage{
+		file("/a.go", 3, 1),
+		file("/b.go", 0, 1),
+	})
+
+	slash := rooted.Get("/")
+	require.NotNil(t, slash, `the row drawn as "/"`)
+
+	pct, ok := slash.Coverage.Percentage()
+	require.True(t, ok)
+	assert.InDelta(t, 60.00, pct.Float(), ratioTolerance)
+
+	assert.NotNil(t, rooted.Get("/a.go"), "and a file under it")
+}
+
 // A segment repeated further down must not resolve early. Get walks with Cut and only asks Files
 // where there is no separator left, so "a/x/a" is the file two levels down; comparing each segment
 // against a precomputed last one would match the first "a" and hand back a file from the top.

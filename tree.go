@@ -140,10 +140,37 @@ func (n *PathTree) Get(key string) *PathTree {
 		return nil
 	}
 
-	// Cut rather than Split, which allocates a slice to walk once. Cut also says where the last
-	// segment is without a second scan: the one that has no separator after it, which is where a
-	// file can be. Comparing against a precomputed last segment instead would be wrong — "a/x/a"
-	// would probe Files at the first "a" and hand back a file two levels early.
+	if node := n.walk(key); node != nil {
+		return node
+	}
+
+	// A key read off a row may be spelled as the report draws it rather than as the tree holds it.
+	// The renderer makes exactly two substitutions, and these undo them.
+	//
+	// The filesystem root has no name of its own — an absolute path splits to a leading empty
+	// component — and draws as "/".
+	if key == "/" {
+		return n.Children[""]
+	}
+
+	// A file the profile gave no directory lands under ".", which path.Dir returns for a bare name.
+	// That row draws as "." on its own, and merged with its file as just the file — path.Clean
+	// drops the component — so "main.go" is a label with no matching path.
+	if dot := n.Children["."]; dot != nil {
+		return dot.walk(key)
+	}
+
+	return nil
+}
+
+// walk resolves key against this node, directories all the way but for the last segment, where a
+// file wins.
+//
+// Cut rather than Split, which allocates a slice to walk once. Cut also says where the last segment
+// is without a second scan: the one with no separator after it. Comparing against a precomputed last
+// segment instead would be wrong — "a/x/a" would probe Files at the first "a" and hand back a file
+// two levels early.
+func (n *PathTree) walk(key string) *PathTree {
 	node := n
 
 	for {

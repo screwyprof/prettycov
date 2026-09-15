@@ -239,7 +239,10 @@ report already draws, which nothing else could hand back:
 ```
 
 The path is spelled the way the report prints it, because this looks up the tree the report was
-drawn from — so `-old`/`-new` apply first. That is the opposite of `-exclude`, which matches the
+drawn from — so `-old`/`-new` apply first, and a row that `-files` merges into one label
+(`main.go` for a file the profile gave no directory) answers to that label as well as to its
+full path. `-total=` with nothing after it is refused rather than read as the whole tree, so an
+unset `-total=$PKG` fails instead of quietly gating the repository. That is the opposite of `-exclude`, which matches the
 profile's own paths, and it is the right way round here: you read a row, then ask for its number.
 A path the profile does not hold is exit 2 rather than `0.00`, which a script would read as a real
 and terrible figure.

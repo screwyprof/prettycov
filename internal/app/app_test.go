@@ -1054,6 +1054,24 @@ func TestRunTotalRefusesANodeWithNothingToCover(t *testing.T) {
 	}
 }
 
+// -total= with nothing after it is a mistake, not the whole tree: that is what -total=$PKG means
+// when PKG is unset, and a gate quietly grading the repo instead of the package it names is the one
+// way this flag can be wrong without saying so. -hide-covered= is refused for the same reason.
+func TestRunTotalRefusesAnEmptyPath(t *testing.T) {
+	t.Parallel()
+
+	const shaped = "mode: set\nm/pkg/a.go:1.1,2.2 1 1\nm/pkg/b.go:1.1,2.2 0 1\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-total=", "-fail-under", "99", "-profile", writeProfile(t, shaped), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code, "a bad argument, not a failed gate")
+	assert.Empty(t, stdout.String(), "and no number for the gate to have graded")
+	assert.Contains(t, stderr.String(), "want a path, or -total on its own for the whole tree")
+}
+
 // -total is still a boolean to the flag package, so every spelling of off has to turn it off rather
 // than be read as a path. The bare form passes "true", which is how `-total=$WANT` reaches here.
 func TestRunTotalTakesTheBooleanSpellings(t *testing.T) {
