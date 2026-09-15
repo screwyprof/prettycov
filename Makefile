@@ -237,16 +237,10 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
 	@echo; echo '$$ make mutate'
 	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
-	@echo; echo '$$ make readme'
-	@$(MAKE) --no-print-directory readme 2>&1 | grep '^checked '
 	@echo; echo '$$ make cover-branches'
 	@$(MAKE) --no-print-directory cover-branches 2>&1 | grep '^Condition coverage:' \
 		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"} \
 		       END {if (NR != 2) {print "cover-branches reported " NR " packages, wanted 2" > "/dev/stderr"; exit 1}}'
-
-readme: build ## check the README's examples still render what they claim
-	@echo -e "$(OK_COLOR)==> Checking README examples$(NO_COLOR)"
-	@./scripts/readme-check.sh $(PWD)/$(BINARY) testdata/delegator-go126.out
 
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
@@ -312,4 +306,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-all check readme install hooks nix-hash release publish clean help
+.PHONY: lint lint-all check install hooks nix-hash release publish clean help

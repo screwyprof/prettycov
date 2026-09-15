@@ -392,12 +392,19 @@ the profile's own path when you are.
 denominator moves with them:
 
 ```shell
-❯ prettycov -exclude='a\.go:9:2'  -total      100.00   # two blocks gone, four statements
-❯ prettycov -exclude='a\.go:9:2$' -total       25.00   # the one you meant
+❯ prettycov -profile testdata/two-blocks-one-line.out -total
+20.00
+❯ prettycov -profile testdata/two-blocks-one-line.out -exclude='a\.go:9:2' -total
+-exclude "a\\.go:9:2" left out 4 statements in 2 blocks
+100.00
+❯ prettycov -profile testdata/two-blocks-one-line.out -exclude='a\.go:9:2$' -total
+-exclude "a\\.go:9:2$" left out 1 statement in 1 block
+25.00
 ```
 
-The first number is not a coverage figure, it is the tool measuring what is left after a pattern
-took more than was intended. Anchoring is what makes the round trip exact.
+Four of the five statements left the denominator on the first pattern, and 100.00 is not a coverage
+figure — it is what remains after a pattern took more than was meant. Anchoring is what makes the
+round trip exact.
 
 What it matches is the block that opens there, not the whole region. A position is the *first* block
 of a fold while the count beside it is the region's, so excluding one that reads `2 uncovered` takes
