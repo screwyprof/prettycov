@@ -82,6 +82,7 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 			slab = append(slab, Block{
 				Line:     block.StartLine,
 				Col:      block.StartCol,
+				EndLine:  block.EndLine,
 				Coverage: stats,
 			})
 		}

@@ -209,6 +209,39 @@ lint-all: require-golangci ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
 	golangci-lint run ./... --new-from-rev=""
 
+# check runs every gate and prints one line per figure, so a PR description quotes the tools rather
+# than being retyped from them. Six descriptions in this repo have claimed numbers the tree did not
+# give, all of them hand-copied from these same targets.
+#
+# The binary is a gate too: it is built with netgo and static linking that `go test` never exercises,
+# so asking it for its version proves the artifact runs and not merely that the package compiles.
+#
+# gobco prints the same sentence for each package and nothing in it says which, so the two condition
+# lines are labelled here. That is the one thing copying by hand could not get wrong and reading the
+# output could — and the labels are positional, so the count is asserted: cover-branches swallows a
+# failed gobco run with `|| true`, and one surviving line would otherwise be labelled "# root"
+# whichever package it came from, in a block whose whole purpose is to be pasted somewhere.
+#
+# Every line is a pipe, so without pipefail the status would be grep's and a failing gate would
+# still print a clean-looking block and exit 0. Scoped to this target, so no other recipe changes.
+check: SHELL := /usr/bin/env bash
+check: .SHELLFLAGS := -o pipefail -c
+check: ## run every quality gate and print the block to paste into a PR description
+	@echo -e "$(OK_COLOR)==> Checking$(NO_COLOR)" >&2
+	@echo '$$ make build'
+	@$(MAKE) --no-print-directory build >/dev/null
+	@$(PWD)/$(BINARY) -version
+	@echo; echo '$$ make test'
+	@$(MAKE) --no-print-directory test 2>&1 | grep 'coverage:' | grep -v '/cmd/' | tr -s '\t' ' '
+	@echo; echo '$$ make lint-all'
+	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
+	@echo; echo '$$ make mutate'
+	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
+	@echo; echo '$$ make cover-branches'
+	@$(MAKE) --no-print-directory cover-branches 2>&1 | grep '^Condition coverage:' \
+		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"} \
+		       END {if (NR != 2) {print "cover-branches reported " NR " packages, wanted 2" > "/dev/stderr"; exit 1}}'
+
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
 	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov/...
@@ -273,4 +306,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-all install hooks nix-hash release publish clean help
+.PHONY: lint lint-all check install hooks nix-hash release publish clean help

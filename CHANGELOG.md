@@ -10,6 +10,97 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Added
+
+- `-misses` prints where the uncovered statements are, one `file:line:col: N uncovered` per run of
+  them. That is `sourcefile:lineno:column: message`, one of the two forms the [GNU coding
+  standards](https://www.gnu.org/prep/standards/html_node/Errors.html) give a compiler for naming a
+  column, and what `go vet`, `gcc` and `golangci-lint` emit, so it pipes
+  into `vim -q -`; a line range would read well to a person and be dropped without a word by
+  everything else. The count after the position is what makes the column survive — without a message
+  the format falls back to `file:line:message` and reads the column as the text — and it is the
+  number a position cannot carry, since one untaken branch and a whole untested function look alike
+  until you see it. The column is a byte offset with a tab worth one, as
+  [`go/token`](https://pkg.go.dev/go/token#Position) documents and `go vet` prints — Emacs assumes
+  display columns and needs `compilation-error-screen-columns` nil, which is true of every Go tool
+  rather than this one. It is the other half of what golang/go#78205
+  asks for — a summary and the
+  uncovered ranges, in a terminal, without a browser — and the tree was already the summary.
+
+  It replaces the report rather than decorating it. The tree is the summary and these are the
+  drill-down, so printing both would answer the question the default invocation already answered.
+
+  Abutting blocks fold into one entry, because `cmd/cover` emits one per branch: 2,610 uncovered
+  blocks on a profile at 1.7% coverage are 1,344 regions. The gain is all in the badly covered case
+  — nothing at 91% or 99%, where misses are scattered single statements with nothing adjacent to
+  fold. A block declaring no statements is not a miss, and a covered block
+  between two uncovered ones stops the fold rather than being swallowed by it.
+
+  `-depth` and `-hide-covered` narrow it as they narrow the tree, being the same filtering: a file is
+  an entry of the package holding it, so it sits one level below that package and the default depth
+  gives 8 of delegator's 32 where `-depth=max` gives all. That level is worth counting: `-new=.`
+  leaves packages at the top and their files one below, which the default reaches, while an
+  unrenamed module path is a top row of its own and moves everything down one — so `prettycov
+  -misses` alone lists the module root's files and nothing else. `-files` says nothing here — it adds
+  files to the tree's output, and a list of positions is made of them either way.
+  `-exclude` removes them from the profile before any of it, and takes the same coordinates this
+  prints — which is the workflow golang/go#53271 was declined in favour of.
+
+  The paths are the profile's, which names packages rather than files on disk, so `-new=.` is what
+  makes them openable — and they are scrubbed as the tree's rows are. A position goes to the same
+  terminal, so the profile's own spelling let a crafted one erase the miss above it and made
+  `real\revil/b.go` read as `evil/b.go`; a coverage tool that can be made to drop a line of its own
+  output is failing at the one thing it is for. A path carrying such a rune therefore will not open
+  in an editor or match as an `-exclude` pattern, which costs nothing real: a module path cannot
+  contain one, so only a file name could, and the joiners that spell words in Persian and Devanagari
+  are not in the scrubbed set.
+
+  `-total` and `-misses` together are refused. Each says what the whole of stdout is, so one had to
+  win silently — it printed the percentage and dropped every position without a word. Exit 2, as for
+  any other argument mistake.
+
+  A list the filters cut short says so — `-depth=1 lists 10 of 34 uncovered statements`, on stderr,
+  so a pipe is unaffected. A tree carries its subtree's count on every row, so a shallow one is a
+  summary and reads as one; a list has no such row, and eight positions look the same whether they
+  are all of them or a quarter. `file:line:col` is the shape every linter and compiler emits, and in
+  all of them it is everything they found, so a list that stops early reads as a clean bill — pipe
+  eight of thirty-four into `vim -q -`, fix them, and the quickfix says there is nothing left.
+
+- **Breaking:** `-fail-under=100` no longer passes a profile that is one statement short of complete.
+  The gate compared the ratio while the report asks the counts, and past a certain size the two
+  differ: a profile missing one statement of 2^56 divides to exactly 100 in float64, so the gate
+  passed a run whose own report read `99.99`. Both ask `CoverageStats.AtLeast` now.
+
+### Go API
+
+- `Misses` and `DisplayMisses` are the second printer over the same traversal as `Rows` and
+  `DisplayTree`, and both printers now have one shape — `(io.Writer, *PathTree, Options) int` — so a
+  caller selects one and calls it without a branch. What each returns is its own unit — rows against
+  statements — and all they promise in common is that it is zero exactly when nothing was written.
+  `Miss` carries `EndLine` and `Statements` as well as the position, for a consumer that speaks
+  ranges: GitHub annotations and LSP diagnostics both do, where the terminal does not.
+
+- `Block` gains `EndLine`. `-exclude` still matches on the start and only the start, so a pattern
+  naming a line means the block that opens there however far it runs.
+
+- `PathTree.Blocks` holds a file leaf's blocks, so the tree can answer where as well as how much.
+
+- `CoverageStats.AtLeast` grades counts against a threshold, including the 100 case where the answer
+  is about the counts rather than the ratio. Nothing is at least more than all of it, so a threshold
+  above 100 is false rather than complete — the CLI clamps to `[0, 100]`, so only a library caller
+  can ask, and answering the completeness question there would hand it a passing gate.
+
+### Changed
+
+- A printer that comes up empty names the output filters that emptied it, rather than each printer
+  carrying a sentence of its own: `nothing to show at -depth=max, -hide-covered=0; 34 uncovered
+  statements left`. `-misses` said `nothing left to cover in what this depth draws` whatever the
+  cause, which is a false all-clear on a profile with work still in it — and it exited 0. That
+  sentence is now printed only when the tree really holds no uncovered statement, which is the one
+  thing that makes it true.
+
 ## [0.11.0] — 2026-09-12
 
 ### Added
@@ -460,6 +551,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[Unreleased]: https://github.com/screwyprof/prettycov/compare/v0.11.0...HEAD
 [0.11.0]: https://github.com/screwyprof/prettycov/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/screwyprof/prettycov/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/screwyprof/prettycov/compare/v0.8.0...v0.9.0

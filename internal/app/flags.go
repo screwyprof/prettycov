@@ -29,6 +29,7 @@ var (
 	errBadPercentage   = errors.New("want a percentage from 0 to 100")
 	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
 	errRootNamesNoPkg  = errors.New("-old names no package")
+	errTotalAndMisses  = errors.New("-total and -misses each replace the whole report; pick one")
 )
 
 // parsePercentage reads a threshold both -fail-under and -hide-covered accept. ParseFloat alone
@@ -91,6 +92,7 @@ type config struct {
 	HideCovered *float64
 	Counts      bool
 	Files       bool
+	Misses      bool
 	Total       bool
 	Help        bool
 	Version     bool
@@ -158,6 +160,29 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 
 		return nil
 	})
+	hideCovered(set, cfg)
+	set.BoolVar(&cfg.Counts, "counts", false, "show uncovered/total statements after each percentage")
+	set.BoolVar(&cfg.Files, "files", false, "show the profile's files, not only its packages")
+	set.BoolVar(&cfg.Misses, "misses", false,
+		"print only the uncovered positions, as file:line:col, for an editor or a pipe")
+	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")
+	set.BoolVar(&cfg.Help, "help", false, "show help")
+	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")
+	set.BoolVar(&cfg.Version, "version", false, "show version")
+
+	// Registering -h ourselves stops the flag package special-casing it, so every help path is
+	// the same path. With that, nothing here needs the package's own reporting: a mistyped flag
+	// used to print the message, then the whole usage, then the message again, 33 lines for one
+	// typo. run says what was wrong and where to look.
+	set.SetOutput(io.Discard)
+	set.Usage = func() {}
+
+	return set
+}
+
+// hideCovered registers -hide-covered, which is its own function only because it is long: the flag
+// answers to two vocabularies and the reasons are worth writing down where the code is.
+func hideCovered(set *flag.FlagSet, cfg *config) {
 	// BoolFunc, not Func: it is what lets -hide-covered stand bare without eating the profile path
 	// behind it, and it passes "true" for that form. A pointer for the reason -fail-under is one —
 	// 0 is a legitimate threshold, so the value cannot say whether the flag was given.
@@ -199,21 +224,6 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 
 			return nil
 		})
-	set.BoolVar(&cfg.Counts, "counts", false, "show uncovered/total statements after each percentage")
-	set.BoolVar(&cfg.Files, "files", false, "show the profile's files, not only its packages")
-	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")
-	set.BoolVar(&cfg.Help, "help", false, "show help")
-	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")
-	set.BoolVar(&cfg.Version, "version", false, "show version")
-
-	// Registering -h ourselves stops the flag package special-casing it, so every help path is
-	// the same path. With that, nothing here needs the package's own reporting: a mistyped flag
-	// used to print the message, then the whole usage, then the message again, 33 lines for one
-	// typo. run says what was wrong and where to look.
-	set.SetOutput(io.Discard)
-	set.Usage = func() {}
-
-	return set
 }
 
 // subcommand matches a bare `help` or `version`, which have to be recognised before the flag
@@ -280,6 +290,18 @@ func parseFlags(args []string) (config, error) {
 
 	if (cfg.CurrentRoot == "") != (cfg.NewRoot == "") {
 		return cfg, fmt.Errorf("%w: got %s", errHalfARename, given(cfg.CurrentRoot, cfg.NewRoot))
+	}
+
+	// Both name what the whole of stdout is, so one of them would have to win silently: -total
+	// returns before a printer is ever chosen, so `-misses -total` printed a percentage and dropped
+	// the positions with nothing on stderr. Refused rather than ranked, as for any other argument
+	// mistake — there is no report either could give that answers both.
+	if cfg.Total && cfg.Misses {
+		// The two beside it quote the root they were given, since a root is a value that can be
+		// empty-looking or carry a control byte. Both of these are booleans, so naming them is the
+		// whole of the message and there is nothing to quote back.
+		//nolint:wrapcheck // a sentinel of this package's own, with no value to add to it.
+		return cfg, errTotalAndMisses
 	}
 
 	return cfg, nil

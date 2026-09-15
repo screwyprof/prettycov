@@ -70,6 +70,7 @@ Turn on the two flags that say more, and go a level deeper:
 | `-hide-covered[=N]` | leave out subtrees with nothing left to do — fully covered, or at `N`% and above. Shapes the report only |
 | `-counts` | show `uncovered/total` statements beside each percentage |
 | `-total` | print only the number, for a Makefile or a badge |
+| `-misses` | print only where the uncovered statements are, as `file:line:col`, for an editor or a pipe |
 | `-fail-under=N` | exit 1 when total coverage is below N, so prettycov can gate CI |
 | `-exclude=REGEXP` | leave out files whose path matches, or blocks whose `file:line:col` matches, before anything is totalled. Repeatable |
 | `-old=PATH -new=PATH` | shorten a long root package path in the labels. `-new=.` strips it, leaving one row per top-level entry |
@@ -216,6 +217,130 @@ test, so it is only printed when every statement is covered. Everything else rou
 A profile with nothing to cover has no total, so it exits 2 with a message rather than printing
 `n/a` or `0.00` into your variable — unless `-fail-under` was given, in which case that reports the
 shortfall and exits 1 instead.
+
+## Where the uncovered statements are
+
+A percentage says how much is untested; `-misses` says where. One line per run of statements the
+tests never reached, as `file:line:col: N uncovered` — the shape `go vet` prints and an editor's
+error format parses, so it pipes straight into `vim -q -` or `reviewdog`:
+
+```shell
+❯ prettycov -misses -depth=max -old=github.com/screwyprof/delegator -new=.
+pkg/httpkit/httpkit.go:62:2: 1 uncovered
+pkg/logger/logger.go:22:16: 1 uncovered
+pkg/logger/logger.go:44:26: 1 uncovered
+pkg/logger/middleware.go:90:2: 1 uncovered
+pkg/pgxdb/pgxdb.go:23:16: 1 uncovered
+pkg/pgxdb/pgxdb.go:44:16: 1 uncovered
+pkg/pgxdb/pgxdb.go:48:39: 2 uncovered
+scraper/service.go:94:16: 2 uncovered
+scraper/service.go:158:20: 1 uncovered
+scraper/service.go:165:16: 1 uncovered
+scraper/service.go:188:16: 1 uncovered
+scraper/store/pgxstore/store.go:44:35: 1 uncovered
+scraper/store/pgxstore/store.go:47:16: 1 uncovered
+scraper/store/pgxstore/store.go:56:27: 1 uncovered
+scraper/store/pgxstore/store.go:64:16: 1 uncovered
+scraper/store/pgxstore/store.go:69:51: 1 uncovered
+scraper/store/pgxstore/store.go:73:56: 1 uncovered
+scraper/store/pgxstore/store.go:77:56: 1 uncovered
+scraper/store/pgxstore/store.go:81:65: 1 uncovered
+scraper/store/pgxstore/store.go:85:38: 1 uncovered
+scraper/store/pgxstore/store.go:104:16: 1 uncovered
+scraper/store/pgxstore/store.go:118:16: 1 uncovered
+scraper/store/pgxstore/store.go:132:16: 1 uncovered
+scraper/store/pgxstore/store.go:147:16: 1 uncovered
+web/handler/bind/bind.go:26:16: 1 uncovered
+web/handler/bind/bind.go:31:16: 1 uncovered
+web/handler/bind/bind.go:36:16: 1 uncovered
+web/handler/tezos_get_delegations.go:40:16: 1 uncovered
+web/handler/tezos_get_delegations.go:46:16: 1 uncovered
+web/handler/tezos_get_delegations.go:52:16: 1 uncovered
+web/store/pgxstore/store.go:43:16: 1 uncovered
+web/store/pgxstore/store.go:50:16: 1 uncovered
+```
+
+`sourcefile:lineno:column: message` is one of the two forms the [GNU coding
+standards](https://www.gnu.org/prep/standards/html_node/Errors.html) give for a compiler naming a
+column, and it is the one `go vet`, `gcc` and `golangci-lint` all emit.
+
+The count is not decoration. Without a message after the position, that error format cannot match
+and falls back to `file:line:message`, reading the column as the text — so `a.go:62:2` opens line 62
+at column 1 and the column is lost. Vim's default
+[`errorformat`](https://vimhelp.org/quickfix.txt.html#errorformat) tries `%f:%l:%c:%m` before
+`%f:%l:%m`, and Emacs' `gnu` rule in
+[`compile.el`](https://github.com/emacs-mirror/emacs/blob/master/lisp/progmodes/compile.el) wants the
+same trailing colon, so both need it. It is also the number a position cannot carry: one untaken
+branch and a whole untested function look alike until you see it.
+
+The column is a byte offset, counting a tab as one —
+[`go/token.Position.Column`](https://pkg.go.dev/go/token#Position) is documented that way, `go vet`
+[prints it unchanged](https://cs.opensource.google/go/x/tools/+/master:internal/analysis/driverutil/print.go),
+and golangci-lint
+[indexes the line by byte](https://github.com/golangci/golangci-lint/blob/main/pkg/printers/text.go)
+to place its own `^`. prettycov passes through what `cmd/cover` recorded, so it agrees with those.
+The GNU text says to count display width instead, with tab stops every 8, which is what Emacs
+assumes:
+[`compilation-error-screen-columns`](https://www.gnu.org/software/emacs/manual/html_node/emacs/Compilation-Mode.html)
+defaults to `t`. On gofmt'd source — tab-indented, so nearly every line — that puts the cursor inside
+the leading tabs. Setting it to `nil` reads the column as Go writes it, and fixes `go vet` and
+golangci-lint output in the same stroke.
+
+Editors that hyperlink terminal output rather than parse an error format are looser: VS Code's
+[`terminalLinkParsing.ts`](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/terminalContrib/links/browser/terminalLinkParsing.ts)
+also takes `file(12,3)`, `file#12` and `file on line 12`, and needs no message at all.
+
+It replaces the report rather than decorating it: the tree is the summary, these are the drill-down.
+The path comes from the profile, which names Go packages rather than files on disk, so `-new=.`
+strips the module prefix and leaves something an editor can open.
+
+Blocks that abut fold into one entry — `cmd/cover` emits one per branch, so a function nothing covers
+arrives as a dozen of them. That halves the list on a badly covered profile and changes almost
+nothing on a good one, where misses are scattered single statements. A covered block between two
+uncovered ones stops the fold, or the entry would claim a statement the tests do reach.
+
+`-depth` and `-hide-covered` narrow it as they narrow the tree under `-files`, being the same
+filtering with that one option set for you: a file is an entry of the package holding it, so it sits
+one level below that package — the default `-depth=1` gives 8 of the 32 entries above, and
+`-depth=max` gives all of them. `-hide-covered=90` leaves out the ones in subtrees already at the
+bar. Against the *default* tree the two part company, since asking for files is also what merges a
+package holding one into a single row: `-misses -depth=2` reaches a file that `-depth=2` alone
+stops one row above.
+
+That level is worth counting before reaching for `-depth`. `-new=.` above leaves packages at the top
+level and their files one below, which the default draws; without a rename the module path is a top
+row of its own and everything moves down one, so `prettycov -misses` alone lists only the files in
+your module root.
+
+You are told when that happens, because a short list and a whole one look alike:
+
+```shell
+❯ prettycov -misses -old=github.com/screwyprof/delegator -new=.
+pkg/httpkit/httpkit.go:62:2: 1 uncovered
+…
+-depth=1 lists 10 of 34 uncovered statements        # on stderr
+```
+
+A tree carries its subtree's count on every row, so a shallow one is a summary and says so. A list
+has no such row, and eight positions read the same whether they are all of them or a quarter —
+which matters most where it is piped, since a quickfix list that stops early looks like one you have
+finished. The count is on stderr, so the pipe is unaffected. An empty list names the filters the
+same way, rather than guessing which of them did it: `nothing to show at -depth=1; 34 uncovered
+statements left`.
+
+`-files` says nothing here. It adds files to the *tree's* output; a list of positions is made of them
+either way.
+
+`-exclude` removes them outright, since it acts on the profile before any of this — and it takes the
+same `file:line:col` spelling, so a position you judge unreachable pastes back as a pattern. It
+matches the paths the profile holds, so paste the position as printed when you are not renaming, and
+the profile's own path when you are.
+
+What it matches is the block that opens there, not the whole region. A position is the *first* block
+of a fold while the count beside it is the region's, so excluding one that reads `2 uncovered` takes
+one statement out and leaves the next block listed at its own position — repeat until the region is
+gone, or aim a pattern at the file. `-exclude` works in blocks, which is what makes a coordinate mean
+one thing.
 
 ## Stop counting code you never meant to test
 

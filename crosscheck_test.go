@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -322,4 +323,107 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 	}
 
 	return cases
+}
+
+// The two printers are two readings of one traversal, so they have to agree about which files they
+// account for. Both times this went wrong they disagreed silently: a file above -hide-covered's bar
+// had its misses listed while the tree left the row out, and a package merged into its single file
+// was drawn while its misses were lost — the row is the file there, and a file has no Files to read.
+//
+// With -files every file the report accounts for is a row of its own, which makes the claim exact:
+// the rows that name a file holding unrun statements are precisely the files the misses name.
+func TestRowsAndMissesAccountForTheSameFiles(t *testing.T) {
+	t.Parallel()
+
+	for name, files := range crosscheckProfiles(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			// The hand-built cases carry no blocks, having been written for the totals; a miss
+			// needs somewhere to point, so they get the ones a parsed profile would have had.
+			files = withUnrunBlocks(files)
+			tree := prettycov.Process(files)
+
+			// Every depth, because depth is what decides which nodes are visited, and the bar as
+			// well, because it is the other half of that decision.
+			for _, depth := range []prettycov.Depth{0, 1, 2, 3, prettycov.DepthAll} {
+				for _, bar := range []*float64{nil, at(100), at(90), at(50)} {
+					opts := missOpts(depth)
+					opts.HideCovered = bar
+					drawn, missed := fileRowsWithMisses(tree, files, opts), missedFiles(tree, opts)
+
+					// One way at every depth: a file row the report draws over unrun statements
+					// must be somewhere in the list, or the report points at work the list denies.
+					for _, f := range drawn {
+						assert.Contains(t, missed, f, "depth=%v bar=%v", depth, bar)
+					}
+
+					// Both ways once nothing is cut. Past a cut the two are allowed to differ: a
+					// file takes no level, so it is visited where it is not drawn, and -misses
+					// answers for the package the reader can see rather than for the rows.
+					if depth == prettycov.DepthAll {
+						assert.Equal(t, drawn, missed, "bar=%v", bar)
+					}
+				}
+			}
+		})
+	}
+}
+
+// fileRowsWithMisses names every row the report draws that stands for a file with unrun statements
+// in it. Read off the rendered rows rather than the tree, so it is the report being compared and
+// not the data both printers happen to share.
+func fileRowsWithMisses(tree *prettycov.PathTree, files []prettycov.FileCoverage, opts prettycov.Options) []string {
+	unrun := map[string]bool{}
+
+	for _, f := range files {
+		if f.Coverage.Uncovered > 0 {
+			unrun[path.Clean(f.File)] = true
+		}
+	}
+
+	rows := rowInfos(prettycov.Rows(tree, opts))
+
+	named := make([]string, 0, len(rows))
+
+	for _, r := range rows {
+		if unrun[r.path] {
+			named = append(named, r.path)
+		}
+	}
+
+	slices.Sort(named)
+
+	return named
+}
+
+// missedFiles names the distinct files the misses point into. Misses already orders them by file,
+// so Compact is enough to drop the repeats a file with several regions leaves.
+func missedFiles(tree *prettycov.PathTree, opts prettycov.Options) []string {
+	named := missPaths(prettycov.Misses(tree, opts))
+
+	return slices.Compact(named)
+}
+
+// withUnrunBlocks gives a fixture built by hand the blocks a parsed profile carries, so a file with
+// unrun statements has a position for a miss to name. Left alone when there are blocks already,
+// which is every profile read off disk.
+func withUnrunBlocks(files []prettycov.FileCoverage) []prettycov.FileCoverage {
+	out := slices.Clone(files)
+
+	for i, f := range out {
+		if len(f.Blocks) == 0 {
+			if f.Coverage.Covered > 0 {
+				f.Blocks = append(f.Blocks, covered(1, 1, 1, f.Coverage.Covered))
+			}
+
+			if f.Coverage.Uncovered > 0 {
+				f.Blocks = append(f.Blocks, uncovered(10, 1, 10, f.Coverage.Uncovered))
+			}
+		}
+
+		out[i] = f
+	}
+
+	return out
 }

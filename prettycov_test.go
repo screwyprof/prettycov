@@ -140,6 +140,49 @@ func TestCoverageStatsPercentage(t *testing.T) {
 	}
 }
 
+// AtLeast is the gate -fail-under and -hide-covered are graded by, and at 100 it is not the
+// comparison the ratio would make. Exported, so a caller can hand it any number the CLI's own
+// [0, 100] clamp would have refused.
+func TestCoverageStatsAtLeast(t *testing.T) {
+	t.Parallel()
+
+	// One statement short of complete, and large enough that the miss falls below the mantissa: the
+	// ratio is exactly 100.0 in float64, which is why the question at 100 is about the counts.
+	const huge = 1 << 56
+
+	tests := []struct {
+		name  string
+		stats prettycov.CoverageStats
+		pct   float64
+		want  bool
+	}{
+		{name: "above the bar", stats: prettycov.CoverageStats{Covered: 9, Uncovered: 1}, pct: 80, want: true},
+		{name: "exactly at it", stats: prettycov.CoverageStats{Covered: 8, Uncovered: 2}, pct: 80, want: true},
+		{name: "below it", stats: prettycov.CoverageStats{Covered: 7, Uncovered: 3}, pct: 80, want: false},
+		{name: "complete at 100", stats: prettycov.CoverageStats{Covered: 4}, pct: 100, want: true},
+		{
+			name:  "one short of complete, rounding to 100",
+			stats: prettycov.CoverageStats{Covered: huge - 1, Uncovered: 1},
+			pct:   100,
+			want:  false,
+		},
+		// Nothing to cover has no share to compare, so it is not at any bar — including 0, which
+		// would otherwise make every empty package pass every gate.
+		{name: "no statements", stats: prettycov.CoverageStats{}, pct: 0, want: false},
+		// And nothing reaches more than all of it. A caller passing a computed threshold, or one it
+		// meant as a fraction, gets a refusal rather than a gate that reads 100 as "at least 150".
+		{name: "past 100", stats: prettycov.CoverageStats{Covered: 10}, pct: 150, want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, tc.stats.AtLeast(tc.pct))
+		})
+	}
+}
+
 // Both sides move together, or a percentage ends up drawn from counts that were never summed the
 // same way.
 func TestCoverageStatsAdd(t *testing.T) {
@@ -225,6 +268,44 @@ func TestHasRootAllocatesNothing(t *testing.T) {
 	assert.Zero(t, testing.AllocsPerRun(100, func() {
 		_ = prettycov.HasRoot(files, "m")
 	}), "HasRoot allocates")
+}
+
+// A caller assembling its own FileCoverage can name one file twice, which ParseProfile cannot: it
+// keys profiles by filename and merges them first. Both the counts and the positions have to add up
+// rather than the second replacing the first, or a tree built by hand loses half a file.
+func TestProcessAddsUpAFileNamedTwice(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		{
+			File:     "m/a.go",
+			Coverage: prettycov.CoverageStats{Covered: 1, Uncovered: 1},
+			Blocks: []prettycov.Block{
+				{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 1}},
+				{Line: 9, Col: 2, EndLine: 10, Coverage: prettycov.CoverageStats{Uncovered: 1}},
+			},
+		},
+		{
+			File:     "m/a.go",
+			Coverage: prettycov.CoverageStats{Uncovered: 2},
+			Blocks: []prettycov.Block{
+				{Line: 40, Col: 2, EndLine: 41, Coverage: prettycov.CoverageStats{Uncovered: 2}},
+			},
+		},
+	})
+
+	node := tree.Get("m")
+	require.NotNil(t, node)
+	assert.Equal(t, prettycov.CoverageStats{Covered: 1, Uncovered: 3}, node.Files["a.go"].Coverage)
+
+	// And the second file's blocks are appended to the first's rather than replacing them, in the
+	// order they arrived. Asserted on the leaf, not through a report: this is what add does, and a
+	// report would only show it once merging and the depth had had their say.
+	assert.Equal(t, []prettycov.Block{
+		{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 1}},
+		{Line: 9, Col: 2, EndLine: 10, Coverage: prettycov.CoverageStats{Uncovered: 1}},
+		{Line: 40, Col: 2, EndLine: 41, Coverage: prettycov.CoverageStats{Uncovered: 2}},
+	}, node.Files["a.go"].Blocks)
 }
 
 func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
@@ -534,5 +615,15 @@ func file(name string, covered, uncovered int) prettycov.FileCoverage {
 	return prettycov.FileCoverage{
 		File:     name,
 		Coverage: prettycov.CoverageStats{Covered: covered, Uncovered: uncovered},
+	}
+}
+
+func BenchmarkProcess(b *testing.B) {
+	files := syntheticProfile(b)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = prettycov.Process(files)
 	}
 }

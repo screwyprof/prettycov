@@ -81,23 +81,49 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 		HideCovered: cfg.HideCovered,
 	}
 
-	// -hide-covered can take the whole report, when this depth draws nothing below the threshold.
-	// The exit code is unchanged and the report is correct, but a command that prints nothing reads
-	// as one that failed, so it says which flag emptied it.
+	// -misses replaces the report rather than decorating it, so this is a choice of printer and not
+	// a second path through the report. The positions are the drill-down and the tree is the
+	// summary: printing both would answer the question the default invocation already answered, and
+	// a tree row can be read as a location by whatever parses this, since a label may carry a colon.
 	//
-	// It does not say the profile holds nothing below the bar, which would often be false: -depth
-	// decides what is drawn as much as this does, so `-depth=0 -hide-covered=80` empties a report
-	// over a package at 0.00 that a deeper one would show.
-	//
-	// Naming the flag without checking it was given, and reading the threshold through the pointer,
-	// because nothing else can arrive here: the profile holds statements or refuseEmpty returned
-	// above, and a tree with statements has a top row that -depth always draws. Testing for the
-	// flag as well would be a guard no invocation can reach.
-	if prettycov.DisplayTree(stdout, tree, opts) == 0 {
-		_, _ = fmt.Fprintf(stderr, "-hide-covered=%v hid every row this depth draws\n", *cfg.HideCovered)
+	// Both printers have the same shape — (writer, tree, options) returning what they drew — so the
+	// call below does not know which one it is holding. What they return is each one's own unit,
+	// rows against statements, and the only thing they promise in common is that it is zero exactly
+	// when nothing was written.
+	draw := prettycov.DisplayTree
+	if cfg.Misses {
+		draw = prettycov.DisplayMisses
 	}
 
+	shown := draw(stdout, tree, opts)
+
+	// A command that prints nothing, or less than everything, reads as one that ran clean.
+	cfg.reportOutput(tree, shown, stderr)
+
 	return checkThreshold(cfg.FailUnder, tree, stderr)
+}
+
+// reportOutput says what the printer produced when that is not evident from the output itself. The
+// exit code is unchanged and the report is correct either way.
+//
+// Printing nothing is the shared case and stays printer-blind: both can be emptied, and by the same
+// filters. Being a fragment is not shared — a tree carries its subtree's count on every row, so the
+// rows it draws account for every statement at any depth, which is what makes a shallow one a
+// summary rather than a short list. So that is asked of the one printer it can happen to, and shown
+// is read as that printer's own unit rather than as a count the two have to agree on.
+//
+// Short is the quieter mistake of the two. `file:line:col` is the shape every linter and compiler
+// emits, and in all of them it is everything they found, so a list that stops early reads as a clean
+// bill: pipe eight of thirty-four into `vim -q -`, fix them, and the quickfix says there is nothing
+// left. On stderr, so the pipe carries only the list.
+func (c config) reportOutput(tree *prettycov.PathTree, shown int, stderr io.Writer) {
+	switch {
+	case shown == 0:
+		_, _ = fmt.Fprintln(stderr, c.whyNothingShown(tree))
+	case c.Misses && shown < tree.Coverage.Uncovered:
+		_, _ = fmt.Fprintf(stderr, "%s lists %d of %s\n",
+			c.outputFilters(), shown, plural(tree.Coverage.Uncovered, "uncovered statement"))
+	}
 }
 
 // reportRename reports whether -old named a package the profile does not hold — a typo, or a module
@@ -160,6 +186,54 @@ func refuseEmpty(cfg config, reason string, stderr io.Writer) int {
 	_, _ = fmt.Fprintln(stderr, reason)
 
 	return exitFailed
+}
+
+// whyNothingShown says why a printer came up empty.
+//
+// It asks nothing about which printer that was. One drawing rows and one printing positions would
+// need a message each, and a third would need a third — and every one of them would be a second
+// place holding an opinion about what the output filters do, which is the drift the single prepare
+// seam exists to prevent. The filters emptied it; naming them is the whole answer either way.
+//
+// Two causes, and they are opposite news. The tree's own count separates them, which is a number
+// already to hand rather than a second pass over the filtering: no uncovered statement anywhere is
+// an all-clear worth printing, and uncovered statements the filters leave out is the opposite.
+// Saying the first when the second happened is a false all-clear on a profile with work left in it —
+// `-misses -hide-covered=0` over a fully drawn tree reported completion on 34 statements, exit 0.
+//
+// It does not say what one level deeper would have shown, which nothing here knows. Re-deriving it
+// would put the filtering in a second place.
+func (c config) whyNothingShown(tree *prettycov.PathTree) string {
+	if tree.Coverage.Uncovered == 0 {
+		return "nothing left to cover"
+	}
+
+	// "left" rather than "remain", which would need a second spelling for the singular that plural
+	// already handles for the count itself.
+	return fmt.Sprintf("nothing to show at %s; %s left",
+		c.outputFilters(), plural(tree.Coverage.Uncovered, "uncovered statement"))
+}
+
+// outputFilters names the flags that shape the output, as typed — the one place a filter added
+// later has to be named, which is what keeps whyNothingShown out of the business of diagnosing
+// which one did it.
+//
+// -depth is always in play and always has a value, so it is always named. -hide-covered is named
+// when it was given, which is the only time it can have taken anything.
+//
+// -files is not one of these, not because it shapes nothing — it decides which rows exist, and
+// reaches -hide-covered's judgement through the same gate — but because it cannot be the one that
+// emptied the output. A list of positions is made of files whatever it says, and a tree keeps the
+// top row -depth always draws. -exclude is not either: it acts on the profile, and a report it
+// emptied is refused further up with a message of its own.
+func (c config) outputFilters() string {
+	filters := "-depth=" + c.Depth.String()
+
+	if c.HideCovered != nil {
+		filters += fmt.Sprintf(", -hide-covered=%v", *c.HideCovered)
+	}
+
+	return filters
 }
 
 // showTotal writes the total percentage and nothing else, for a caller reading it into a variable.
@@ -238,6 +312,11 @@ func plural(n int, thing string) string {
 
 // checkThreshold grades the total against want, which is nil when no gate was asked for.
 //
+// CoverageStats answers whether the total is at the bar, rather than this comparing the ratio
+// itself: at 100 the two differ. A profile one statement short of complete divides to exactly 100
+// in float64 once the counts are large enough, so comparing ratios passed -fail-under=100 for a
+// report that reads 99.99 — the gate and the figure beside it disagreeing about the same run.
+//
 // There is always a number by here: showReport refuses a profile with nothing to cover before
 // either caller reaches this, and says what emptied it, which this cannot.
 func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) int {
@@ -245,9 +324,9 @@ func checkThreshold(want *float64, tree *prettycov.PathTree, stderr io.Writer) i
 		return exitOK
 	}
 
-	pct, _ := tree.Coverage.Percentage()
+	if !tree.Coverage.AtLeast(*want) {
+		pct, _ := tree.Coverage.Percentage()
 
-	if pct.Float() < *want {
 		// Percentage renders the coverage figure, as it does everywhere else, so this message and
 		// the report cannot show different numbers for the same thing.
 		//

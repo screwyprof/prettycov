@@ -3,6 +3,8 @@ package prettycov_test
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -865,5 +867,99 @@ func TestDisplayTreeAlwaysDrawsARowWithoutHideCovered(t *testing.T) {
 					"depth %v", depth)
 			}
 		})
+	}
+}
+
+// Rows, Misses and Exclude all hand back nil when there is nothing, so a caller marshalling an
+// empty report gets null from every one of them rather than null from some and [] from others.
+// Worth pinning because it is invisible: every length check and every range reads the same either
+// way, and only encoding/json tells the two apart.
+func TestEmptyResultsAreNilNotEmptySlices(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		withBlocks("m/a.go", covered(1, 1, 2, 3)),
+	})
+
+	bar := 0.0
+	hidden := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar}
+
+	assert.Nil(t, prettycov.Rows(tree, hidden), "-hide-covered=0 took every row")
+	assert.Nil(t, prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
+		"nothing uncovered")
+
+	kept, excluded := prettycov.Exclude(nil, nil)
+	assert.Nil(t, kept)
+	assert.Nil(t, excluded)
+}
+
+// DisplayTree counts as it writes rather than taking the length of a slice it built, so the count
+// is no longer true by construction and has to be asserted. Nothing downstream notices a wrong one
+// until it is used to decide the report came up empty, which only a zero reaches — a mutation
+// turning the increment into a decrement survived the whole suite.
+//
+// Pinned against both the rows and the lines, because those are the two things it claims to be.
+func TestDisplayTreeReportsHowManyRowsItDrew(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/pkg/a.go", 1, 1),
+		file("m/pkg/b.go", 1, 1),
+		file("m/web/c.go", 1, 1),
+	})
+
+	for _, depth := range []prettycov.Depth{0, 1, 2, prettycov.DepthAll} {
+		opts := prettycov.Options{Depth: depth, Files: true}
+
+		var buf bytes.Buffer
+
+		drawn := prettycov.DisplayTree(&buf, tree, opts)
+
+		assert.Equal(t, len(prettycov.Rows(tree, opts)), drawn, "rows at -depth=%v", depth)
+		assert.Equal(t, strings.Count(buf.String(), "\n"), drawn, "lines at -depth=%v", depth)
+		assert.Positive(t, drawn, "the fixture draws something at every depth")
+	}
+}
+
+// benchDisplayTree is the shape the three DisplayTree benchmarks share: build the tree once, render
+// it many times, so what is measured is the printer and not Process.
+func benchDisplayTree(b *testing.B, opts prettycov.Options) {
+	b.Helper()
+
+	tree := prettycov.Process(syntheticProfile(b))
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		prettycov.DisplayTree(io.Discard, tree, opts)
+	}
+}
+
+// The default invocation: one level, no files. Cheap, and the one every run pays.
+func BenchmarkDisplayTreeDefault(b *testing.B) {
+	benchDisplayTree(b, prettycov.Options{Depth: 1})
+}
+
+// The deepest the printer goes, which is where a row's cost is multiplied by every file.
+func BenchmarkDisplayTreeMaxFiles(b *testing.B) {
+	benchDisplayTree(b, prettycov.Options{Depth: prettycov.DepthAll, Files: true})
+}
+
+// -hide-covered adds the allCovered re-walk, which is O(n·depth) along the surviving path.
+func BenchmarkDisplayTreeHideCovered(b *testing.B) {
+	bar := 100.0
+
+	benchDisplayTree(b, prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar})
+}
+
+// Rows without the writer, so the traversal is measured rather than the formatting.
+func BenchmarkRows(b *testing.B) {
+	tree := prettycov.Process(syntheticProfile(b))
+	opts := prettycov.Options{Depth: prettycov.DepthAll, Files: true}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = prettycov.Rows(tree, opts)
 	}
 }

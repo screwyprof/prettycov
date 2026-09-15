@@ -33,6 +33,9 @@ Leave out what is finished, or anything already above a bar (the bar needs '='):
 	prettycov -hide-covered=90 -depth=max
 Print just the number, for a Makefile or a badge:
 	prettycov -total
+Print where the uncovered statements are, for an editor:
+	prettycov -misses -depth=max
+	prettycov -misses -depth=max | vim -q -
 `
 
 // printUsage writes the help text and the flag defaults.

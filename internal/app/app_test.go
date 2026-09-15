@@ -716,6 +716,22 @@ func TestRunDoesNotBlameFlagsForAnEmptyProfile(t *testing.T) {
 	}
 }
 
+// -total and -misses each say what the whole of stdout is, so one had to win silently: -total
+// returns before a printer is chosen, so this printed a percentage, dropped every position and said
+// nothing about it. Refused, as for any other argument mistake.
+func TestRunRefusesTotalAndMissesTogether(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-total", "-misses", "-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Empty(t, stdout.String(), "neither output, rather than the one that happened to win")
+	assert.Contains(t, stderr.String(), "-total and -misses each replace the whole report; pick one")
+}
+
 // -old and -new are one rename between them. Alone, either silently did nothing: `-new=.` looks
 // like it shortens every label, and an unset `-old=$(MODULE)` leaves the report full of paths its
 // author believed were gone.
@@ -1158,7 +1174,7 @@ func TestRunSaysWhenHideCoveredTookEveryRow(t *testing.T) {
 
 	assert.Equal(t, codeOK, code)
 	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "-hide-covered=80 hid every row this depth draws")
+	assert.Contains(t, stderr.String(), "nothing to show at -depth=0, -hide-covered=80")
 	assert.NotContains(t, stderr.String(), "nothing is below",
 		"the profile holds a package at 0.00; only this depth hides it")
 
@@ -1246,4 +1262,174 @@ func TestRunHideCoveredReadsZeroAsAPercentageNotAsOff(t *testing.T) {
 			assert.Equal(t, tc.wantOut, stdout.String())
 		})
 	}
+}
+
+// -misses replaces the report: positions on stdout, no tree, and the gate still reads the tree.
+func TestRunMisses(t *testing.T) {
+	t.Parallel()
+
+	// own.go belongs to m itself; deep/ is a level further down.
+	// deep/ holds two files, so it does not merge into one of them and its files sit a level below
+	// it — which is what lets the depth tell the two cases apart.
+	shaped := "mode: set\n" +
+		"m/own.go:5.2,6.3 1 0\n" +
+		"m/deep/a.go:9.2,10.3 1 0\n" +
+		"m/deep/a.go:11.2,12.3 1 0\n" +
+		"m/deep/b.go:3.2,4.3 1 1\n" +
+		"m/covered/c.go:3.2,4.3 1 1\n"
+
+	// covered/c.go and deep/b.go are in the profile and in none of these: a covered block is not a
+	// miss. The two blocks of deep/a.go abut, so they are one position carrying both statements.
+	//
+	// A file is an entry of the package holding it, so it sits a level below that package: own.go
+	// is a row at depth 1 and deep/a.go one at depth 2.
+	const (
+		whole = "m/deep/a.go:9:2: 2 uncovered\n" +
+			"m/own.go:5:2: 1 uncovered\n"
+		topOnly = "m/own.go:5:2: 1 uncovered\n"
+	)
+
+	tests := map[string]struct {
+		args     []string
+		want     string
+		wantNote string
+	}{
+		"the whole tree": {args: []string{"-depth", "max"}, want: whole},
+		// A list that stops early looks exactly like a short one, so the count is the only thing
+		// that tells them apart: two of the three statements are a level below what this draws.
+		"one level": {
+			args:     []string{"-depth", "1"},
+			want:     topOnly,
+			wantNote: "-depth=1 lists 1 of 3 uncovered statements\n",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run(append(tc.args, "-misses",
+				"-profile", writeProfile(t, shaped), "-color", "never"), stdout, stderr)
+
+			assert.Equal(t, codeOK, code)
+			assert.Equal(t, tc.want, stdout.String())
+			assert.Equal(t, tc.wantNote, stderr.String(), "a full list has nothing to say about itself")
+		})
+	}
+}
+
+// The gate reads the tree, not the rows, so -fail-under means the same beside the positions as it
+// does beside the table.
+func TestRunMissesStillGrades(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-misses", "-fail-under", "80", "-profile", writeProfile(t, profile), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeBelow, code)
+	assert.NotEmpty(t, stdout.String(), "the positions still go out")
+	assert.Contains(t, stderr.String(), "total coverage 60.00% is below 80.00%")
+}
+
+// A fully covered profile has no positions to print, which is news rather than a failure — an empty
+// stdout from a command that exits 0 reads as one that did not run.
+func TestRunMissesSaysWhenThereAreNone(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-misses",
+		"-profile",
+		writeProfile(t, "mode: set\nm/a.go:1.1,2.2 3 1\n"),
+		"-color",
+		"never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "nothing left to cover")
+}
+
+// An empty list has two causes and they are opposite news. Saying "nothing left to cover" when the
+// shaping flags took it all is a false all-clear on a profile with work left in it, and it exits 0.
+//
+// The count is the tree's own, which is why it is right whichever flag did it: -depth and
+// -hide-covered shape the report and never the measurement, so the total is what it always was.
+func TestRunNamesWhatEmptiedTheOutput(t *testing.T) {
+	t.Parallel()
+
+	// pkg holds two files, so nothing merges and both sit at level 2 — the default -depth=1 draws
+	// pkg itself and reaches neither of them. web holds one, which merges into a row of its own at
+	// level 1, and it is covered: without it the whole chain would collapse to a single file row at
+	// level 0 and the depth would reach it after all.
+	const twoDeep = "mode: set\n" +
+		"m/pkg/a.go:9.2,10.3 1 0\n" +
+		"m/pkg/b.go:40.2,41.3 1 0\n" +
+		"m/web/c.go:1.1,2.2 3 1\n"
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "no file sits at this depth",
+			args: []string{"-misses"},
+			want: "nothing to show at -depth=1; 2 uncovered statements left",
+		},
+		{
+			name: "the bar hides every file holding one",
+			// The threshold needs "=": -hide-covered takes an optional value, so a separate one is
+			// read as the profile path.
+			args: []string{"-misses", "-depth", "max", "-hide-covered=0"},
+			want: "nothing to show at -depth=max, -hide-covered=0; 2 uncovered statements left",
+		},
+		// The same sentence from the other printer, which is the point of it: the filters emptied
+		// the output, and naming them is the answer whichever one was holding the pen. A message per
+		// printer is a second place with an opinion about what those filters do.
+		{
+			name: "the bar hides every row of the tree",
+			args: []string{"-depth", "max", "-hide-covered=0"},
+			want: "nothing to show at -depth=max, -hide-covered=0; 2 uncovered statements left",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+			args := append([]string{writeProfile(t, twoDeep), "-color", "never"}, tc.args...)
+
+			code := app.Run(args, stdout, stderr)
+
+			assert.Equal(t, codeOK, code)
+			assert.Empty(t, stdout.String())
+			// The whole of stderr, which is what rules out the all-clear: any sentence claiming
+			// completion is a different string.
+			assert.Equal(t, tc.want+"\n", stderr.String())
+		})
+	}
+}
+
+// -exclude acts on the profile before the tree, so an excluded block is not a miss — which is what
+// makes the two compose: the positions this prints are the coordinates that flag takes.
+func TestRunMissesHonoursExclude(t *testing.T) {
+	t.Parallel()
+
+	shaped := "mode: set\nm/a.go:9.2,10.3 1 0\nm/b.go:40.2,41.3 1 0\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-misses", "-depth", "max", "-exclude", `a\.go:9`,
+		"-profile", writeProfile(t, shaped), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Equal(t, "m/b.go:40:2: 1 uncovered\n", stdout.String())
+	assert.Contains(t, stderr.String(), `-exclude "a\\.go:9" left out 1 statement in 1 block`)
 }

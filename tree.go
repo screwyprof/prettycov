@@ -2,6 +2,7 @@ package prettycov
 
 import (
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -15,6 +16,10 @@ import (
 // counted as a file, whether it could be folded away. Here it is simply two nodes.
 type PathTree struct {
 	Coverage CoverageStats
+	// Blocks is where a file's statements are, in the order the profile listed them, and is set on
+	// the nodes in Files and nowhere else — a directory holds no statements of its own. Optional in
+	// the same sense FileCoverage.Blocks is: a caller who built its own has none to give.
+	Blocks []Block
 	// Children is the directories below this one. Files is what the profile named here directly.
 	// A node in Files never has anything below it; a directory of the same name is in Children.
 	Children map[string]*PathTree
@@ -28,7 +33,7 @@ type PathTree struct {
 // Only the file carries the statements. Putting them on the directory as well — which is what
 // totalling per directory before building the tree amounts to — makes rollUp count every statement
 // twice, once on the directory and once beneath it.
-func (n *PathTree) add(file string, stats CoverageStats, nodes *arena) {
+func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *arena) {
 	// Split with path.Dir rather than by counting components, so a file with no directory at all
 	// still lands somewhere: path.Dir gives it ".", which is the row it renders as. Reading the
 	// directory off the second-to-last component instead left such a file hanging under the tree
@@ -50,6 +55,25 @@ func (n *PathTree) add(file string, stats CoverageStats, nodes *arena) {
 	// ParseProfile cannot deliver that — x/tools keys profiles by filename and merges their blocks
 	// — so this is for a caller handing Process a slice of its own.
 	leaf.Coverage.Add(stats)
+	// Kept because Misses reads positions the counts cannot say. Shared with the caller's slice
+	// rather than copied: the parser hands out one capped window per file, so appending to a leaf
+	// can never reach into the next file's blocks, and nothing here reorders or trims them — merge
+	// sorts a copy when it has to. Copying instead held a second image of every block in the
+	// profile alongside the first, 13MB of a 30,000-file one.
+	//
+	// The append is for the same file named twice, which ParseProfile cannot deliver but a caller
+	// assembling its own can; cap == len makes that one copy rather than write into the window.
+	if leaf.Blocks == nil {
+		leaf.Blocks = blocks
+
+		return
+	}
+
+	// Clipped first, so appending allocates rather than writing into whatever the caller's slice
+	// shares its array with. The parser's windows are already capped and this is a no-op for them;
+	// a caller slabbing its own blocks and naming one file twice would otherwise have the second
+	// add overwrite the blocks of the file after it.
+	leaf.Blocks = append(slices.Clip(leaf.Blocks), blocks...)
 }
 
 // child returns the node called name in the given map, creating both if this is the first time it
@@ -75,16 +99,18 @@ func (a *arena) child(nodes *map[string]*PathTree, name string) *PathTree {
 // Indexed rather than appended, so a full chunk can only be replaced and never grown. Growing is
 // not unsafe — the tree holds pointers into the old array, which stays alive and correct — it is
 // waste: append copies every node into the new array, nothing reads the copies, and the originals
-// keep the old array anyway. Measured at 36.9MB against 22.7MB on a 30,000-file profile.
+// keep the old array anyway. Measured at 36.9MB against 22.7MB on a 30,000-file profile, before
+// Blocks was added to the node.
 type arena struct {
 	chunk []PathTree
 	used  int
 }
 
-// chunkNodes is 16KB at PathTree's current size. That is also the floor: the first node allocates
-// a whole chunk, so a one-file profile pays 16KB where it used to pay one node. Measured across
-// 64..32768, time is flat for a large profile and bytes scale with the chunk for a small one, so
-// this trades a fixed 16KB against an allocation per node.
+// chunkNodes is 28KB at PathTree's current size, which Blocks took from 32 bytes to 56. That is
+// also the floor: the first node allocates a whole chunk, so a one-file profile pays the 28KB where
+// it used to pay one node. Measured across 64..32768, time is flat for a large profile and bytes
+// scale with the chunk for a small one, so this trades a fixed chunk against an allocation per
+// node.
 const chunkNodes = 512
 
 func (a *arena) next() *PathTree {
