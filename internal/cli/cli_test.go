@@ -282,7 +282,6 @@ func TestRunPrintsRequestedHelpOnStdout(t *testing.T) {
 		name string
 		args []string
 	}{
-		{name: "subcommand", args: []string{"help"}},
 		{name: "flag", args: []string{"--help"}},
 		{name: "shorthand", args: []string{"-h"}},
 	}
@@ -1748,13 +1747,34 @@ func TestRunRefusesABadPatternFromEveryCommand(t *testing.T) {
 	}
 }
 
-// `help nope` used to print the root's help as though nope were a command: kong's Trace always
-// returns a nil error and puts the failure in Context.Error.
-func TestRunHelpRefusesAnUnknownCommand(t *testing.T) {
+// A word that is not a command is refused by name, rather than answered with the root's help as
+// though it had been understood. `help` is one of those words: kong writes `<command> --help` in its
+// own footer, and a help command alongside it printed the same bytes under a second spelling.
+func TestRunRefusesAnUnknownCommand(t *testing.T) {
+	t.Parallel()
+
+	for _, arg := range []string{"nope", "help"} {
+		t.Run(arg, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+			assert.Equal(t, codeFailed, app.Run([]string{arg}, stdout, stderr))
+			assert.Empty(t, stdout.String())
+			assert.Contains(t, stderr.String(), arg)
+		})
+	}
+}
+
+// --help is the one spelling, and it reaches a command as well as the root. Byte-identical to what
+// `help report` printed before it was deleted, which is why the command was duplication.
+func TestRunPrintsACommandsHelpThroughTheFlag(t *testing.T) {
 	t.Parallel()
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
-	assert.Equal(t, codeFailed, app.Run([]string{"help", "nope"}, stdout, stderr))
-	assert.Contains(t, stderr.String(), "nope")
+	assert.Equal(t, codeOK, app.Run([]string{"report", "--help"}, stdout, stderr))
+	assert.Contains(t, stdout.String(), "Usage: prettycov report")
+	assert.Contains(t, stdout.String(), "--depth", "including the flags only report has")
+	assert.Empty(t, stderr.String())
 }

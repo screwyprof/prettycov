@@ -160,8 +160,6 @@ type CLI struct {
 	Misses       missesCmd  `cmd:"" help:"Print where the uncovered statements are, as file:line:col."`
 	Total        totalCmd   `cmd:"" help:"Print only the coverage percentage, for a Makefile or a badge."`
 	PrintVersion versionCmd `cmd:"" help:"Print the version and exit."                                    name:"version"`
-	// Kong has --help but no help command; cobra generates one.
-	Help helpCmd `cmd:"" help:"Print help for a command."`
 }
 
 //nolint:lll // a struct tag is one unit.
@@ -186,28 +184,6 @@ type totalCmd struct {
 }
 
 type versionCmd struct{}
-
-type helpCmd struct {
-	Command []string `arg:"" optional:"" help:"Command to print help for."`
-}
-
-// Run resolves the named command and prints its usage.
-//
-// Trace always returns a nil error — it puts the failure in Context.Error (kong context.go, the
-// last line of Trace). Reading the return instead meant `prettycov help nope` printed the root's
-// help as though nope were fine.
-func (c *helpCmd) Run(k *kong.Context) error {
-	ctx, _ := kong.Trace(k.Kong, c.Command)
-
-	//nolint:nilaway // Trace's last line is `return c, nil`: the context is never nil.
-	if ctx.Error != nil {
-		//nolint:wrapcheck // kong names the command it could not find.
-		return ctx.Error
-	}
-
-	//nolint:wrapcheck // kong writes the help itself.
-	return ctx.PrintUsage(false)
-}
 
 // Streams is where a handler writes, bound by the composition root so nothing reaches os.Stdout
 // directly.
