@@ -151,3 +151,25 @@ func TestRenameWantedReadsTheSource(t *testing.T) {
 	assert.False(t, prettycov.Rename{}.Wanted())
 	assert.False(t, prettycov.Rename{To: "x"}.Wanted())
 }
+
+// UnderRoot prefixes and nothing else, which is the whole of what it promises: it is asked only
+// after Get has missed, so a path that already works has nothing to suggest.
+func TestUnderRootPrefixesAPathTheRootWasCollapsedFrom(t *testing.T) {
+	t.Parallel()
+
+	profile := writeProfile(t, "mode: set\ngithub.com/x/y/pkg/logger/a.go:1.1,2.2 1 1\n")
+
+	got, err := prettycov.Measure(prettycov.Request{Profile: profile})
+	require.NoError(t, err)
+
+	full, ok := got.Tree.UnderRoot("pkg/logger")
+	require.True(t, ok)
+	assert.Equal(t, "github.com/x/y/pkg/logger", full)
+	assert.NotNil(t, got.Tree.Get(full), "and it only ever names a path the tree holds")
+
+	_, ok = got.Tree.UnderRoot("github.com/x/y/pkg/logger")
+	assert.False(t, ok, "a path that already works has nothing to suggest")
+
+	_, ok = got.Tree.UnderRoot("nowhere")
+	assert.False(t, ok)
+}

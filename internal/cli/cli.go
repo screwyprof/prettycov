@@ -190,9 +190,9 @@ func (c *missesCmd) render(cfg config, tree *prettycov.PathTree, s Streams) erro
 	switch {
 	case shown == 0:
 		sayNothingShown(cfg, tree, s)
-	case shown < tree.Coverage.Uncovered:
+	case shown < tree.Uncovered():
 		_, _ = fmt.Fprintf(s.Err, "%s lists %d of %s\n",
-			cfg.outputFilters(), shown, plural(tree.Coverage.Uncovered, "uncovered statement"))
+			cfg.outputFilters(), shown, plural(tree.Uncovered(), "uncovered statement"))
 	}
 
 	return checkThreshold(cfg.FailUnder, tree, s)

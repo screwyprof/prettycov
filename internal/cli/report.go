@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -68,31 +67,15 @@ func sayNothingShown(cfg config, tree *prettycov.PathTree, s Streams) {
 	_, _ = fmt.Fprintln(s.Err, cfg.whyNothingShown(tree))
 }
 
-// underRoot suggests the path with the module root in front of it, when that is what resolves.
-//
-// A row is drawn with its own segment, so reading `pkg - 96.41` off a report and asking for "pkg"
-// is the obvious next thing to type and the wrong one: the tree holds it under the whole module
-// path. Saying so costs a lookup that has already failed once, and only fires when it turns the
-// miss into a hit, so it can never send anyone somewhere that is not there.
-//
-// The root is a run of single-child directories rather than one node — a module path spends three
-// of them on github.com, the owner and the repository — so this descends that run the way collapse
-// does, which is exactly the run the report draws as its top row. It stops where the tree branches
-// or holds a file, because past there is a choice and there is no one prefix to suggest.
-func underRoot(tree *prettycov.PathTree, want string) string {
-	root := ""
-
-	for node := tree; len(node.Children) == 1 && len(node.Files) == 0; {
-		for name, child := range node.Children {
-			root, node = path.Join(root, name), child
-		}
-
-		if full := path.Join(root, want); tree.Get(full) != nil {
-			return fmt.Sprintf(", did you mean %q?", full)
-		}
+// suggest offers the path under the module root when what was typed is not there. The tree answers
+// whether such a path exists — see PathTree.UnderRoot — and this decides only the words.
+func suggest(tree *prettycov.PathTree, want string) string {
+	full, ok := tree.UnderRoot(want)
+	if !ok {
+		return ""
 	}
 
-	return ""
+	return fmt.Sprintf(", did you mean %q?", full)
 }
 
 // refuseEmpty says why there is nothing to report and grades the absence.
@@ -132,14 +115,14 @@ func refuseEmpty(cfg config, reason string, s Streams) error {
 // It does not say what one level deeper would have shown, which nothing here knows. Re-deriving it
 // would put the filtering in a second place.
 func (c config) whyNothingShown(tree *prettycov.PathTree) string {
-	if tree.Coverage.Uncovered == 0 {
+	if tree.Uncovered() == 0 {
 		return "nothing left to cover"
 	}
 
 	// "left" rather than "remain", which would need a second spelling for the singular that plural
 	// already handles for the count itself.
 	return fmt.Sprintf("nothing to show at %s; %s left",
-		c.outputFilters(), plural(tree.Coverage.Uncovered, "uncovered statement"))
+		c.outputFilters(), plural(tree.Uncovered(), "uncovered statement"))
 }
 
 // outputFilters names the flags that shape the output, as typed — the one place a filter added
@@ -183,7 +166,7 @@ func total(cfg config, tree *prettycov.PathTree, want string, s Streams) error {
 		// empty-looking or carry a control byte, and argv is where both arrive from.
 		if node = tree.Get(want); node == nil {
 			_, _ = fmt.Fprintf(s.Err, "total: no such package or file in the profile: %q%s\n",
-				want, underRoot(tree, want))
+				want, suggest(tree, want))
 
 			return exitError{code: ExitFailed}
 		}
@@ -193,7 +176,7 @@ func total(cfg config, tree *prettycov.PathTree, want string, s Streams) error {
 	// profile is refused above — but one node can: a directory whose files declare none. Through
 	// refuseEmpty rather than here, so a gate reads the same for a node as for the tree: exit 1 and
 	// the shortfall, not exit 2 as though prettycov could not run.
-	pct, ok := node.Coverage.Percentage()
+	pct, ok := node.Percentage()
 	if !ok {
 		return refuseEmpty(cfg, fmt.Sprintf("total names nothing with statements to cover: %q", want), s)
 	}
@@ -282,8 +265,8 @@ func checkThreshold(want *float64, node *prettycov.PathTree, s Streams) error {
 		return nil
 	}
 
-	if !node.Coverage.AtLeast(*want) {
-		pct, _ := node.Coverage.Percentage()
+	if !node.AtLeast(*want) {
+		pct, _ := node.Percentage()
 
 		// Percentage renders the coverage figure, as it does everywhere else, so this message and
 		// the report cannot show different numbers for the same thing.

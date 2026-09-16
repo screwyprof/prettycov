@@ -202,3 +202,59 @@ func (n *PathTree) walk(key string) *PathTree {
 		key = rest
 	}
 }
+
+// UnderRoot reports want with the module root in front of it, when that spelling is a path the tree
+// holds.
+//
+// A row carries its own segment, so "pkg/logger" read off a report is the obvious thing to type and
+// the wrong one: the tree holds it under the root the report collapsed away. This returns the
+// spelling that is there — "github.com/x/y/pkg/logger" — so a caller can offer it rather than only
+// refusing.
+//
+// It prefixes and nothing else. want is never returned unchanged, so a path the tree already holds
+// reports false: there is nothing to suggest about a path that works. Callers reach this after Get
+// has missed, which is the only time the question means anything.
+//
+// The root is a run of single-child directories rather than one node, so this descends the run the
+// way collapse does, and joins the way the renderer joins — an empty first name is the filesystem
+// root, where the separator is the whole name, which is why the first segment is taken as it is and
+// the rest are joined.
+//
+// Only ever names a path the tree holds: every candidate is checked with Get, so a caller can print
+// what this returns without checking again.
+func (n *PathTree) UnderRoot(want string) (string, bool) {
+	root := ""
+
+	for node := n; node != nil && len(node.Children) == 1 && len(node.Files) == 0; {
+		for name, child := range node.Children {
+			if root == "" {
+				root, node = name, child
+
+				continue
+			}
+
+			root, node = join(root, name), child
+		}
+
+		if full := join(root, want); n.Get(full) != nil {
+			return full, true
+		}
+	}
+
+	return "", false
+}
+
+// Uncovered is how many statements this node and everything beneath it leave uncovered.
+//
+// A method rather than a caller reading Coverage.Uncovered: a node knows its own counts, and every
+// reader that reached through the field had to know that a node keeps CoverageStats and what is in
+// them. Coverage stays exported for a caller assembling a tree of its own.
+func (n *PathTree) Uncovered() int { return n.Coverage.Uncovered }
+
+// Percentage is the share of this node's statements that are covered, and whether there were any to
+// cover. False is not 0% — there is nothing to report.
+func (n *PathTree) Percentage() (Percentage, bool) { return n.Coverage.Percentage() }
+
+// AtLeast reports whether this node is covered to pct, which is not always what comparing the ratio
+// would say — see CoverageStats.AtLeast for why 100 is asked of the counts.
+func (n *PathTree) AtLeast(pct float64) bool { return n.Coverage.AtLeast(pct) }
