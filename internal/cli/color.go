@@ -28,8 +28,8 @@ const (
 	colorAlways
 )
 
-// Reflection again, and nothing calls this by name: without the assertion a rename compiles and
-// --color=never silently stops being a spelling kong knows.
+// See prettycov.Depth's assertion for why: nothing calls this by name, so without it a rename
+// compiles and --color=never stops being a spelling kong knows.
 var _ encoding.TextUnmarshaler = (*colorMode)(nil)
 
 // UnmarshalText parses a mode, so a colorMode exists only because one of the three spellings was

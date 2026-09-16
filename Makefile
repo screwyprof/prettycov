@@ -34,6 +34,7 @@ COVERDATA := .covdata
 GO_TAGS := integration
 GOVULNCHECK_VERSION := v1.8.0
 GOBCO_VERSION := v1.3.4
+GOLANGCI_VERSION := v2.13.1
 VALE_VERSION := v3.14.2
 REVIEWDOG_VERSION := v0.21.1
 GREMLINS_VERSION := v0.6.0
@@ -87,11 +88,10 @@ build: ## build application
 	@echo -e "$(OK_COLOR)==> Building application$(NO_COLOR)"
 	go build -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
 
-# From PATH when there is one, `go run` otherwise, as with vale: golangci-lint is a Go program, so
-# needing it does not mean needing nix. The fallback compiles it once, which is slow and then
-# cached — the devShell is the fast path rather than the only one.
-GOLANGCI_VERSION := v2.13.1
-GOLANGCI := $(shell command -v golangci-lint 2>/dev/null || echo "go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)")
+# `go run pkg@version`, as govulncheck, gobco, gremlins and reviewdog are: one convention, and the
+# pinned version is what runs. Probing PATH first was faster in the devShell and quietly ran
+# whatever version was installed there instead, which is a pin that lies.
+GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
 # nilaway is a module plugin, so it has to be compiled into a golangci-lint of our own — see
 # .custom-gcl.yml. A real file rule, so the two-minute build happens when that file changes and
@@ -184,10 +184,8 @@ vulns: ## report known vulnerabilities reachable from this module
 	@echo -e "$(OK_COLOR)==> Vulnerabilities$(NO_COLOR)"
 	@go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
-# Vale from PATH when the devshell provides one, and `go run` otherwise: vale is a Go program, so
-# this Makefile needs nothing but Go. That is the rule the other pinned tools already follow —
-# govulncheck, gobco, gremlins — and nix is then a fast prebuilt path rather than a requirement.
-VALE := $(shell command -v vale 2>/dev/null || echo "go run github.com/errata-ai/vale/v3/cmd/vale@$(VALE_VERSION)")
+# See GOLANGCI above: same convention, same reason.
+VALE := go run github.com/errata-ai/vale/v3/cmd/vale@$(VALE_VERSION)
 
 # `-diff` rather than tidy-then-`git diff`: it reports what would change without writing, so the
 # gate cannot leave a dirty tree behind when it fails. Both files are checked in, so a stale one is

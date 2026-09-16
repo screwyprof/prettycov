@@ -33,9 +33,11 @@
 //
 // # Reading the answer
 //
-// [PathTree.Get] resolves a path as the report draws it, including under the module root the
-// report collapsed away, so "pkg/logger" works as well as the profile's own spelling. A miss is
-// nil and every method answers for nil, so a lookup can be chained without a check between.
+// [PathTree.Get] resolves a path as the report draws it, and also accepts one relative to the
+// module root the report collapsed away, so "pkg/logger" works as well as the profile's own
+// spelling. A miss is nil, and every method answers for a nil node, so lookups chain without a
+// check between them. The exported fields do not: reaching into [PathTree.Coverage] or
+// [PathTree.Children] after a miss panics, as reaching into any nil pointer does.
 //
 // [DisplayTree] draws the rows, [DisplayMisses] prints where the uncovered statements are as
 // file:line:col, and [Rows] and [Misses] hand back the same decisions as data for a caller writing

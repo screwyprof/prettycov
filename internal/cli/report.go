@@ -57,13 +57,13 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 	return nil, exitError{code: ExitFailed}
 }
 
-// wroteNothing reports a destination that would not take the report. Exit 2, never the gate's 1:
+// cannotWrite reports a destination that would not take the report. Exit 2, never the gate's 1:
 // the coverage is whatever it is, and what failed is writing it down — grading a report nobody
 // received would answer a question that was not asked.
 //
 // A closed pipe does not reach here. Go raises SIGPIPE for stdout and stderr, so `prettycov report
 // | head` dies before the write returns, which is what every other command-line tool does.
-func wroteNothing(err error, s Streams) error {
+func cannotWrite(err error, s Streams) error {
 	_, _ = fmt.Fprintf(s.Err, "cannot write the report: %v\n", err)
 
 	return exitError{code: ExitFailed}

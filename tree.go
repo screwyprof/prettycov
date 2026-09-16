@@ -152,7 +152,9 @@ func (n *PathTree) Get(key string) *PathTree {
 	}
 
 	// A key read off a row may be spelled as the report draws it rather than as the tree holds it.
-	// The renderer makes exactly two substitutions, and these undo them.
+	// The two below undo a renderer substitution each; underRoot, last, is not one of those — it
+	// accepts a path relative to the collapsed root, which is a convenience for the one prefix
+	// nobody wants to retype rather than the inverse of anything.
 	//
 	// The filesystem root has no name of its own — an absolute path splits to a leading empty
 	// component — and draws as "/".
@@ -169,7 +171,26 @@ func (n *PathTree) Get(key string) *PathTree {
 		}
 	}
 
-	return n.underRoot(key)
+	return n.underRoot(key, maxRootDepth)
+}
+
+// onlyChild is the one directory below this node when that is all there is: no files of its own,
+// and exactly one child. It is the step a run of pass-through directories is made of.
+//
+// One definition because two callers must agree on it. collapse folds such a run into a single row,
+// and Get puts that run back in front of a path read off the row — so a second copy of this
+// predicate would let `total <label>` grade a node the report never drew, which is the class of bug
+// the renderers already share prepare to avoid.
+func (n *PathTree) onlyChild() (string, *PathTree, bool) {
+	if len(n.Files) != 0 || len(n.Children) != 1 {
+		return "", nil, false
+	}
+
+	for name, child := range n.Children {
+		return name, child, true
+	}
+
+	return "", nil, false
 }
 
 // maxRootDepth bounds how far the collapsed root is followed. A module path is three or four
@@ -195,41 +216,29 @@ const maxRootDepth = 64
 // walk rather than Get, which is what calls this: probing through Get would recurse without bound.
 // The descent is bounded for the same reason — Children is exported, so a caller assembling a tree
 // by hand can make a cycle, and Get has to answer rather than hang.
-func (n *PathTree) underRoot(key string) *PathTree {
-	// An empty key names no path. Without this it joins to the root itself and Get("") hands back
-	// the top node, where every other spelling of "nothing" is nil.
-	if key == "" {
+func (n *PathTree) underRoot(key string, depth int) *PathTree {
+	// An empty key names no path. Without this it resolves to the run's own node and Get("") hands
+	// back the top one, where every other spelling of "nothing" is nil.
+	if key == "" || depth == 0 {
 		return nil
 	}
 
-	// A module path spends three or four segments on the root; the deepest run measured across the
-	// reference checkouts is seven.
-	run := make([]*PathTree, 0, 8)
-	node := n
-
-	for range maxRootDepth {
-		if len(node.Children) != 1 || len(node.Files) != 0 {
-			break
-		}
-
-		for _, child := range node.Children {
-			node = child
-		}
-
-		run = append(run, node)
+	_, child, ok := n.onlyChild()
+	if !ok {
+		return nil
 	}
 
-	// Walked from the node itself, never from a path rebuilt to reach it. Assembling one meant
-	// path.Join, which drops the empty component an absolute path begins with — so "/abs/x/p"
-	// was probed as "abs/x/p" and no absolute tree ever resolved — and path.Clean, which folds
-	// "..", so `total ..` climbed out of the run and graded an ancestor with exit 0.
-	for _, node := range slices.Backward(run) {
-		if found := node.walk(key); found != nil {
-			return found
-		}
+	// Deepest first: the whole collapsed run is what the report drew as its top row, so a shorter
+	// prefix of it must not answer instead. Recursing gives that order, and the descent path, for
+	// free — collecting the run into a slice to walk it backwards said the same thing with a slice.
+	if found := child.underRoot(key, depth-1); found != nil {
+		return found
 	}
 
-	return nil
+	// walk rather than Get, which is what calls this: probing through Get would recurse without
+	// bound. depth is bounded for the same reason — Children is exported, so a caller assembling a
+	// tree by hand can make a cycle, and Get has to answer rather than hang.
+	return child.walk(key)
 }
 
 // walk resolves key against this node, directories all the way but for the last segment, where a
@@ -263,40 +272,33 @@ func (n *PathTree) walk(key string) *PathTree {
 	}
 }
 
-// The three below answer for a nil node, because Get promises a miss can be chained and these are
-// what a caller reaches for next: tree.Get("pkg").Uncovered() is the obvious line to write, and it
-// panicked. A nil node answers as a node holding nothing does — no statements, so no percentage,
-// and not at any bar.
+// stats is this node's rolled-up counts, and the whole of what the three accessors below read.
+//
+// Answers for a nil node, because Get promises a miss can be chained and these are what a caller
+// reaches for next: tree.Get("pkg").Uncovered() is the obvious line to write, and it panicked. A
+// nil node answers as a node holding nothing does — no statements, so no percentage, and not at
+// any bar, which is the safe direction: a mistyped path fails a gate rather than passing it.
+//
+// One guard rather than one per accessor, so a fourth cannot be added without it.
+func (n *PathTree) stats() CoverageStats {
+	if n == nil {
+		return CoverageStats{}
+	}
+
+	return n.Coverage
+}
 
 // Uncovered is how many statements this node and everything beneath it leave uncovered.
 //
 // A method rather than a caller reading Coverage.Uncovered: a node knows its own counts. Coverage
 // stays exported for a caller assembling a tree of its own, but nothing in this module reaches
 // through it — there is one way to ask.
-func (n *PathTree) Uncovered() int {
-	if n == nil {
-		return 0
-	}
-
-	return n.Coverage.Uncovered
-}
+func (n *PathTree) Uncovered() int { return n.stats().Uncovered }
 
 // Percentage is the share of this node's statements that are covered, and whether there were any to
 // cover. False is not 0% — there is nothing to report.
-func (n *PathTree) Percentage() (Percentage, bool) {
-	if n == nil {
-		return Percentage{}, false
-	}
-
-	return n.Coverage.Percentage()
-}
+func (n *PathTree) Percentage() (Percentage, bool) { return n.stats().Percentage() }
 
 // AtLeast reports whether this node is covered to the bar, which is not always what comparing the
 // ratio would say — see CoverageStats.AtLeast for why 100 is asked of the counts.
-func (n *PathTree) AtLeast(bar Threshold) bool {
-	if n == nil {
-		return false
-	}
-
-	return n.Coverage.AtLeast(bar)
-}
+func (n *PathTree) AtLeast(bar Threshold) bool { return n.stats().AtLeast(bar) }

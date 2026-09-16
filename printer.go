@@ -421,10 +421,15 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 // the first does not: "tzkt/client.go" names the directory and the file in the row the directory
 // had anyway. Two files, or a file beside a subdirectory, and it is left alone.
 func collapse(label string, node *PathTree, mergeFiles bool) (string, *PathTree) {
-	for len(node.Files) == 0 && len(node.Children) == 1 {
-		for name, child := range node.Children {
-			label, node = join(label, name), child
+	// Bounded like Get's descent, and for the same reason: Children is exported, so a hand-built
+	// tree can point at itself, and a renderer has to draw something rather than hang.
+	for range maxRootDepth {
+		name, child, ok := node.onlyChild()
+		if !ok {
+			break
 		}
+
+		label, node = join(label, name), child
 	}
 
 	// A file has nothing below it, so this is where the run ends either way.

@@ -130,11 +130,12 @@ const (
 		"\tgo test -covermode=atomic -coverprofile=coverage.out ./...\n\tprettycov report"
 )
 
-// options is how a row is drawn, for the two commands that draw one. The palette is resolved here
-// because where the output goes is a question argv is too early to ask.
-// Colour is left at the zero Palette, which is Plain. Only report draws anything a palette reaches,
-// so only report carries the flag and sets it.
-func (d drawn) options(_ io.Writer) prettycov.Options {
+// options is how a row is drawn, for the two commands that draw one.
+//
+// Colour is not among them. It is left at the zero Palette, which is Plain, because only report
+// draws anything a palette reaches — so report carries the flag and resolves it against the
+// destination itself, which is a question argv is too early to ask.
+func (d drawn) options() prettycov.Options {
 	return prettycov.Options{Depth: d.Depth, HideCovered: d.HideCovered}
 }
 
@@ -210,14 +211,14 @@ func (c *reportCmd) Run(s *Streams) error {
 		return err
 	}
 
-	opts := c.options(s.Out)
+	opts := c.options()
 	opts.Files, opts.Counts, opts.Color = c.Files, c.Counts, c.Color.palette(s.Out)
 
 	// S2: inlined, because render had one caller and its three-argument shape was the interface
 	// that used to need it.
 	shown, err := prettycov.DisplayTree(s.Out, tree, opts)
 	if err != nil {
-		return wroteNothing(err, *s)
+		return cannotWrite(err, *s)
 	}
 
 	if shown == 0 {
@@ -233,9 +234,9 @@ func (c *missesCmd) Run(s *Streams) error {
 		return err
 	}
 
-	shown, err := prettycov.DisplayMisses(s.Out, tree, c.options(s.Out))
+	shown, err := prettycov.DisplayMisses(s.Out, tree, c.options())
 	if err != nil {
-		return wroteNothing(err, *s)
+		return cannotWrite(err, *s)
 	}
 
 	// Two messages where the tree has one: only a list can stop short of what is behind it. A tree

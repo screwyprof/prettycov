@@ -160,31 +160,6 @@ func TestRenameWantedReadsTheSource(t *testing.T) {
 	assert.False(t, prettycov.Rename{To: "x"}.Wanted())
 }
 
-// Get resolves a path under the root the report collapsed away, which is the third substitution the
-// renderer makes and the last one Get undoes. A row carries its own segment, so "pkg/logger" is what
-// a reader copies off a report and the tree holds it under "github.com/x/y".
-func TestGetResolvesAPathTheRootWasCollapsedFrom(t *testing.T) {
-	t.Parallel()
-
-	profile := writeProfile(t, "mode: set\ngithub.com/x/y/pkg/logger/a.go:1.1,2.2 1 1\n")
-
-	got, err := prettycov.Measure(prettycov.Request{Profile: profile})
-	require.NoError(t, err)
-
-	tree, ok := got.Tree()
-	require.True(t, ok)
-
-	full := tree.Get("github.com/x/y/pkg/logger")
-	require.NotNil(t, full, "the spelling the profile holds")
-
-	// The same node, not merely a node: the literal spelling is tried first, so prefixing can only
-	// add answers and never change one.
-	assert.Same(t, full, tree.Get("pkg/logger"))
-	assert.Same(t, full.Files["a.go"], tree.Get("pkg/logger/a.go"))
-
-	assert.Nil(t, tree.Get("nowhere"))
-}
-
 // Measured is derived from the tree rather than stored beside it, so the two cannot disagree. The
 // zero Measurement is the case that proves it matters: it is what Measure returns with an error, and
 // while Measured was a stored field at zero it answered Tree with (nil, true) — a library caller
@@ -240,26 +215,6 @@ func TestRenameHalfReadsBothValues(t *testing.T) {
 	assert.False(t, prettycov.Rename{}.Half(), "neither is no rename, not half of one")
 	assert.False(t, prettycov.Rename{From: "m", To: "x"}.Half())
 	assert.False(t, prettycov.Rename{From: "m", To: "/"}.Half(), "the filesystem root is a target")
-}
-
-// The prefixing stops where the run does. A directory holding a file as well as a single
-// subdirectory ends it, because past there the path is a choice rather than the root.
-func TestGetStopsPrefixingWhereTheRunBranches(t *testing.T) {
-	t.Parallel()
-
-	// m holds one subdirectory and a file of its own, so the run ends at m.
-	profile := writeProfile(t, "mode: set\nm/own.go:1.1,2.2 1 1\nm/deep/a.go:1.1,2.2 1 1\n")
-
-	got, err := prettycov.Measure(prettycov.Request{Profile: profile})
-	require.NoError(t, err)
-
-	tree, ok := got.Tree()
-	require.True(t, ok)
-
-	assert.Same(t, tree.Get("m/deep"), tree.Get("deep"), "m is the root the report collapsed away")
-
-	assert.Nil(t, tree.Get("deep/a.go/nope"),
-		"and the run does not continue past a directory holding files")
 }
 
 // Depth and Threshold read themselves, which is what lets a flag hold the parsed value.

@@ -17,9 +17,10 @@ example.com/m/web/handler.go:20.2,24.3 8 1
 example.com/m/web/mock_test_helper.go:30.2,31.3 4 0
 `
 
-// writeExampleProfile puts the constant somewhere ParseProfile can open it. Examples run as tests,
-// so os.CreateTemp is available and the cleanup is the example's own.
-func writeExampleProfile() (path string, cleanup func()) {
+// writeExampleProfile puts the constant somewhere ParseProfile can open it, and leaves it there:
+// an example has no testing.TB to hang a cleanup on, and the OS reaps its own temp directory. One
+// shape rather than two, since a caller that must remember to defer is a caller that can forget.
+func writeExampleProfile() string {
 	f, err := os.CreateTemp("", "prettycov-example-*.out")
 	if err != nil {
 		panic(err)
@@ -33,14 +34,13 @@ func writeExampleProfile() (path string, cleanup func()) {
 		panic(err)
 	}
 
-	return f.Name(), func() { _ = os.Remove(f.Name()) }
+	return f.Name()
 }
 
 // Measure is the whole of reading a profile: it parses, applies the rename and the exclusions in
 // the one order that is correct, and reports how the run turned out.
 func ExampleMeasure() {
-	path, cleanup := writeExampleProfile()
-	defer cleanup()
+	path := writeExampleProfile()
 
 	got, err := prettycov.Measure(prettycov.Request{Profile: path})
 	if err != nil {
@@ -62,8 +62,7 @@ func ExampleMeasure() {
 // DisplayTree draws the packages and what they cover. The error is the destination's: a report
 // written to a full disk is not a report that was printed.
 func ExampleDisplayTree() {
-	path, cleanup := writeExampleProfile()
-	defer cleanup()
+	path := writeExampleProfile()
 
 	got, err := prettycov.Measure(prettycov.Request{Profile: path})
 	if err != nil {
@@ -85,7 +84,7 @@ func ExampleDisplayTree() {
 // A rename shortens the root in every label, and the count says whether it matched anything — which
 // is the only way to tell "did not rename" from "was not asked to".
 func ExampleShorten() {
-	files, err := prettycov.ParseProfile(mustExampleProfile())
+	files, err := prettycov.ParseProfile(writeExampleProfile())
 	if err != nil {
 		panic(err)
 	}
@@ -103,7 +102,7 @@ func ExampleShorten() {
 // Exclude drops what was never meant to be counted, before anything is totalled, and reports what
 // each pattern took so a typo cannot pass for a clean run.
 func ExampleExclude() {
-	files, err := prettycov.ParseProfile(mustExampleProfile())
+	files, err := prettycov.ParseProfile(writeExampleProfile())
 	if err != nil {
 		panic(err)
 	}
@@ -124,8 +123,7 @@ func ExampleExclude() {
 // A path is spelled as the report draws it. Get resolves that spelling, including under the module
 // root the report collapsed away, so a path copied off a row works as well as the profile's own.
 func ExamplePathTree_Get() {
-	path, cleanup := writeExampleProfile()
-	defer cleanup()
+	path := writeExampleProfile()
 
 	got, err := prettycov.Measure(prettycov.Request{Profile: path})
 	if err != nil {
@@ -141,12 +139,4 @@ func ExamplePathTree_Get() {
 
 	// Output:
 	// 75.00 75.00
-}
-
-// mustExampleProfile writes the profile and leaks the file, which is what an example may do and a
-// test may not: the examples that need only a path run in milliseconds and the OS reaps /tmp.
-func mustExampleProfile() string {
-	path, _ := writeExampleProfile()
-
-	return path
 }

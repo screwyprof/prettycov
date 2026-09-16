@@ -1,4 +1,4 @@
-// Command prettycov draws a Go coverage profile as a tree, with a total on every row.
+// Prettycov draws a Go coverage profile as a tree, with a total on every row.
 //
 //	go test -covermode=atomic -coverprofile=coverage.out ./...
 //	prettycov report

@@ -306,3 +306,48 @@ func TestPathTreeSplitsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	assert.Equal(t, 7, m.Children["a.go"].Coverage.Total(), "the directory of the same name")
 	assert.Equal(t, 12, m.Coverage.Total(), "and m is exactly the two of them")
 }
+
+// Get resolves a path under the root the report collapsed away, which is the third substitution the
+// renderer makes and the last one Get undoes. A row carries its own segment, so "pkg/logger" is what
+// a reader copies off a report and the tree holds it under "github.com/x/y".
+func TestGetResolvesAPathTheRootWasCollapsedFrom(t *testing.T) {
+	t.Parallel()
+
+	profile := writeProfile(t, "mode: set\ngithub.com/x/y/pkg/logger/a.go:1.1,2.2 1 1\n")
+
+	got, err := prettycov.Measure(prettycov.Request{Profile: profile})
+	require.NoError(t, err)
+
+	tree, ok := got.Tree()
+	require.True(t, ok)
+
+	full := tree.Get("github.com/x/y/pkg/logger")
+	require.NotNil(t, full, "the spelling the profile holds")
+
+	// The same node, not merely a node: the literal spelling is tried first, so prefixing can only
+	// add answers and never change one.
+	assert.Same(t, full, tree.Get("pkg/logger"))
+	assert.Same(t, full.Files["a.go"], tree.Get("pkg/logger/a.go"))
+
+	assert.Nil(t, tree.Get("nowhere"))
+}
+
+// The prefixing stops where the run does. A directory holding a file as well as a single
+// subdirectory ends it, because past there the path is a choice rather than the root.
+func TestGetStopsPrefixingWhereTheRunBranches(t *testing.T) {
+	t.Parallel()
+
+	// m holds one subdirectory and a file of its own, so the run ends at m.
+	profile := writeProfile(t, "mode: set\nm/own.go:1.1,2.2 1 1\nm/deep/a.go:1.1,2.2 1 1\n")
+
+	got, err := prettycov.Measure(prettycov.Request{Profile: profile})
+	require.NoError(t, err)
+
+	tree, ok := got.Tree()
+	require.True(t, ok)
+
+	assert.Same(t, tree.Get("m/deep"), tree.Get("deep"), "m is the root the report collapsed away")
+
+	assert.Nil(t, tree.Get("deep/a.go/nope"),
+		"and the run does not continue past a directory holding files")
+}
