@@ -1309,7 +1309,11 @@ func TestRunAutoColorAgainstRealFiles(t *testing.T) {
 	//
 	// Exit 2 rather than the gate's 1: the coverage is whatever it is, and what failed is writing
 	// it down.
-	for _, command := range []string{"report", "misses"} {
+	// total is in the list because it was not: it printed the number, discarded the write error
+	// and exited 0, so `COVERAGE := $(shell prettycov total)` on a full disk assigned an empty
+	// string to a green build. It is the one command written to be read by a script, which makes
+	// a silent failure worth more here than in the two that print for a person.
+	for _, command := range []string{"report", "misses", "total"} {
 		t.Run(command+" says when the destination will not take it", func(t *testing.T) {
 			closed, err := os.CreateTemp(t.TempDir(), "closed")
 			require.NoError(t, err)

@@ -114,7 +114,15 @@ func total(g gate, tree *prettycov.PathTree, want string, s Streams) error {
 		return g.refuse(fmt.Sprintf("total names nothing with statements to cover: %q", want), s)
 	}
 
-	_, _ = fmt.Fprintln(s.Out, pct)
+	// Checked, where the two messages above are not: those go to stderr, which is the stream that
+	// reports a failure and cannot report its own. This is the answer, and a caller reads it —
+	// `COVERAGE := $(shell prettycov total)` on a full disk took an empty string and carried on.
+	//
+	// Before grade, so a write failure is exit 2 whether or not a bar was given. With the gate first
+	// a full disk read as exit 1, "coverage is below the bar", for a number nobody received.
+	if _, err := fmt.Fprintln(s.Out, pct); err != nil {
+		return cannotWrite(err, s)
+	}
 
 	return g.grade(node, s)
 }
