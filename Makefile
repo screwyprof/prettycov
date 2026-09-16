@@ -316,6 +316,7 @@ clean: ## cleans-up artifacts
 	@rm -rf ./coverage.*
 	@rm -rf ./$(COVERDATA)
 	@rm -rf ./prettycov
+	@rm -rf ./bin
 
 help: ## show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(MAKE_COLOR) %s\n", $$1, $$2}'
@@ -325,4 +326,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-all check install hooks nix-hash release publish clean help
+.PHONY: lint lint-all vulns check install hooks nix-hash release publish clean help

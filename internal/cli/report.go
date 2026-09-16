@@ -32,31 +32,27 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 	// and this accounting is what shows it.
 	reportExclusions(res.Exclusions, s)
 
+	// The bool, not the Outcome: Tree hands it back so a caller cannot read a nil tree without being
+	// told. Asked before the switch, which is then only the ways a run comes back empty.
+	if tree, ok := res.Tree(); ok {
+		return tree, nil
+	}
+
 	// One switch over every outcome, so exhaustive asks when a fifth is added. The if this replaced
 	// handed anything it did not recognise whichever sentence happened to be last.
 	switch res.Outcome() {
-	case prettycov.Measured:
-		// The bool, not just the case: Tree hands it back so a caller cannot read a nil tree
-		// without being told, and discarding it here defeated the point of returning it.
-		if tree, ok := res.Tree(); ok {
-			return tree, nil
-		}
-
 	// Refused, not merely said: a rename transforms the output, so one that did not happen leaves a
 	// report nobody asked for. --exclude is not held to this — a pattern is a filter, and "drop this
 	// if it is here" is a reasonable thing to write.
 	case prettycov.RootMissed:
 		_, _ = fmt.Fprintf(s.Err, "--old %q matched nothing, so no label was shortened\n", req.Rename.From)
-
-		return nil, exitError{code: ExitFailed}
 	case prettycov.NoStatements:
 		return nil, g.refuse("no statements to cover", s)
 	case prettycov.ExcludedAway:
 		return nil, g.refuse("--exclude left nothing to report", s)
+	case prettycov.Measured: // returned above, where the tree is
 	}
 
-	// Measured without a tree cannot happen — Measure sets the two together — and neither can a
-	// fifth Outcome, which exhaustive refuses. This is what Go needs said anyway.
 	return nil, exitError{code: ExitFailed}
 }
 
@@ -90,8 +86,15 @@ func total(g gate, tree *prettycov.PathTree, want string, s Streams) error {
 		// Quoted, as every message quoting something the reader typed is: a path can be
 		// empty-looking or carry a control byte, and argv is where both arrive from.
 		if node = tree.Get(want); node == nil {
-			_, _ = fmt.Fprintf(s.Err, "total: no such package or file in the profile: %q%s\n",
-				want, suggest(tree, want))
+			// A row carries its own segment, so "pkg/logger" read off a report is the obvious thing
+			// to type and the wrong one. UnderRoot answers whether the tree holds it under the root
+			// the report collapsed away.
+			hint := ""
+			if full, ok := tree.UnderRoot(want); ok {
+				hint = fmt.Sprintf(", did you mean %q?", full)
+			}
+
+			_, _ = fmt.Fprintf(s.Err, "total: no such package or file in the profile: %q%s\n", want, hint)
 
 			return exitError{code: ExitFailed}
 		}

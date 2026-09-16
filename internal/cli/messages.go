@@ -22,17 +22,6 @@ func sayNothingShown(d drawn, tree *prettycov.PathTree, s Streams) {
 	_, _ = fmt.Fprintln(s.Err, d.whyNothingShown(tree))
 }
 
-// suggest offers the path under the module root when what was typed is not there. The tree answers
-// whether such a path exists — see PathTree.UnderRoot — and this decides only the words.
-func suggest(tree *prettycov.PathTree, want string) string {
-	full, ok := tree.UnderRoot(want)
-	if !ok {
-		return ""
-	}
-
-	return fmt.Sprintf(", did you mean %q?", full)
-}
-
 // whyNothingShown says why a printer came up empty. Printer-blind: a message per printer would be a
 // second place with an opinion about what the filters do.
 //

@@ -23,10 +23,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// Recorded rather than obeyed: --help and --version print and then ask kong to exit.
 	done := -1
 
-	// Must, not New: the only thing that fails here is a malformed CLI struct, which is a constant
-	// of this package. That is a broken build rather than a runtime condition — every test run
-	// builds this, so a mistake in it cannot reach a user — and an error branch for it would be one
-	// no test could take.
+	// Must, not New: the only thing that fails here is a malformed CLI struct, which every test run
+	// builds, so a mistake in it cannot reach a user. An error branch would be one no test could
+	// take.
 	parser := kong.Must(&root,
 		kong.Name(cli.Name),
 		kong.Description(cli.Description),
@@ -36,7 +35,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		kong.NamedMapper("hidecovered", cli.OptionalPercentage{}),
 	)
 
-	ctx, err := parser.Parse(cli.Args(args))
+	// No command at all is someone finding out what this does, not a mistake: kong would answer
+	// "expected one of ...", where the help says that and more.
+	if len(args) == 0 {
+		args = []string{"--help"}
+	}
+
+	ctx, err := parser.Parse(args)
 
 	if done >= 0 {
 		return done

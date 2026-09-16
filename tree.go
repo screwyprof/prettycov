@@ -206,19 +206,10 @@ func (n *PathTree) walk(key string) *PathTree {
 //
 // A row carries its own segment, so "pkg/logger" read off a report is the obvious thing to type and
 // the wrong one: the tree holds it under the root the report collapsed away. This returns the
-// spelling that is there — "github.com/x/y/pkg/logger" — so a caller can offer it rather than only
-// refusing.
+// spelling that is there — "github.com/x/y/pkg/logger".
 //
-// It prefixes and nothing else. want is never returned unchanged, so a path the tree already holds
-// reports false: there is nothing to suggest about a path that works. Callers reach this after Get
-// has missed, which is the only time the question means anything.
-//
-// The root is a run of single-child directories rather than one node, so this descends the run the
-// way collapse does. The candidate is built with join, the renderer's, so an absolute tree is asked
-// about "/want" rather than "want" — which is the spelling Get resolves.
-//
-// Only ever names a path the tree holds: every candidate is checked with Get, so a caller can print
-// what this returns without checking again.
+// It prefixes and nothing else, so a path the tree already holds reports false. Every candidate is
+// checked with Get, so what comes back is always a path the tree holds.
 func (n *PathTree) UnderRoot(want string) (string, bool) {
 	root := ""
 

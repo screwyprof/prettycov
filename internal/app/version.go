@@ -6,7 +6,7 @@ import (
 
 var version string // set by the linker
 
-// BuildVersion reads the version rather than caching it back into the linker variable: writing to
+// buildVersion reads the version rather than caching it back into the linker variable: writing to
 // that variable made two concurrent callers a data race.
 func buildVersion() string {
 	if version != "" {

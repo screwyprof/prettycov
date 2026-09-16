@@ -26,9 +26,6 @@ const (
 // exitError carries a status out through the error a handler returns, which is kong's only channel.
 // A failed --fail-under gate is not a usage mistake: reported as one it would be printed and
 // counted as exit 2.
-//
-// Error is never called — ExitCodeOf reads the code and the composition root prints nothing — but
-// the method is forced, because a status has to be an error to travel this way.
 type exitError struct{ code ExitCode }
 
 func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
@@ -118,19 +115,6 @@ const (
 		"\tgo test -covermode=atomic -coverprofile=coverage.out ./...\n\tprettycov report"
 )
 
-// Args settles what was typed. No command at all is someone finding out what this does, not a
-// mistake: kong would answer "expected one of ...", where the help says that and more.
-//
-// Here rather than in the composition root because it is a routing rule, and the reason for it is
-// the paragraph on CLI below.
-func Args(args []string) []string {
-	if len(args) == 0 {
-		return []string{"--help"}
-	}
-
-	return args
-}
-
 // options is how a row is drawn, for the two commands that draw one. The colour comes from
 // Measured because it is a terminal policy every command takes, and is resolved here because where
 // the output goes is a question argv is too early to ask.
@@ -162,7 +146,6 @@ type CLI struct {
 	PrintVersion versionCmd `cmd:"" help:"Print the version and exit."                                    name:"version"`
 }
 
-//nolint:lll // a struct tag is one unit.
 type reportCmd struct {
 	drawn `embed:""`
 
@@ -170,15 +153,12 @@ type reportCmd struct {
 	Counts bool `help:"Show uncovered/total statements after each percentage."`
 }
 
-//nolint:lll // a struct tag is one unit.
 type missesCmd struct {
 	drawn `embed:""`
 }
 
 // Node is a pointer so that no argument and an empty one are different things: `total` is the whole
 // tree, `total ""` is a mistake. A plain string spells both "".
-//
-//nolint:lll // a struct tag is one unit.
 type totalCmd struct {
 	Node *string `arg:"" optional:"" help:"Package or file, spelled as the report prints it." placeholder:"PATH"`
 }
@@ -191,15 +171,24 @@ type Streams struct {
 	Out, Err io.Writer
 }
 
-func (c *reportCmd) Run(s *Streams, m *Measured) error {
+// measure is every command's first move: settle the flags, then read the profile through them. The
+// gate comes back with the tree because the same bar grades what was measured and refuses what was
+// not — treeOf already needs it to tell "empty report" from "empty report under --fail-under".
+func (m *Measured) measure(s Streams) (*prettycov.PathTree, gate, error) {
 	req, err := m.request()
 	if err != nil {
-		return err
+		return nil, gate{}, err
 	}
 
-	g := m.gate()
+	g := gate{m.FailUnder}
 
-	tree, err := treeOf(req, g, *s)
+	tree, err := treeOf(req, g, s)
+
+	return tree, g, err
+}
+
+func (c *reportCmd) Run(s *Streams, m *Measured) error {
+	tree, g, err := m.measure(*s)
 	if err != nil {
 		return err
 	}
@@ -217,14 +206,7 @@ func (c *reportCmd) Run(s *Streams, m *Measured) error {
 }
 
 func (c *missesCmd) Run(s *Streams, m *Measured) error {
-	req, err := m.request()
-	if err != nil {
-		return err
-	}
-
-	g := m.gate()
-
-	tree, err := treeOf(req, g, *s)
+	tree, g, err := m.measure(*s)
 	if err != nil {
 		return err
 	}
@@ -254,14 +236,7 @@ func (c *totalCmd) Run(s *Streams, m *Measured) error {
 		return errEmptyTotalPath
 	}
 
-	req, err := m.request()
-	if err != nil {
-		return err
-	}
-
-	g := m.gate()
-
-	tree, err := treeOf(req, g, *s)
+	tree, g, err := m.measure(*s)
 	if err != nil {
 		return err
 	}
@@ -297,9 +272,6 @@ func (m *Measured) request() (prettycov.Request, error) {
 	return req, nil
 }
 
-// gate is --fail-under, read where it is declared.
-func (m *Measured) gate() gate { return gate{m.FailUnder} }
-
 // OptionalPercentage is --hide-covered, the one flag whose value may be left off. Kong has no
 // NoOptDefVal, so it is a mapper: Decode takes a value only when "=" supplied one, which is the
 // same shape kong's own boolMapper uses. `--hide-covered 90` is not the bare form with a number
@@ -309,7 +281,9 @@ func (m *Measured) gate() gate { return gate{m.FailUnder} }
 type OptionalPercentage struct{}
 
 func (OptionalPercentage) Decode(ctx *kong.DecodeContext, target reflect.Value) error {
-	bar := prettycov.MustThreshold(bareHideCovered)
+	// 100 is what --hide-covered means with nothing after it: hide what is fully covered, where
+	// absence means "nothing to do here".
+	bar := prettycov.MustThreshold(100)
 
 	if ctx.Scan.Peek().Type == kong.FlagValueToken {
 		if err := bar.UnmarshalText(fmt.Append(nil, ctx.Scan.Pop().Value)); err != nil {
@@ -322,7 +296,3 @@ func (OptionalPercentage) Decode(ctx *kong.DecodeContext, target reflect.Value) 
 
 	return nil
 }
-
-// bareHideCovered is what --hide-covered means with nothing after it: hide what is fully covered,
-// where absence means "nothing to do here".
-const bareHideCovered = 100.0
