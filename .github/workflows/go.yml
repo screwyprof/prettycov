@@ -26,13 +26,22 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          # Single-sourced from go.mod (currently 1.27) so CI can never drift from the module again.
+          # Single-sourced from go.mod (currently 1.26) so CI can never drift from the module again.
+          # 1.26 rather than 1.27 on purpose: golang/go#80974 makes 1.27 miscount statements, which
+          # a coverage tool cannot ship on. See .modernize for the condition to lift it.
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
 
       - name: Build App
         run: make build
+
+      # go.mod and go.sum are checked in, so a PR that leaves them stale is a PR that builds here
+      # and not on the next machine. The pre-commit hook catches it locally; this catches the rest.
+      - name: go mod tidy is up to date
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
 
   golangci-lint:
     name: runner / golangci-lint
@@ -106,3 +115,41 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
           fail_ci_if_error: true # optional (default = false)
           verbose: false # optional (default = false)
+
+  # The four gates `make check` runs that nothing above does. They are the repository's actual
+  # quality claim — 100% mutation efficacy, every condition covered, no reachable vulnerability, no
+  # prose finding — and until now they were enforced on a developer's machine and nowhere else.
+  #
+  # 31 seconds warm, all four. The tools compile on the first run because the Makefile fetches them
+  # with `go run pkg@version` rather than requiring an install; setup-go's cache keeps that to once.
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      # Reachability-aware, so unlike a generic dependency scan it reports only what this binary
+      # can actually reach.
+      - name: Vulnerabilities
+        run: make vulns
+
+      # Vale over the Markdown, against Google's developer documentation style guide. .vale.ini
+      # records what this project declines and why.
+      - name: Prose
+        run: make docs-lint
+
+      # Go measures statements, so `return a && b` is covered the moment it runs either way. gobco
+      # instruments the conditions and says which were never true or never false.
+      - name: Condition coverage
+        run: make cover-branches
+
+      # A surviving mutant is a test that runs a line without asserting on it, which statement
+      # coverage cannot see and this repository holds at zero.
+      - name: Mutation testing
+        run: make mutate
