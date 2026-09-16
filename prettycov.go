@@ -12,7 +12,7 @@ type CoverageStats struct {
 
 // Total is the statements a node holds, covered or not. Named rather than added up at each use,
 // because it is the denominator of the percentage beside it and the two must be the same number:
-// -counts prints the fraction the percentage stands for, so a second expression for it could drift
+// --counts prints the fraction the percentage stands for, so a second expression for it could drift
 // from the one Percentage divides by.
 //
 // No overflow check: this is the raw sum, and Percentage is what refuses one that has wrapped.
@@ -122,7 +122,7 @@ type FileCoverage struct {
 // The position is where cmd/cover opens the block, which is not where a reader would point:
 // `if !ok {` on line 32 owns the `return` on line 33.
 //
-// Line and Col are the block's identity. -exclude matches against them and nothing else, so a
+// Line and Col are the block's identity. --exclude matches against them and nothing else, so a
 // pattern like `a\.go:3` means "the block that opens on line 3" however far the block runs.
 // EndLine is how far it runs, which is what Misses folds on — see merge for why the end rather than
 // the opening, and what it is worth.
@@ -132,7 +132,7 @@ type Block struct {
 	Coverage  CoverageStats
 }
 
-// at names the block the way a compiler names a position, and again without the column. -exclude
+// at names the block the way a compiler names a position, and again without the column. --exclude
 // matches a pattern against both, so "a.go:3$" anchors on line 3 rather than never matching: the
 // column is what a reader leaves off, and a pattern ending at the line has nowhere to stop without
 // this.
@@ -150,8 +150,8 @@ func (b Block) at(file string) (withCol, toLine string) {
 	return withCol, withCol[:strings.LastIndexByte(withCol, ':')]
 }
 
-// position names a place in a file the way a compiler does. One spelling, because -exclude matches
-// its patterns against what this returns and -misses prints it: a position a reader judges
+// position names a place in a file the way a compiler does. One spelling, because --exclude matches
+// its patterns against what this returns and the misses command prints it: a position a reader judges
 // unreachable is pasted back as a pattern, and two definitions of the format would let that stop
 // working with nothing to catch it.
 func position(file string, line, col int) string {
@@ -210,11 +210,11 @@ func rollUp(node *PathTree) CoverageStats {
 // the CLI says so.
 //
 // The prefix has to be leading, and it has to end on a separator: replacing the first match
-// anywhere rewrote "github.com/rapid/api" to "github.com/rcored/api" for -old=api, and a bare
-// prefix rewrote the unrelated "github.com/foobar" to "xbar" for -old=github.com/foo. An empty
-// oldRoot matches at position 0, so -new alone prepended itself to every path instead of replacing
+// anywhere rewrote "github.com/rapid/api" to "github.com/rcored/api" for --old=api, and a bare
+// prefix rewrote the unrelated "github.com/foobar" to "xbar" for --old=github.com/foo. An empty
+// oldRoot matches at position 0, so --new alone prepended itself to every path instead of replacing
 // anything. The separator is implied, so trailing slashes on oldRoot are trimmed rather than left
-// to fail every match. Every one of them, not the last: `-old=$(MODULE)/` with MODULE already
+// to fail every match. Every one of them, not the last: `--old=$(MODULE)/` with MODULE already
 // ending in one spells "example.com/m//", and trimming a single separator left "example.com/m/"
 // to be matched against a path that has one separator there, so a root that is in the profile
 // matched nothing and the CLI reported it as a root that is not.

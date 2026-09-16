@@ -16,7 +16,7 @@ func BenchmarkDisplayTreeMaxFiles(b *testing.B) {
 	benchDisplayTree(b, prettycov.Options{Depth: prettycov.DepthAll, Files: true})
 }
 
-// -hide-covered adds the allCovered re-walk, which is O(n·depth) along the surviving path.
+// --hide-covered adds the allCovered re-walk, which is O(n·depth) along the surviving path.
 func BenchmarkDisplayTreeHideCovered(b *testing.B) {
 	bar := prettycov.MustThreshold(100.0)
 

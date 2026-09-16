@@ -17,7 +17,7 @@ type Options struct {
 	// Depth is how many levels to show below the top row. DepthAll shows all of them.
 	Depth Depth
 
-	// Color is how percentages are written. Resolving -color=auto against a destination is the
+	// Color is how percentages are written. Resolving --color=auto against a destination is the
 	// caller's, since that is a question about the world rather than about coverage.
 	Color Palette
 
@@ -25,14 +25,14 @@ type Options struct {
 	Counts bool
 
 	// HideCovered leaves out every subtree covered to this percentage or above, so what is left is
-	// what there is still work in. Nil is the whole report; the CLI's -hide-covered defaults it to
+	// what there is still work in. Nil is the whole report; the CLI's --hide-covered defaults it to
 	// 100, where nothing hidden holds an uncovered statement and absence means "nothing to do here".
 	//
 	// A threshold below 100 hides misses along with the rows — at 90 on the delegator profile, 9 of
 	// its 34 — which is the caller's to decide and worth knowing. Said here rather than refused:
-	// -fail-under already takes a number, and this one only shapes the report.
+	// --fail-under already takes a number, and this one only shapes the report.
 	//
-	// Shaping, never measuring. The tree keeps every statement it had, so -total, -fail-under and
+	// Shaping, never measuring. The tree keeps every statement it had, so the total command, --fail-under and
 	// the top row read the same with this set as without — as with Depth, which hides far more.
 	HideCovered *Threshold
 
@@ -82,18 +82,18 @@ func Rows(tree *PathTree, opts Options) []Row {
 
 // shape is what a renderer reads off each row, and so what the traversal is asked to build. The two
 // halves are disjoint — a tree row is placed by its Prefix, a position is named by its Path — and
-// building both for every node cost a 30,000-file tree at -depth=max 137% of its memory and 165% of
+// building both for every node cost a 30,000-file tree at --depth=max 137% of its memory and 165% of
 // its allocations for a field Rows never reads. Named fields at the two call sites, so the pair
 // cannot be handed over the wrong way round.
 type shape struct {
-	// files draws the profile's files as well as its packages. -files for a tree; always, for a
+	// files draws the profile's files as well as its packages. --files for a tree; always, for a
 	// list of positions.
 	files bool
 	// positions builds Path and leaves Prefix empty, rather than the other way about.
 	positions bool
 }
 
-// prepare is the whole of the output filtering: it reads -depth, -files and -hide-covered and
+// prepare is the whole of the output filtering: it reads --depth, --files and --hide-covered and
 // returns the nodes left, in the order a report draws them, each carrying what a renderer needs.
 //
 // The one place those are read. A renderer takes this list and shapes it — it filters nothing, so
@@ -102,11 +102,11 @@ type shape struct {
 // row drawn by one and lost by the other.
 //
 // want is what the calling renderer reads, which is the output's question rather than any flag's:
-// the tree always holds files, and -files decides whether the tree's output shows them, while a list
+// the tree always holds files, and --files decides whether the tree's output shows them, while a list
 // of positions is made of them either way. Neither renderer filters, so asking for different things
 // here cannot make the two disagree about what the report contains.
 // Yielded rather than returned as a slice. Every row was materialised into a []drawn that each
-// renderer then copied out of, so a 30,000-file tree at -depth=max allocated 96 bytes per row twice
+// renderer then copied out of, so a 30,000-file tree at --depth=max allocated 96 bytes per row twice
 // over — once growing that slice by doubling, once for the []Row it became. Nothing needs it to be a
 // slice: both renderers read each row once, in order. The seam is unchanged, and the renderers still
 // cannot filter, because all they can do with this is receive.
@@ -136,7 +136,7 @@ func prepare(tree *PathTree, opts Options, want shape) iter.Seq[drawn] {
 //
 // Counted while writing rather than taken from Rows, which would hold every row of the report in
 // memory to hand back a length: this is the path the CLI takes, and on a 30,000-file profile at
-// -depth=max the slice was three quarters of what the whole render allocated.
+// --depth=max the slice was three quarters of what the whole render allocated.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) (int, error) {
 	buf := bufio.NewWriter(w)
 	drawn := 0
@@ -181,7 +181,7 @@ type drawn struct {
 // It decides which nodes are visited and nothing about what they look like. One implementation of
 // that decision, because two would drift — collapse and the depth cut-off already disagreed once,
 // and every emitter added is another chance at it.
-// Every field is one the traversal reads. Options is deliberately not among them: -files must be
+// Every field is one the traversal reads. Options is deliberately not among them: --files must be
 // asked as shape, which is the output's question rather than the flag's, and leaving the struct in
 // scope would put the wrong answer one field access away on every line of the walk.
 type walker struct {
@@ -192,7 +192,7 @@ type walker struct {
 	yield func(drawn) bool
 
 	depth Depth
-	// hiding says -hide-covered was given at all and hideAt is the threshold, read once rather than
+	// hiding says --hide-covered was given at all and hideAt is the threshold, read once rather than
 	// through the pointer at every node. What "at least this much" means is CoverageStats', not
 	// ours: the answer at 100 is about the counts, not the ratio.
 	hiding bool
@@ -261,9 +261,9 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 // allCovered reports whether a node says nothing the report was asked to show: it is at the bar,
 // and so is every row drawn beneath it.
 //
-// What is drawn, not what the tree holds. -depth is a filter as much as -hide-covered is, so the
-// two compose: a row -depth already cut cannot be the reason its parent survives. Judging the whole
-// subtree kept `pkg - 96.41` above `logger - 96.88` at -depth=2, two rows both above the bar,
+// What is drawn, not what the tree holds. --depth is a filter as much as --hide-covered is, so the
+// two compose: a row --depth already cut cannot be the reason its parent survives. Judging the whole
+// subtree kept `pkg - 96.41` above `logger - 96.88` at --depth=2, two rows both above the bar,
 // explained only by a logger.go at 86.67 the depth had already removed.
 //
 // The subtree, not the node alone: coverage is not monotonic downwards below 100, so a package at
@@ -458,12 +458,12 @@ func join(label, name string) string {
 // quote them too. It also stops a spoof: a package named "\x1b[1A\x1b[2Kforged" erases the row
 // above and writes over it, and above the first child is the total.
 //
-// Positions too, not rows alone. -misses prints to the same terminal, so the same escape erases a
+// Positions too, not rows alone. The misses command prints to the same terminal, so the same escape erases a
 // miss above it, and "real\revil/b.go" draws as "evil/b.go" — a coverage tool whose own output can
 // be made to drop a line or rename a file is failing at the one thing it is for.
 //
 // Which costs a path carrying one of these its round trip: it will not open in an editor and will
-// not match as an -exclude pattern. That is worth it three times over. Such a path is corrupted
+// not match as an --exclude pattern. That is worth it three times over. Such a path is corrupted
 // visibly rather than silently, so the reader can see there is something to look at; most of this
 // set breaks a line-oriented consumer anyway, since Cc holds the newline and U+2028 ends a line for
 // a JSON reader; and a module path cannot contain any of it — Go forbids it — so only a file name

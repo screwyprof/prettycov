@@ -265,7 +265,7 @@ func TestDisplayTreeFilesSortAmongPackages(t *testing.T) {
 		namesWith(t, tree, prettycov.Options{Depth: 1, Files: true}))
 }
 
-// Without -files the tree is exactly what it was: packages only, and a package holding nothing but
+// Without --files the tree is exactly what it was: packages only, and a package holding nothing but
 // files is a leaf. The file nodes are still there, so this is the check that they cost no row and
 // no level when they are not asked for.
 func TestDisplayTreeHidesFilesUnlessAsked(t *testing.T) {
@@ -284,7 +284,7 @@ func TestDisplayTreeHidesFilesUnlessAsked(t *testing.T) {
 
 // One name can be both a file and a directory: "m/a.go" beside "m/a.go/b.go" names a file and a
 // package called the same thing. No filesystem allows it, so no single `go test` run produces it,
-// but merging two profiles or rewriting a root with -old/-new can. Such a node is drawn as the
+// but merging two profiles or rewriting a root with --old/--new can. Such a node is drawn as the
 // directory it also is — hiding it as a file took its whole subtree with it while every ancestor
 // went on counting the statements.
 func TestDisplayTreeKeepsANameThatIsBothAFileAndADirectory(t *testing.T) {
@@ -336,7 +336,7 @@ func TestDisplayTreeOrdersATieBetweenAFileAndADirectory(t *testing.T) {
 		"the directory and its files first, then the file of the same name")
 }
 
-// A file is one level below the package holding it, exactly as a subdirectory is — -depth counts
+// A file is one level below the package holding it, exactly as a subdirectory is — --depth counts
 // levels the way tree -L does, and a file is one of a directory's entries like any other.
 func TestDisplayTreeFilesCountAsALevel(t *testing.T) {
 	t.Parallel()
@@ -356,7 +356,7 @@ func TestDisplayTreeFilesCountAsALevel(t *testing.T) {
 
 // A package whose whole content is one file says the same number twice, so the two rows become
 // one and the label names both. A row's label is a property of the node, not of where the depth
-// cut falls: raising -depth adds rows below, it does not rename the ones already drawn.
+// cut falls: raising --depth adds rows below, it does not rename the ones already drawn.
 func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
 	t.Parallel()
 
@@ -378,11 +378,11 @@ func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
 	assert.Contains(t, out, "one/only.go - 75.00  1/4 uncovered\n")
 	assert.NotContains(t, out, " one - ", "the package row it replaced is gone")
 
-	// Without -files there is no file row to merge with, so the package keeps its own name.
+	// Without --files there is no file row to merge with, so the package keeps its own name.
 	assert.Equal(t, []string{"m", "one", "two"}, nodeNames(t, tree, prettycov.DepthAll))
 }
 
-// A profile can name a file with no directory of its own — `prettycov -new=.` writes every path
+// A profile can name a file with no directory of its own — `prettycov --new=.` writes every path
 // that way — and such a file lands under ".", the row the report draws it beside. Merging the two
 // must not write that "." into the label: the profile has no path spelled "./printer.go", and its
 // siblings are written plainly. The filesystem root is the opposite case and keeps its separator,
@@ -405,9 +405,9 @@ func TestDisplayTreeMergesAFileThatHasNoDirectory(t *testing.T) {
 }
 
 // The top row merges too, so a repository that is one package of one file reports a file path and
-// no row names the package. Deliberate: -files asked for the files, the label still carries the
+// no row names the package. Deliberate: --files asked for the files, the label still carries the
 // whole package path, and refusing to merge at the top would be a rule about where a row sits
-// rather than about what it holds. The default view is untouched, and -total reads the tree.
+// rather than about what it holds. The default view is untouched, and total reads the tree.
 func TestDisplayTreeMergesTheTopRowToo(t *testing.T) {
 	t.Parallel()
 
@@ -418,7 +418,7 @@ func TestDisplayTreeMergesTheTopRowToo(t *testing.T) {
 	assert.Equal(t, []string{"github.com/o/tool"}, nodeNames(t, tree, prettycov.DepthAll))
 }
 
-// -depth counts levels below the root row, exactly as `tree -L` does: `tree -L 1` prints the root
+// --depth counts levels below the root row, exactly as `tree -L` does: `tree -L 1` prints the root
 // and one level under it. A collapsed run counts as the single row it renders as.
 func TestDisplayTreeDepthCountsLevels(t *testing.T) {
 	t.Parallel()
@@ -618,7 +618,7 @@ func TestPercentageReportsNothingToCover(t *testing.T) {
 	assert.Zero(t, pct.Float())
 }
 
-// -hide-covered shapes the report and never the measurement, and it prunes a subtree only when
+// --hide-covered shapes the report and never the measurement, and it prunes a subtree only when
 // there is nothing left to do anywhere inside it.
 func TestDisplayTreeHideCovered(t *testing.T) {
 	t.Parallel()
@@ -686,10 +686,10 @@ func TestDisplayTreeHideCoveredKeepsAPackageWithNoStatements(t *testing.T) {
 	assert.Equal(t, " m - 100.00\n └ doc - n/a\n", got)
 }
 
-// The threshold is inclusive, and whether a file counts depends on whether -files draws it.
+// The threshold is inclusive, and whether a file counts depends on whether --files draws it.
 //
 // even/ and mixed/ both read exactly 90.00. mixed/ holds a file with nothing covered; even/ does
-// not. Without -files neither file is a row, so both packages say nothing and go. With -files the
+// not. Without --files neither file is a row, so both packages say nothing and go. With --files the
 // one holding work has something to show and comes back, carrying only that file.
 func TestDisplayTreeHideCoveredAtTheThreshold(t *testing.T) {
 	t.Parallel()
@@ -729,7 +729,7 @@ func TestDisplayTreeHideCoveredAtTheThreshold(t *testing.T) {
 	}
 }
 
-// A file is hidden the way a package is, so -files does not bring back what -hide-covered took.
+// A file is hidden the way a package is, so --files does not bring back what --hide-covered took.
 func TestDisplayTreeHideCoveredHidesFiles(t *testing.T) {
 	t.Parallel()
 
@@ -767,7 +767,7 @@ func TestDisplayTreeHideCoveredTrustsTheCountNotTheRatio(t *testing.T) {
 	assert.Equal(t, " m/huge - 99.99\n", got, "one uncovered statement is still one to do")
 }
 
-// -hide-covered judges what the report draws, not what the tree holds. -depth is a filter too, so
+// --hide-covered judges what the report draws, not what the tree holds. --depth is a filter too, so
 // the two compose: a row the depth limit already cut cannot be the reason a parent survives.
 //
 // pkg/ reads 95.35 and holds logger/ at 93.94, which holds logger.go at 86.67. With the files
@@ -796,7 +796,7 @@ func TestDisplayTreeHideCoveredJudgesWhatIsDrawn(t *testing.T) {
 			depth: 2,
 			want:  " m - 92.31\n └ scraper/store - 77.78\n",
 		},
-		// -files alone does not bring it back: the files sit a level below the cut too.
+		// --files alone does not bring it back: the files sit a level below the cut too.
 		"files drawn but still below the cut": {
 			depth: 2, files: true,
 			want: " m - 92.31\n └ scraper/store/s.go - 77.78\n",
@@ -849,7 +849,7 @@ func TestDisplayTreeHideCoveredSpendsALevelPerRowNotPerNode(t *testing.T) {
 }
 
 // The invariant the empty-report message rests on: a tree with statements always draws a row unless
-// -hide-covered took it, so that message can name the flag and read its threshold without asking.
+// --hide-covered took it, so that message can name the flag and read its threshold without asking.
 func TestDisplayTreeAlwaysDrawsARowWithoutHideCovered(t *testing.T) {
 	t.Parallel()
 

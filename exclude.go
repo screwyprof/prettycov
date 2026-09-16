@@ -12,7 +12,7 @@ var ErrEmptyExclude = errors.New("want a pattern; an empty one matches every fil
 //
 // Here rather than in whatever reads a flag, because it is a fact about what Exclude means: the
 // empty pattern takes every file, so the report ends up covering nothing and, with no threshold to
-// fail, says so with a zero exit. An unset variable in `prettycov -exclude=$(EXCLUDES)` arrives as
+// fail, says so with a zero exit. An unset variable in `prettycov report --exclude=$(EXCLUDES)` arrives as
 // "" and would turn a coverage gate into a green no-op.
 func ParseExclude(s string) (*regexp.Regexp, error) {
 	if s == "" {

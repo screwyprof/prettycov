@@ -138,7 +138,7 @@ func TestCoverageStatsPercentage(t *testing.T) {
 	}
 }
 
-// AtLeast is the gate -fail-under and -hide-covered are graded by, and at 100 it is not the
+// AtLeast is the gate --fail-under and --hide-covered are graded by, and at 100 it is not the
 // comparison the ratio would make. Exported, so a caller can hand it any number the CLI's own
 // [0, 100] clamp would have refused.
 func TestCoverageStatsAtLeast(t *testing.T) {
@@ -336,7 +336,7 @@ func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 			old: "github.com/o/repo/", replace: "repo", want: "repo/pkg/a.go", wantRenamed: 1,
 		},
 		{
-			// `-old=$(MODULE)/` with MODULE already ending in one. Trimming a single separator left
+			// `--old=$(MODULE)/` with MODULE already ending in one. Trimming a single separator left
 			// "github.com/o/repo/" to be matched against a path carrying one separator there, so a
 			// root that is in the profile matched nothing and the CLI called it a root that is not.
 			name: "however many of them there are", file: "github.com/o/repo/pkg/a.go",
@@ -379,7 +379,7 @@ func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 
 // Splitting a path is not the same as walking one. Totalling per directory used to go through
 // path.Dir, which cleans on the way, so a doubled separator never reached a label; building the
-// tree from the file path directly has to clean it itself. -new with a trailing slash is how a
+// tree from the file path directly has to clean it itself. --new with a trailing slash is how a
 // caller produces one without meaning to.
 func TestProcessCleansPaths(t *testing.T) {
 	t.Parallel()
@@ -420,7 +420,7 @@ func TestProcessCleansPaths(t *testing.T) {
 // root, which nothing draws: the statements stayed in the total and appeared beside no row, and a
 // profile of nothing but bare filenames printed an empty report and exited 0.
 // "./x.go" and "x.go" are one file, because they are one path — path.Dir cleans a leading "." away
-// as redundant. Worth pinning: making -new=. draw a single "." root means giving that prefix a
+// as redundant. Worth pinning: making --new=. draw a single "." root means giving that prefix a
 // meaning of its own, and then a profile naming both spellings of one package splits into two rows
 // carrying the same label, with the package's statements divided between them.
 func TestProcessReadsADotPrefixAsTheSamePath(t *testing.T) {
@@ -438,7 +438,7 @@ func TestProcessReadsADotPrefixAsTheSamePath(t *testing.T) {
 	assert.Equal(t, 7, rows[0].Coverage.Total(), "holding every statement of both")
 }
 
-// -new=. strips the root rather than renaming it to a node called ".", because that is what the
+// --new=. strips the root rather than renaming it to a node called ".", because that is what the
 // path means: everything below the old root moves up, and a module whose top level holds more than
 // one entry is drawn as more than one row. Identical to the profile it would have been written as.
 func TestShortenToDotStripsTheRoot(t *testing.T) {
@@ -471,7 +471,7 @@ func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 			want:  []string{"."},
 		},
 		{
-			// -new=. is a natural way to strip a module prefix, and it is how a real profile ends
+			// --new=. is a natural way to strip a module prefix, and it is how a real profile ends
 			// up with a file at the top and packages beneath it.
 			name:    "a bare file beside a package",
 			files:   []prettycov.FileCoverage{file("foo/printer.go", 3, 1), file("foo/internal/app/a.go", 2, 1)},

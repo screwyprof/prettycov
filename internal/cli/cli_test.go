@@ -851,7 +851,7 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 			wantCode: codeBelow, want: "60.00\n",
 		},
 		{
-			// A suffix here would break every `$(shell prettycov -total)` there is.
+			// A suffix here would break every `$(shell prettycov total)` there is.
 			// A suffix here would break every `$(shell prettycov total)` there is, so the flag that
 			// would add one is not registered on this command at all.
 			name: "it does not take --counts", args: []string{"--counts"},
@@ -896,7 +896,7 @@ const totalShaped = "mode: set\n" +
 	"m/web/handler.go:3.1,4.2 5 0\n" +
 	"m/web/router.go:1.1,2.2 10 1\n"
 
-// -total=path reports one node of the tree, which is the number the report already draws and
+// `total <path>` reports one node of the tree, which is the number the report already draws and
 // nothing could hand back. The paths carry the module root because this fixture does not rename
 // one; after --old and --new they would be spelled the way the report prints them, which is the point
 // of looking up the built tree rather than matching the profile.
@@ -1165,7 +1165,7 @@ func TestRunNamesExcludeAsTheReasonTheReportIsEmpty(t *testing.T) {
 }
 
 // Rows walks the root's children, so when a profile spans two top-level paths the root itself is
-// never drawn. -total reports that root, so its number appears in no row.
+// never drawn. total reports that root, so its number appears in no row.
 func TestTotalOverAProfileWithNoSingleRoot(t *testing.T) {
 	t.Parallel()
 
@@ -1324,7 +1324,7 @@ func TestRunAutoColorAgainstRealFiles(t *testing.T) {
 	}
 }
 
-// --hide-covered shapes the report and never the measurement: -total and --fail-under read the same
+// --hide-covered shapes the report and never the measurement: total and --fail-under read the same
 // with it as without, which is what separates it from --exclude.
 func TestRunHideCovered(t *testing.T) {
 	t.Parallel()
@@ -1509,7 +1509,7 @@ func TestRunHideCoveredReadsZeroAsAPercentageNotAsOff(t *testing.T) {
 	}
 }
 
-// -misses replaces the report: positions on stdout, no tree, and the gate still reads the tree.
+// misses replaces the report: positions on stdout, no tree, and the gate still reads the tree.
 func TestRunMisses(t *testing.T) {
 	t.Parallel()
 

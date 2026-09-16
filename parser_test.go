@@ -164,7 +164,7 @@ func writeProfile(tb testing.TB, content string) string {
 	return path
 }
 
-// Positions are what -exclude matches a coordinate against, and the sum of the blocks has to be
+// Positions are what --exclude matches a coordinate against, and the sum of the blocks has to be
 // the file's Coverage or the two disagree about the same profile. EndLine comes along for Misses,
 // which needs to know where one region stops to tell it from the next.
 func TestParseProfileKeepsBlockPositions(t *testing.T) {

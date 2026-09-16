@@ -427,11 +427,11 @@ func TestExcludeDropsAFileLeftWithNoStatements(t *testing.T) {
 	assert.Equal(t, 1, dropped[0].Blocks)
 }
 
-// A column is a prefix as a line is, so a position pasted out of -misses takes every block whose
+// A column is a prefix as a line is, so a position pasted out of misses takes every block whose
 // column starts with those digits: a.go:9:2 also matches a.go:9:24, which is an ordinary second
 // block on one line — `if err != nil {` at column 2 and a closure at column 24.
 //
-// The round trip -misses advertises is therefore exact only when anchored. Pinned because the cost
+// The round trip misses advertises is therefore exact only when anchored. Pinned because the cost
 // is silent and upward: the statements go out of the denominator, so coverage rises.
 func TestExcludeMatchesAColumnAsAPrefixUnlessAnchored(t *testing.T) {
 	t.Parallel()
@@ -440,7 +440,7 @@ func TestExcludeMatchesAColumnAsAPrefixUnlessAnchored(t *testing.T) {
 		File:     "m/a.go",
 		Coverage: prettycov.CoverageStats{Uncovered: 4},
 		Blocks: []prettycov.Block{
-			uncovered(9, 2, 10, 1),  // the position -misses prints
+			uncovered(9, 2, 10, 1),  // the position misses prints
 			uncovered(9, 24, 12, 3), // a closure on the same line
 		},
 	}}

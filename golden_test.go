@@ -48,7 +48,7 @@ func TestDisplayTreeMatchesGolden(t *testing.T) {
 		})
 	}
 
-	// The whole point of -files is that a parent equals what is drawn beneath it, and that only
+	// The whole point of --files is that a parent equals what is drawn beneath it, and that only
 	// shows on a real tree with real filenames. Counts on, since the sums are the claim.
 	t.Run("files", func(t *testing.T) {
 		t.Parallel()
