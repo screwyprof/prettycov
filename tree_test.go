@@ -77,7 +77,7 @@ func TestPathTreeGetPrefersAFileOnTheLastSegment(t *testing.T) {
 // A key read off a row resolves, and the report draws two labels the tree does not hold under that
 // name: path.Clean drops a "." component, so a file the profile gave no directory of its own merges
 // into a row spelled as just the file; and the filesystem root has no name of its own, so it draws
-// as "/". Both are the renderer's substitutions, and Get undoes them — otherwise -total=main.go is
+// as "/". Both are the renderer's substitutions, and Get undoes them — otherwise `total main.go` is
 // refused for a row the tool printed one line above.
 func TestPathTreeGetTakesTheSpellingTheReportDraws(t *testing.T) {
 	t.Parallel()
@@ -116,7 +116,7 @@ func TestPathTreeGetTakesTheSpellingTheReportDraws(t *testing.T) {
 }
 
 // A package named as strconv.ParseBool reads it — t, f, true, 1 and their spellings, every one a
-// legal Go directory name — cannot be asked for by name, because -total settles the value before
+// legal Go directory name — cannot be asked for by name, because total settles the value before
 // the tree is consulted. "./t" is the escape, and it is the only one: the flag cannot tell them
 // apart, so the library has to offer a spelling the flag never claims.
 func TestPathTreeGetTakesADotSlashEscape(t *testing.T) {
@@ -210,6 +210,23 @@ func TestPathTreeGetResolvesUnderAnAbsoluteRoot(t *testing.T) {
 	assert.Same(t, tree.Get("/abs/x/y/p"), tree.Get("p"), "the label the report draws")
 	assert.Same(t, tree.Get("/abs/x/y/q/b.go"), tree.Get("q/b.go"))
 	assert.Nil(t, tree.Get("nowhere"))
+}
+
+// The empty key is nil on every profile, not just the relative ones. An absolute path splits to a
+// leading empty component, so the filesystem root is held as Children[""] — and walk("") cuts to an
+// empty part and reads that very entry. Get("") handed back the whole tree, answering 100.00 for a
+// key naming nothing, where the identical relative profile returned nil.
+//
+// The asymmetry is what makes it worth a test of its own: a caller gating on
+// tree.Get(os.Getenv("PKG")).AtLeast(bar) fails safely on one profile and silently passes on the
+// other. totalCmd already refused the empty path; Get is where the guard covers every caller.
+func TestPathTreeGetEmptyKeyIsNilOnAnAbsoluteProfile(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("/abs/m/a.go", 1, 0)})
+
+	require.NotNil(t, tree.Get("/"), "the filesystem root still resolves under its own spelling")
+	assert.Nil(t, tree.Get(""), `Get("") names no node`)
 }
 
 // A segment of the collapsed root that is also a package inside it resolves to the package, which

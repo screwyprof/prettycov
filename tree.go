@@ -37,7 +37,7 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// Split with path.Dir rather than by counting components, so a file with no directory at all
 	// still lands somewhere: path.Dir gives it ".", which is the row it renders as. Reading the
 	// directory off the second-to-last component instead left such a file hanging under the tree
-	// root, which nothing draws — `prettycov -new=.` printed an empty report and exited 0.
+	// root, which nothing draws — `prettycov report --new=.` printed an empty report and exited 0.
 	//
 	// path.Dir cleans on the way, which the walk below relies on: splitting a path is not the same
 	// as walking one, and "m//a/b.go" would otherwise give an empty component and read "m//a".
@@ -136,7 +136,12 @@ func (a *arena) next() *PathTree {
 // stays two nodes. That map is a field rather than a method, so nothing can make it nil-safe the
 // way this is: a caller reading one still has to check what Get handed back.
 func (n *PathTree) Get(key string) *PathTree {
-	if n == nil {
+	// The empty key names nothing, and has to say so here rather than be left to walk. An absolute
+	// profile splits to a leading empty component, so the filesystem root is held as Children[""] —
+	// which is exactly the entry walk("") reads, handing back the whole tree for a key naming no
+	// path. Here rather than in any one branch below: this is the single point all three resolution
+	// paths pass through, so one guard covers walk, the "." retry and underRoot alike.
+	if n == nil || key == "" {
 		return nil
 	}
 
@@ -217,9 +222,10 @@ const maxRootDepth = 64
 // The descent is bounded for the same reason — Children is exported, so a caller assembling a tree
 // by hand can make a cycle, and Get has to answer rather than hang.
 func (n *PathTree) underRoot(key string, depth int) *PathTree {
-	// An empty key names no path. Without this it resolves to the run's own node and Get("") hands
-	// back the top one, where every other spelling of "nothing" is nil.
-	if key == "" || depth == 0 {
+	// No empty-key guard here: Get is the only caller and refuses one before this is reached, and
+	// the recursion below passes key through unchanged. A second copy would be a condition nothing
+	// can make true — which is how the first one read once Get grew its own.
+	if depth == 0 {
 		return nil
 	}
 
