@@ -18,8 +18,8 @@ import (
 // It asks nothing about which printer that was. One drawing rows and one printing positions would
 // need a message each, and a third would need a third — every one of them a second place holding an
 // opinion about what the filters do. The filters emptied it; naming them is the answer either way.
-func sayNothingShown(cfg config, tree *prettycov.PathTree, s Streams) {
-	_, _ = fmt.Fprintln(s.Err, cfg.whyNothingShown(tree))
+func sayNothingShown(d drawn, tree *prettycov.PathTree, s Streams) {
+	_, _ = fmt.Fprintln(s.Err, d.whyNothingShown(tree))
 }
 
 // suggest offers the path under the module root when what was typed is not there. The tree answers
@@ -39,26 +39,26 @@ func suggest(tree *prettycov.PathTree, want string) string {
 // The two causes are opposite news, and the tree's count separates them. Saying "nothing left to
 // cover" for the second is a false all-clear — `misses --hide-covered=0` over a fully drawn tree
 // reported completion on 34 statements, exit 0.
-func (c config) whyNothingShown(tree *prettycov.PathTree) string {
+func (d drawn) whyNothingShown(tree *prettycov.PathTree) string {
 	if tree.Uncovered() == 0 {
 		return "nothing left to cover"
 	}
 
 	return fmt.Sprintf("nothing to show at %s; %s left",
-		c.outputFilters(), plural(tree.Uncovered(), "uncovered statement"))
+		d.filters(), plural(tree.Uncovered(), "uncovered statement"))
 }
 
-// outputFilters names the flags that could have emptied the output, as typed. The one place a
+// filters names the flags that could have emptied the output, as typed. The one place a
 // filter added later has to be named.
 //
 // Not --files: a list of positions is made of files whatever it says, and a tree keeps the top row
 // --depth always draws. Not --exclude: it acts on the profile, and a report it emptied is refused
 // further up with its own message.
-func (c config) outputFilters() string {
-	filters := "--depth=" + c.Depth.String()
+func (d drawn) filters() string {
+	filters := "--depth=" + d.Depth.String()
 
-	if c.HideCovered != nil {
-		filters += fmt.Sprintf(", --hide-covered=%v", c.HideCovered.Float())
+	if d.HideCovered != nil {
+		filters += fmt.Sprintf(", --hide-covered=%v", d.HideCovered.Float())
 	}
 
 	return filters

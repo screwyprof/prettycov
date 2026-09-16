@@ -107,6 +107,13 @@ func Args(args []string) []string {
 	return args
 }
 
+// options is how a row is drawn, for the two commands that draw one. The colour comes from
+// Measured because it is a terminal policy every command takes, and is resolved here because where
+// the output goes is a question argv is too early to ask.
+func (d drawn) options(mode colorMode, out io.Writer) prettycov.Options {
+	return prettycov.Options{Depth: d.Depth, HideCovered: d.HideCovered, Color: mode.palette(out)}
+}
+
 // CLI is the whole command line. Every command is named: there is no default, so `prettycov` alone
 // prints help rather than drawing.
 //
@@ -177,66 +184,68 @@ type Streams struct {
 }
 
 func (c *reportCmd) Run(s *Streams, m *Measured) error {
-	cfg, err := c.settled(m)
+	req, err := m.request()
 	if err != nil {
 		return err
 	}
 
-	cfg.Files, cfg.Counts = c.Files, c.Counts
-	g := gate{cfg.FailUnder}
+	g := m.gate()
 
-	tree, err := treeOf(cfg.Request, g, *s)
+	tree, err := treeOf(req, g, *s)
 	if err != nil {
 		return err
 	}
+
+	opts := c.options(m.Color, s.Out)
+	opts.Files, opts.Counts = c.Files, c.Counts
 
 	// S2: inlined, because render had one caller and its three-argument shape was the interface
 	// that used to need it.
-	if shown := prettycov.DisplayTree(s.Out, tree, cfg.options(s.Out)); shown == 0 {
-		sayNothingShown(cfg, tree, *s)
+	if shown := prettycov.DisplayTree(s.Out, tree, opts); shown == 0 {
+		sayNothingShown(c.drawn, tree, *s)
 	}
 
 	return g.grade(tree, *s)
 }
 
 func (c *missesCmd) Run(s *Streams, m *Measured) error {
-	cfg, err := c.settled(m)
+	req, err := m.request()
 	if err != nil {
 		return err
 	}
 
-	g := gate{cfg.FailUnder}
+	g := m.gate()
 
-	tree, err := treeOf(cfg.Request, g, *s)
+	tree, err := treeOf(req, g, *s)
 	if err != nil {
 		return err
 	}
 
-	shown := prettycov.DisplayMisses(s.Out, tree, cfg.options(s.Out))
+	shown := prettycov.DisplayMisses(s.Out, tree, c.options(m.Color, s.Out))
 
 	// Two messages where the tree has one: only a list can stop short of what is behind it. A tree
 	// carries its subtree's count on every row, so a shallow one is a summary rather than a
 	// fragment, where a short list reads as a clean bill.
 	switch {
 	case shown == 0:
-		sayNothingShown(cfg, tree, *s)
+		sayNothingShown(c.drawn, tree, *s)
 	case shown < tree.Uncovered():
 		_, _ = fmt.Fprintf(s.Err, "%s lists %d of %s\n",
-			cfg.outputFilters(), shown, plural(tree.Uncovered(), "uncovered statement"))
+			c.filters(), shown, plural(tree.Uncovered(), "uncovered statement"))
 	}
 
 	return g.grade(tree, *s)
 }
 
 func (c *totalCmd) Run(s *Streams, m *Measured) error {
-	cfg, err := m.settle()
+	req, err := m.request()
 	if err != nil {
 		return err
 	}
 
-	g := gate{cfg.FailUnder}
+	g := m.gate()
 
-	tree, err := treeOf(cfg.Request, g, *s)
+	tree, err := treeOf(req, g, *s)
 	if err != nil {
 		return err
 	}
@@ -250,73 +259,25 @@ func (c *versionCmd) Run(s *Streams, vars kong.Vars) error {
 	return nil
 }
 
-// config is what the report needs, whichever command asked for it. The kong structs above are the
-// command line; this is the answer they agree on.
-type config struct {
-	// Request is what the domain measures: the profile, the rename, the patterns. Embedded rather
-	// than copied field by field, so Measure takes it directly and the two cannot drift.
-	prettycov.Request
-
-	Depth       prettycov.Depth
-	Color       colorMode
-	FailUnder   *prettycov.Threshold
-	HideCovered *prettycov.Threshold
-	Counts      bool
-	Files       bool
-}
-
-// settle turns the measured flags into the half of a config every command shares.
-func (m *Measured) settle() (config, error) {
-	cfg := config{
-		Request:   prettycov.Request{Profile: m.Profile, Rename: prettycov.Rename{From: m.Old, To: m.New}},
-		FailUnder: m.FailUnder,
-	}
+// request is what the domain measures. The only thing settled here is the patterns: everything else
+// is already the parsed type, because every flag reads itself at the boundary.
+func (m *Measured) request() (prettycov.Request, error) {
+	req := prettycov.Request{Profile: m.Profile, Rename: prettycov.Rename{From: m.Old, To: m.New}}
 
 	for _, pattern := range m.Exclude {
 		re, err := prettycov.ParseExclude(pattern)
 		if err != nil {
-			return config{}, fmt.Errorf("--exclude: %w", err)
+			return prettycov.Request{}, fmt.Errorf("--exclude: %w", err)
 		}
 
-		cfg.Exclude = append(cfg.Exclude, re)
+		req.Exclude = append(req.Exclude, re)
 	}
 
-	cfg.Color = m.Color
-
-	return cfg, nil
+	return req, nil
 }
 
-// settled is the shared half of what the two drawing commands need: the measured flags plus the
-// ones that shape a row.
-func (d drawn) settled(m *Measured) (config, error) {
-	cfg, err := m.settle()
-	if err != nil {
-		return config{}, err
-	}
-
-	d.shape(&cfg)
-
-	return cfg, nil
-}
-
-// options is what the printers in package prettycov take, settled against the destination: --color
-// resolves against where the output goes, which parsing argv is too early to ask.
-func (c config) options(out io.Writer) prettycov.Options {
-	return prettycov.Options{
-		Depth:       c.Depth,
-		Color:       c.Color.palette(out),
-		Counts:      c.Counts,
-		Files:       c.Files,
-		HideCovered: c.HideCovered,
-	}
-}
-
-// shape adds the flags that decide how a row looks. Nothing to parse and nothing to fail: both
-// arrived parsed, because both types read themselves.
-func (d drawn) shape(cfg *config) {
-	cfg.Depth = d.Depth
-	cfg.HideCovered = d.HideCovered
-}
+// gate is --fail-under, read where it is declared.
+func (m *Measured) gate() gate { return gate{m.FailUnder} }
 
 // OptionalPercentage is --hide-covered, the one flag whose value may be left off. Kong has no
 // NoOptDefVal, so it is a mapper: Decode takes a value only when "=" supplied one, which is the
