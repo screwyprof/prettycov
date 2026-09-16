@@ -48,8 +48,8 @@ jobs:
         with:
           # Single-sourced from go.mod (currently 1.26) so CI can never drift from the module.
           # 1.26 rather than 1.27 on purpose: golang/go#80974 makes 1.27 miscount statements, which
-          # is the one bug a coverage tool cannot ship on. See .modernize for the condition to lift
-          # it.
+          # is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27
+          # backport, so this lifts when 1.28 ships and not before.
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum

@@ -28,8 +28,10 @@ which is Python rather than Go and so cannot be fetched the same way — `pip in
 enter the devShell, which registers them on entry. Nothing else asks for it.
 
 Go 1.26, not 1.27. A coverage tool cannot ship on a toolchain that miscounts statements, and 1.27
-does ([golang/go#80974](https://github.com/golang/go/issues/80974)) — the reasoning and the
-condition for lifting the pin are in [.modernize](.modernize).
+does ([golang/go#80974](https://github.com/golang/go/issues/80974)): it splits a straight-line block
+at a blank line and writes the whole run's count into each piece, inflating every figure this tool
+reports. CL 819000 fixed it for Go 1.28 and there is no 1.27 backport, so the pin lifts when 1.28
+ships and not before. It lives in [go.mod](go.mod) and [flake.nix](flake.nix).
 
 ## The gates
 
