@@ -1006,8 +1006,9 @@ func TestRunTotalWithNoPathIsTheWholeTree(t *testing.T) {
 
 // A row is drawn with its own segment, so reading `pkg - 96.41` off a report and asking for "pkg"
 // is the obvious next thing to type and the wrong one — the tree holds it under the whole module
-// path. The message says so when saying so is certain, which is when the prefixed path resolves.
-func TestRunTotalSuggestsThePathUnderTheRoot(t *testing.T) {
+// path. It resolves rather than refusing, which is safe because the prefixed path is checked against
+// the tree before it is used and the literal spelling is tried first.
+func TestRunTotalResolvesThePathUnderTheRoot(t *testing.T) {
 	t.Parallel()
 
 	// The root is a run of single-child directories, as a module path is, so the suggestion has to
@@ -1016,11 +1017,17 @@ func TestRunTotalSuggestsThePathUnderTheRoot(t *testing.T) {
 		"example.com/m/pkg/a.go:1.1,2.2 1 1\n" +
 		"example.com/m/web/b.go:1.1,2.2 1 1\n"
 
-	tests := map[string]struct{ want, suggest string }{
-		"a row's own label":      {want: "pkg", suggest: `, did you mean "example.com/m/pkg"?`},
-		"a deeper path":          {want: "web/b.go", suggest: `, did you mean "example.com/m/web/b.go"?`},
-		"nothing like it":        {want: "nope", suggest: ""},
-		"right root, wrong leaf": {want: "pkg/nope", suggest: ""},
+	tests := map[string]struct{ want, total string }{
+		// Resolved, not suggested: a path read off a row is missing the root the report collapsed
+		// away, and putting it back is something the tree can do rather than ask about.
+		"a row's own label": {want: "pkg", total: "100.00\n"},
+		"a deeper path":     {want: "web/b.go", total: "100.00\n"},
+		// Still there under its own spelling, which is what makes the prefixing safe: Get is asked
+		// first, so nothing that resolves literally is ever rewritten.
+		"the path the profile holds": {want: "example.com/m/pkg", total: "100.00\n"},
+		// The root is real but the leaf is not, so there is nothing to resolve to.
+		"nothing like it":        {want: "nope"},
+		"right root, wrong leaf": {want: "pkg/nope"},
 	}
 
 	for name, tc := range tests {
@@ -1029,16 +1036,24 @@ func TestRunTotalSuggestsThePathUnderTheRoot(t *testing.T) {
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			code := app.Run(
-				[]string{"total", "" + tc.want, "--profile", writeProfile(t, shaped)},
+				[]string{"total", tc.want, "--profile", writeProfile(t, shaped)},
 				stdout,
 				stderr,
 			)
 
-			assert.Equal(t, codeFailed, code)
-			assert.Empty(t, stdout.String())
-			assert.Equal(t,
-				"total: no such package or file in the profile: "+strconv.Quote(tc.want)+tc.suggest+"\n",
-				stderr.String())
+			if tc.total == "" {
+				assert.Equal(t, codeFailed, code)
+				assert.Empty(t, stdout.String())
+				assert.Equal(t,
+					"total: no such package or file in the profile: "+strconv.Quote(tc.want)+"\n",
+					stderr.String())
+
+				return
+			}
+
+			assert.Equal(t, codeOK, code, stderr.String())
+			assert.Equal(t, tc.total, stdout.String())
+			assert.Empty(t, stderr.String())
 		})
 	}
 }

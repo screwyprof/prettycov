@@ -83,18 +83,22 @@ func total(g gate, tree *prettycov.PathTree, want string, s Streams) error {
 	node := tree
 
 	if want != "" {
-		// Quoted, as every message quoting something the reader typed is: a path can be
-		// empty-looking or carry a control byte, and argv is where both arrive from.
-		if node = tree.Get(want); node == nil {
-			// A row carries its own segment, so "pkg/logger" read off a report is the obvious thing
-			// to type and the wrong one. UnderRoot answers whether the tree holds it under the root
-			// the report collapsed away.
-			hint := ""
-			if full, ok := tree.UnderRoot(want); ok {
-				hint = fmt.Sprintf(", did you mean %q?", full)
-			}
+		node = tree.Get(want)
 
-			_, _ = fmt.Fprintf(s.Err, "total: no such package or file in the profile: %q%s\n", want, hint)
+		// A row is drawn with its own segment, so "pkg/logger" copied off a report is missing the
+		// module root the report collapsed away. Resolved rather than merely suggested: UnderRoot
+		// returns a path only after confirming the tree holds it, and it is asked only once Get has
+		// missed, so a path that resolves literally always wins. There is nothing to choose between.
+		if node == nil {
+			if full, ok := tree.UnderRoot(want); ok {
+				node = tree.Get(full)
+			}
+		}
+
+		if node == nil {
+			// Quoted, as every message quoting something the reader typed is: a path can be
+			// empty-looking or carry a control byte, and argv is where both arrive from.
+			_, _ = fmt.Fprintf(s.Err, "total: no such package or file in the profile: %q\n", want)
 
 			return exitError{code: ExitFailed}
 		}
