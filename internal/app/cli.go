@@ -4,8 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
+
+	"github.com/alecthomas/kong"
 
 	"github.com/screwyprof/prettycov"
 )
@@ -18,6 +23,10 @@ const defaultProfile = "coverage.out"
 // fixed value that stays on a screen everywhere: hugo is 37 rows at depth 1, 152 at depth 2.
 const defaultDepth = "1"
 
+var errBadPercentage = errors.New("want a percentage from 0 to 100")
+
+var errEmptyExclude = errors.New("want a pattern")
+
 var errRootNamesNoPkg = errors.New("--old names no package")
 
 // measured are the flags that decide what is in the answer. Embedded in every command, because every
@@ -28,15 +37,28 @@ type measured struct {
 	Profile   string   `help:"Coverage profile to read."                                                            default:"${profile}" placeholder:"PATH"`
 	Old       string   `help:"Root package path to shorten."                                                                             placeholder:"PATH"   and:"rename"`
 	New       string   `help:"What to shorten it to; --new=. strips it."                                                                 placeholder:"PATH"   and:"rename"`
-	Exclude   []string `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP"`
+	Exclude   []string `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP"              sep:"none"`
 	FailUnder *float64 `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
-	Color     string   `help:"When to colour: auto, never or always."                                               default:"auto"                                         enum:"auto,never,always"`
+	Color     string   `help:"When to colour: auto, never or always."                                               default:"auto"                                                    enum:"auto,never,always"`
 }
 
 // Validate is kong's per-struct hook. A root of only separators names no package — `--old=$(MODULE)/`
 // with MODULE unset — which the `and:"rename"` tag cannot say, because it is about a value rather
 // than about the pair.
 func (m *measured) Validate() error {
+	if m.FailUnder != nil && badPercentage(*m.FailUnder) {
+		return fmt.Errorf("--fail-under: %w", errBadPercentage)
+	}
+
+	// Kong's slice flag takes "" without complaint, where the flag package handed it to
+	// ParseExclude and got a refusal. The rule is the same either way: a pattern that matches
+	// everything is never what was meant.
+	for _, pattern := range m.Exclude {
+		if pattern == "" {
+			return fmt.Errorf("--exclude: %w", errEmptyExclude)
+		}
+	}
+
 	if m.Old != "" && strings.TrimRight(m.Old, "/") == "" {
 		return fmt.Errorf("%w: got --old=%q", errRootNamesNoPkg, m.Old)
 	}
@@ -49,12 +71,16 @@ func (m *measured) Validate() error {
 //
 //nolint:lll // a struct tag is one unit.
 type drawn struct {
-	Depth       string   `help:"Levels below the top row, like tree -L, or \"max\"." default:"${depth}" placeholder:"LEVELS"`
-	HideCovered *float64 `help:"Leave out subtrees at this percentage or above."                        placeholder:"PCT"`
+	Depth       string   `help:"Levels below the top row, like tree -L, or \"max\"."             default:"${depth}" placeholder:"LEVELS"`
+	HideCovered *float64 `help:"Leave out subtrees at this percentage or above; bare means 100."                    placeholder:"PCT"    type:"hidecovered"`
 }
 
-// CLI is the whole command line. The default command draws the tree, which is what a bare
-// `prettycov` has always done; "withargs" lets it keep taking a profile as a positional.
+// CLI is the whole command line. Every command is named: there is no default, so `prettycov` alone
+// prints help rather than drawing.
+//
+// That is what makes the four peers. An implicit command has to be reachable without naming it,
+// which means its flags live at the root — where the help does not list them and a bare word is
+// ambiguous between a command and a file. Naming it costs one word and deletes all of that.
 //
 //nolint:lll // a struct tag is one unit.
 type CLI struct {
@@ -62,26 +88,27 @@ type CLI struct {
 	// instead, they bound only after it, and `--profile X total` silently read the default profile.
 	measured `embed:""`
 
-	Tree    treeCmd    `cmd:"" name:"tree" default:"withargs" help:"Draw the packages and what they cover."`
-	Misses  missesCmd  `cmd:""                                help:"Print where the uncovered statements are, as file:line:col."`
-	Total   totalCmd   `cmd:""                                help:"Print only the coverage percentage, for a Makefile or a badge."`
-	Version versionCmd `cmd:""                                help:"Print the version and exit."`
+	Version2 kong.VersionFlag `name:"version" short:"v" help:"Print the version and exit."`
+
+	Report  reportCmd  `cmd:"" help:"Draw the packages and what they cover, one row each."`
+	Misses  missesCmd  `cmd:"" help:"Print where the uncovered statements are, as file:line:col."`
+	Total   totalCmd   `cmd:"" help:"Print only the coverage percentage, for a Makefile or a badge."`
+	Version versionCmd `cmd:"" help:"Print the version and exit."`
+	// Kong has --help but no help command; cobra generates one. Four lines to match.
+	Help helpCmd `cmd:"" help:"Print help for a command."`
 }
 
 //nolint:lll // a struct tag is one unit.
-type treeCmd struct {
+type reportCmd struct {
 	drawn `embed:""`
 
-	Files  bool   `help:"Draw the profile's files, not only its packages."`
-	Counts bool   `help:"Show uncovered/total statements after each percentage."`
-	Path   string `help:"Coverage profile to read."                              arg:"" optional:"" placeholder:"PROFILE"`
+	Files  bool `help:"Draw the profile's files, not only its packages."`
+	Counts bool `help:"Show uncovered/total statements after each percentage."`
 }
 
 //nolint:lll // a struct tag is one unit.
 type missesCmd struct {
 	drawn `embed:""`
-
-	Path string `arg:"" optional:"" help:"Coverage profile to read." placeholder:"PROFILE"`
 }
 
 //nolint:lll // a struct tag is one unit.
@@ -91,13 +118,28 @@ type totalCmd struct {
 
 type versionCmd struct{}
 
+type helpCmd struct {
+	Command []string `arg:"" optional:"" help:"Command to print help for."`
+}
+
+func (c *helpCmd) Run(k *kong.Context) error {
+	ctx, err := kong.Trace(k.Kong, c.Command)
+	if err != nil {
+		//nolint:wrapcheck // kong names the command it could not find.
+		return err
+	}
+
+	//nolint:wrapcheck // kong writes the help itself.
+	return ctx.PrintUsage(false)
+}
+
 // streams is what the commands write to, bound by Run so that nothing reaches os.Stdout directly.
 type streams struct {
 	out, err io.Writer
 }
 
-func (c *treeCmd) Run(s *streams, m *measured) error {
-	cfg, err := m.settle(c.Path)
+func (c *reportCmd) Run(s *streams, m *measured) error {
+	cfg, err := m.settle()
 	if err != nil {
 		return err
 	}
@@ -112,7 +154,7 @@ func (c *treeCmd) Run(s *streams, m *measured) error {
 }
 
 func (c *missesCmd) Run(s *streams, m *measured) error {
-	cfg, err := m.settle(c.Path)
+	cfg, err := m.settle()
 	if err != nil {
 		return err
 	}
@@ -127,7 +169,7 @@ func (c *missesCmd) Run(s *streams, m *measured) error {
 }
 
 func (c *totalCmd) Run(s *streams, m *measured) error {
-	cfg, err := m.settle("")
+	cfg, err := m.settle()
 	if err != nil {
 		return err
 	}
@@ -160,14 +202,9 @@ type config struct {
 	Total       *string
 }
 
-// settle turns the measured flags into the half of a config every command shares. The positional is
-// a profile for the commands that draw one; total passes "" because its own is a node.
-func (m measured) settle(positional string) (config, error) {
+// settle turns the measured flags into the half of a config every command shares.
+func (m measured) settle() (config, error) {
 	cfg := config{Profile: m.Profile, CurrentRoot: m.Old, NewRoot: m.New, FailUnder: m.FailUnder}
-
-	if positional != "" {
-		cfg.Profile = positional
-	}
 
 	for _, pattern := range m.Exclude {
 		re, err := prettycov.ParseExclude(pattern)
@@ -200,3 +237,42 @@ func (d drawn) shape(cfg *config) error {
 
 	return nil
 }
+
+// optionalPercentage is --hide-covered, the one flag whose value may be left off. Kong has no
+// NoOptDefVal, so it is a mapper: IsBool stops the scanner consuming the next argument, and Decode
+// takes the value only when "=" supplied one. It is the same shape kong's own boolMapper uses.
+//
+// Named rather than registered for *float64, which --fail-under also is and which has no bare form.
+type optionalPercentage struct{}
+
+// IsBool reports that no following argument belongs to this flag.
+func (optionalPercentage) IsBool() bool { return true }
+
+func (optionalPercentage) Decode(ctx *kong.DecodeContext, target reflect.Value) error {
+	pct := bareHideCovered
+
+	if ctx.Scan.Peek().Type == kong.FlagValueToken {
+		parsed, err := strconv.ParseFloat(fmt.Sprint(ctx.Scan.Pop().Value), 64)
+		if err != nil || badPercentage(parsed) {
+			//nolint:wrapcheck // a sentinel of this package's own.
+			return errBadPercentage
+		}
+
+		pct = parsed
+	}
+
+	target.Set(reflect.ValueOf(&pct))
+
+	return nil
+}
+
+// badPercentage is the one rule both thresholds obey. NaN needs naming: every comparison against it
+// is false, so a gate would pass at any coverage and say nothing about it — --fail-under=nan printed
+// "is below NaN%" and exited 1 on a report that was fine.
+func badPercentage(pct float64) bool {
+	return math.IsNaN(pct) || pct < 0 || pct > 100
+}
+
+// bareHideCovered is what --hide-covered means with nothing after it: hide what is fully covered,
+// where absence means "nothing to do here".
+const bareHideCovered = 100.0

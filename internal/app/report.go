@@ -10,7 +10,7 @@ import (
 	"github.com/screwyprof/prettycov"
 )
 
-// showReport renders the profile and, when -fail-under was given, grades the total against it.
+// showReport renders the profile and, when --fail-under was given, grades the total against it.
 //
 // It does not change directory. It used to chdir to the profile's directory and then open the
 // path it was given, which meant any relative path with a directory component failed to resolve.
@@ -29,7 +29,7 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	}
 
 	// Asked before any flag is judged. A profile with nothing in it has nothing for a pattern or a
-	// root to match, so every one of them would be reported stale — a good `-old=$(MODULE)` named
+	// root to match, so every one of them would be reported stale — a good `--old=$(MODULE)` named
 	// as the fault when the profile is what is empty, and exit 2 where the gate below says 1.
 	if !anyStatements(items) {
 		return refuseEmpty(cfg, "no statements to cover", stderr)
@@ -41,12 +41,12 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 	shortened, renamed := prettycov.Shorten(kept, cfg.CurrentRoot, cfg.NewRoot)
 
 	// A root that matched nothing did not rename, which is the argument mistake parseFlags refuses
-	// -old alone for — found a step later only because the profile is what answers it. No report
+	// --old alone for — found a step later only because the profile is what answers it. No report
 	// with it, as for any other argument mistake: the labels would not be the ones asked for.
 	//
-	// -exclude is not held to this. A rename transforms the output, so one that does not happen
+	// --exclude is not held to this. A rename transforms the output, so one that does not happen
 	// leaves a report nobody asked for; a pattern is a filter, and "drop this if it is here" is a
-	// reasonable thing to write. A defensive `-exclude='\.pb\.go$'`, or one config shared by
+	// reasonable thing to write. A defensive `--exclude='\.pb\.go$'`, or one config shared by
 	// several repositories, is right to match nothing in a repository that generates nothing —
 	// .gitignore, codecov's ignore list and golangci-lint's exclusions all take the same view.
 	// It still says so on stderr, which is how a typo shows up.
@@ -56,15 +56,15 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 
 	tree := prettycov.Process(shortened)
 
-	// Settled once here, so the tree and -total cannot answer it differently.
+	// Settled once here, so the tree and total cannot answer it differently.
 	//
-	// -exclude is named without asking which flag did it. Three things make that safe together: the
+	// --exclude is named without asking which flag did it. Three things make that safe together: the
 	// profile held statements or the guard above would have returned, only Exclude takes any away,
 	// and ParseProfile refuses a profile whose counts overflow — which is Percentage's other way of
 	// answering !ok, and the one that would put a message here about a flag nobody passed. So there
 	// is no other way to arrive, and weighing the exclusions could only reach the same answer.
 	if _, ok := tree.Coverage.Percentage(); !ok {
-		return refuseEmpty(cfg, "-exclude left nothing to report", stderr)
+		return refuseEmpty(cfg, "--exclude left nothing to report", stderr)
 	}
 
 	if cfg.Total != nil {
@@ -73,7 +73,7 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 
 	// The destination is asked about here and nowhere earlier: parsing argv is too early to know
 	// where the report goes, and no other flag needs to.
-	// checkThreshold below reads the tree, not the rows, so -hide-covered cannot move the gate.
+	// checkThreshold below reads the tree, not the rows, so --hide-covered cannot move the gate.
 	opts := prettycov.Options{
 		Depth:       cfg.Depth,
 		Color:       cfg.Color.palette(stdout),
@@ -82,7 +82,7 @@ func showReport(cfg config, stdout, stderr io.Writer) int {
 		HideCovered: cfg.HideCovered,
 	}
 
-	// -misses replaces the report rather than decorating it, so this is a choice of printer and not
+	// misses replaces the report rather than decorating it, so this is a choice of printer and not
 	// a second path through the report. The positions are the drill-down and the tree is the
 	// summary: printing both would answer the question the default invocation already answered, and
 	// a tree row can be read as a location by whatever parses this, since a label may carry a colon.
@@ -154,11 +154,11 @@ func underRoot(tree *prettycov.PathTree, want string) string {
 	return ""
 }
 
-// reportRename reports whether -old named a package the profile does not hold — a typo, or a module
+// reportRename reports whether --old named a package the profile does not hold — a typo, or a module
 // path that has moved — and says so. parseFlags has already refused a root that names no package at
 // all; this is one that names the wrong one, which only the matching can catch.
 //
-// Asked of the whole profile rather than of what survived -exclude. Shorten runs on what is left,
+// Asked of the whole profile rather than of what survived --exclude. Shorten runs on what is left,
 // so a pattern that took every file under a perfectly good root would otherwise be reported as a
 // bad root — sending someone to fix a flag that is already right, which is the confusion the
 // overlap branch in reportExclusions exists to prevent.
@@ -178,7 +178,7 @@ func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stder
 		return false
 	}
 
-	_, _ = fmt.Fprintf(stderr, "-old %q matched nothing, so no label was shortened\n", cfg.CurrentRoot)
+	_, _ = fmt.Fprintf(stderr, "--old %q matched nothing, so no label was shortened\n", cfg.CurrentRoot)
 
 	return true
 }
@@ -198,7 +198,7 @@ func anyStatements(files []prettycov.FileCoverage) bool {
 // refuseEmpty says why there is nothing to report and grades the absence.
 //
 // Refused rather than drawn, because an empty report exits 0 and turns a coverage gate into a green
-// no-op. With -fail-under it is a failed gate instead: exit 2 would read as "prettycov could not
+// no-op. With --fail-under it is a failed gate instead: exit 2 would read as "prettycov could not
 // run" when the truth is that coverage was too low.
 //
 // The reason is the caller's, and the gate only adds what it wanted — being told to check
@@ -227,7 +227,7 @@ func refuseEmpty(cfg config, reason string, stderr io.Writer) int {
 // already to hand rather than a second pass over the filtering: no uncovered statement anywhere is
 // an all-clear worth printing, and uncovered statements the filters leave out is the opposite.
 // Saying the first when the second happened is a false all-clear on a profile with work left in it —
-// `-misses -hide-covered=0` over a fully drawn tree reported completion on 34 statements, exit 0.
+// `misses --hide-covered=0` over a fully drawn tree reported completion on 34 statements, exit 0.
 //
 // It does not say what one level deeper would have shown, which nothing here knows. Re-deriving it
 // would put the filtering in a second place.
@@ -246,19 +246,19 @@ func (c config) whyNothingShown(tree *prettycov.PathTree) string {
 // later has to be named, which is what keeps whyNothingShown out of the business of diagnosing
 // which one did it.
 //
-// -depth is always in play and always has a value, so it is always named. -hide-covered is named
+// --depth is always in play and always has a value, so it is always named. --hide-covered is named
 // when it was given, which is the only time it can have taken anything.
 //
-// -files is not one of these, not because it shapes nothing — it decides which rows exist, and
-// reaches -hide-covered's judgement through the same gate — but because it cannot be the one that
+// --files is not one of these, not because it shapes nothing — it decides which rows exist, and
+// reaches --hide-covered's judgement through the same gate — but because it cannot be the one that
 // emptied the output. A list of positions is made of files whatever it says, and a tree keeps the
-// top row -depth always draws. -exclude is not either: it acts on the profile, and a report it
+// top row --depth always draws. --exclude is not either: it acts on the profile, and a report it
 // emptied is refused further up with a message of its own.
 func (c config) outputFilters() string {
-	filters := "-depth=" + c.Depth.String()
+	filters := "--depth=" + c.Depth.String()
 
 	if c.HideCovered != nil {
-		filters += fmt.Sprintf(", -hide-covered=%v", *c.HideCovered)
+		filters += fmt.Sprintf(", --hide-covered=%v", *c.HideCovered)
 	}
 
 	return filters
@@ -266,15 +266,15 @@ func (c config) outputFilters() string {
 
 // showTotal writes one percentage and nothing else, for a caller reading it into a variable.
 //
-// -total=path reports a node of the tree rather than the whole of it, which is the one number the
-// report shows and nothing could hand back: `prettycov -depth=max` draws `web/handler - 89.66` and
+// total <path> reports a node of the tree rather than the whole of it, which is the one number the
+// report shows and nothing could hand back: `prettycov --depth=max` draws `web/handler - 89.66` and
 // there was no way to get 89.66 out. The path is spelled as the report prints it, because the tree
-// is built from shortened paths and this looks the node up in that tree — the opposite of -exclude,
+// is built from shortened paths and this looks the node up in that tree — the opposite of --exclude,
 // which matches the profile's own paths, and the right way round here: you read a row, then ask for
 // its number.
 //
 // The same node is printed and graded. Two lookups would be two chances to disagree, which is
-// exactly how -fail-under=100 came to pass a run whose own report read 99.99.
+// exactly how --fail-under=100 came to pass a run whose own report read 99.99.
 func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
 	node, want := tree, *cfg.Total
 
@@ -282,7 +282,7 @@ func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) i
 		// Quoted, as every message quoting something the reader typed is: a path can be
 		// empty-looking or carry a control byte, and argv is where both arrive from.
 		if node = tree.Get(want); node == nil {
-			_, _ = fmt.Fprintf(stderr, "-total names no package or file in the profile: %q%s\n",
+			_, _ = fmt.Fprintf(stderr, "total: no such package or file in the profile: %q%s\n",
 				want, underRoot(tree, want))
 
 			return exitFailed
@@ -295,7 +295,7 @@ func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) i
 	// tree: exit 1 and the shortfall, not exit 2 as though prettycov could not run.
 	pct, ok := node.Coverage.Percentage()
 	if !ok {
-		return refuseEmpty(cfg, fmt.Sprintf("-total names nothing with statements to cover: %q", want), stderr)
+		return refuseEmpty(cfg, fmt.Sprintf("total names nothing with statements to cover: %q", want), stderr)
 	}
 
 	_, _ = fmt.Fprintln(stdout, pct)
@@ -308,7 +308,7 @@ func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) i
 // empty profile, which showReport answers before it gets here — there every pattern took nothing,
 // so the accounting is a column of zeroes under a line already saying why.
 //
-// A pattern that matched nothing is said, not refused: see showReport for why -old is and this is
+// A pattern that matched nothing is said, not refused: see showReport for why --old is and this is
 // not.
 func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
 	for _, ex := range excluded {
@@ -316,14 +316,14 @@ func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
 		// Saying "matched nothing" here sends someone to fix a pattern that is already right, and
 		// deleting it stops working the day such a file lands outside the earlier pattern's reach.
 		if ex.Files == 0 && ex.Blocks == 0 && ex.Overlapped() > 0 {
-			_, _ = fmt.Fprintf(stderr, "-exclude %q took nothing out, %s already excluded\n",
+			_, _ = fmt.Fprintf(stderr, "--exclude %q took nothing out, %s already excluded\n",
 				ex.Pattern, units(ex.OverlappedFiles, ex.OverlappedBlocks))
 
 			continue
 		}
 
 		if ex.Files == 0 && ex.Blocks == 0 {
-			_, _ = fmt.Fprintf(stderr, "-exclude %q matched nothing\n", ex.Pattern)
+			_, _ = fmt.Fprintf(stderr, "--exclude %q matched nothing\n", ex.Pattern)
 
 			continue
 		}
@@ -337,7 +337,7 @@ func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
 			overlap = ", and " + units(ex.OverlappedFiles, ex.OverlappedBlocks) + " already excluded"
 		}
 
-		_, _ = fmt.Fprintf(stderr, "-exclude %q left out %s in %s%s\n",
+		_, _ = fmt.Fprintf(stderr, "--exclude %q left out %s in %s%s\n",
 			ex.Pattern, plural(ex.Statements, "statement"), units(ex.Files, ex.Blocks), overlap)
 	}
 }
@@ -367,12 +367,12 @@ func plural(n int, thing string) string {
 }
 
 // checkThreshold grades node's coverage against want, which is nil when no gate was asked for. The
-// node is the whole tree for every caller but -total=path, which hands over the one it printed —
+// node is the whole tree for every caller but total <path>, which hands over the one it printed —
 // grading a second lookup would be a second chance to disagree with the number on screen.
 //
 // CoverageStats answers whether the total is at the bar, rather than this comparing the ratio
 // itself: at 100 the two differ. A profile one statement short of complete divides to exactly 100
-// in float64 once the counts are large enough, so comparing ratios passed -fail-under=100 for a
+// in float64 once the counts are large enough, so comparing ratios passed --fail-under=100 for a
 // report that reads 99.99 — the gate and the figure beside it disagreeing about the same run.
 //
 // There is always a number by here: showReport refuses a profile with nothing to cover before any
@@ -388,9 +388,9 @@ func checkThreshold(want *float64, node *prettycov.PathTree, stderr io.Writer) i
 		// Percentage renders the coverage figure, as it does everywhere else, so this message and
 		// the report cannot show different numbers for the same thing.
 		//
-		// The threshold is rounded instead, which is not free of trouble: -fail-under=99.99999
+		// The threshold is rounded instead, which is not free of trouble: --fail-under=99.99999
 		// reads back as 100.00%, a figure Percentage will never print, and at 79.999% against
-		// -fail-under=80 both sides round to 80.00 and the line contradicts itself. Printing the
+		// --fail-under=80 both sides round to 80.00 and the line contradicts itself. Printing the
 		// threshold as typed would fix both, and would change this message for everyone.
 		_, _ = fmt.Fprintf(stderr, "total coverage %s%% is below %.2f%%\n", pct, *want)
 

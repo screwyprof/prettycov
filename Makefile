@@ -149,7 +149,7 @@ test-cover-html: coverage.html ## show html coverage report
 # such as codecov.
 test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
-	@go run ./cmd/prettycov -total $(COVERAGE)
+	@go run ./cmd/prettycov total --profile=$(COVERAGE)
 
 # Go measures statements, not branches: `return a && b` is one statement, covered the moment it
 # runs, whichever way it evaluates. gobco instruments the conditions themselves and says which
@@ -199,7 +199,7 @@ mutate: ## report mutants the tests failed to kill
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
 test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
-	@go run ./cmd/prettycov -profile=$(COVERAGE) -old=$(LOCAL_PACKAGES) -new=prettycov -depth=2
+	@go run ./cmd/prettycov report --profile=$(COVERAGE) --old=$(LOCAL_PACKAGES) --new=prettycov --depth=2
 
 lint: require-golangci ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
@@ -230,7 +230,7 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@echo -e "$(OK_COLOR)==> Checking$(NO_COLOR)" >&2
 	@echo '$$ make build'
 	@$(MAKE) --no-print-directory build >/dev/null
-	@$(PWD)/$(BINARY) -version
+	@$(PWD)/$(BINARY) --version
 	@echo; echo '$$ make test'
 	@$(MAKE) --no-print-directory test 2>&1 | grep 'coverage:' | grep -v '/cmd/' | tr -s '\t' ' '
 	@echo; echo '$$ make lint-all'

@@ -36,13 +36,18 @@ func status(code int) error {
 func Run(args []string, stdout, stderr io.Writer) int {
 	var cli CLI
 
+	// --help and --version print and then ask kong to exit. Nothing here exits, so the request is
+	// recorded and answered below; without it kong printed the help and then ran the command.
+	done := -1
+
 	parser, err := kong.New(&cli,
 		kong.Name("prettycov"),
 		kong.Description("Given a coverage profile produced by 'go test', draw the packages and what they cover.\n\n"+
 			"\tgo test -covermode=atomic -coverprofile=coverage.out ./...\n\tprettycov"),
 		kong.Writers(stdout, stderr),
-		kong.Vars{"profile": defaultProfile, "depth": defaultDepth},
-		kong.Exit(func(int) {}),
+		kong.Vars{"profile": defaultProfile, "depth": defaultDepth, "version": buildVersion()},
+		kong.Exit(func(code int) { done = code }),
+		kong.NamedMapper("hidecovered", optionalPercentage{}),
 	)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\n", err)
@@ -50,14 +55,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailed
 	}
 
+	// No command at all is not a mistake, it is someone finding out what this does. Kong would
+	// answer "expected one of ..."; the help says that and more, through kong's own printer.
+	if len(args) == 0 {
+		args = []string{"--help"}
+	}
+
 	ctx, err := parser.Parse(args)
+
+	if done >= 0 {
+		return done
+	}
+
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%v\nrun \"prettycov --help\" for usage\n", err)
 
 		return exitFailed
 	}
 
-	return report(ctx.Run(&streams{out: stdout, err: stderr}, &cli.measured), stderr)
+	return report(ctx.Run(&streams{out: stdout, err: stderr}, &cli.measured, ctx), stderr)
 }
 
 // report turns what a command returned into a status, printing anything that is a real error.
