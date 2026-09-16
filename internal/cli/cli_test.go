@@ -1,7 +1,8 @@
-package app_test
+package cli_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/screwyprof/prettycov/internal/app"
+	"github.com/screwyprof/prettycov/internal/cli"
 )
 
 // Literal, not app's own constants: a script sees these numbers, so renumbering one has to fail.
@@ -1646,4 +1648,22 @@ func TestRunRefusesABadDepthOnBothDrawingCommands(t *testing.T) {
 			assert.Contains(t, stderr.String(), "--depth")
 		})
 	}
+}
+
+// ExitCodeOf is the contract between the handlers and the composition root: an error a handler has
+// already reported carries its own status, and anything else is a usage failure for app to print.
+//
+// Only the "not reported" half can be built from outside, which is the point — a status is not
+// something a caller of this package can invent.
+var errSomethingWentWrong = errors.New("something went wrong")
+
+func TestExitCodeOfReportsOnlyWhatAHandlerSet(t *testing.T) {
+	t.Parallel()
+
+	code, reported := cli.ExitCodeOf(errSomethingWentWrong)
+	assert.False(t, reported, "a plain error carries no status of its own")
+	assert.Equal(t, cli.ExitFailed, code, "and app treats it as a usage failure")
+
+	_, reported = cli.ExitCodeOf(nil)
+	assert.False(t, reported)
 }

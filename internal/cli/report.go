@@ -1,130 +1,77 @@
-package app
+package cli
 
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"path"
 
 	"github.com/screwyprof/prettycov"
 )
 
-// showReport renders the profile and, when --fail-under was given, grades the total against it.
+// prepare turns the profile into a tree, or an error
+// carrying the status for something already reported.
 //
-// It does not change directory. It used to chdir to the profile's directory and then open the
-// path it was given, which meant any relative path with a directory component failed to resolve.
-func showReport(cfg config, stdout, stderr io.Writer) int {
+// It does not know which command asked. What is done with the tree is the command's, which is why
+// config no longer carries a flag saying which one ran.
+//
+// It does not change directory. It used to chdir to the profile's directory and then open the path
+// it was given, which meant any relative path with a directory component failed to resolve.
+func prepare(cfg config, s Streams) (*prettycov.PathTree, error) {
 	items, err := prettycov.ParseProfile(cfg.Profile)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		_, _ = fmt.Fprintf(s.Err, "%v\n", err)
 
 		// Someone running prettycov for the first time, in a repo with no profile yet, is one
 		// command away. Say which, rather than leaving them a bare file-not-found.
 		if errors.Is(err, fs.ErrNotExist) {
-			_, _ = fmt.Fprintf(stderr, "run: go test -coverprofile=%s ./...\n", cfg.Profile)
+			_, _ = fmt.Fprintf(s.Err, "run: go test -coverprofile=%s ./...\n", cfg.Profile)
 		}
 
-		return exitFailed
+		return nil, exitError{code: ExitFailed}
 	}
 
 	// Asked before any flag is judged. A profile with nothing in it has nothing for a pattern or a
 	// root to match, so every one of them would be reported stale — a good `--old=$(MODULE)` named
 	// as the fault when the profile is what is empty, and exit 2 where the gate below says 1.
 	if !anyStatements(items) {
-		return refuseEmpty(cfg, "no statements to cover", stderr)
+		return nil, refuseEmpty(cfg, "no statements to cover", s)
 	}
 
 	kept, excluded := prettycov.Exclude(items, cfg.Exclude)
-	reportExclusions(excluded, stderr)
+	reportExclusions(excluded, s)
 
-	shortened, renamed := prettycov.Shorten(kept, cfg.CurrentRoot, cfg.NewRoot)
+	shortened, renamed := prettycov.Shorten(kept, cfg.Rename.From, cfg.Rename.To)
 
-	// A root that matched nothing did not rename, which is the argument mistake parseFlags refuses
-	// --old alone for — found a step later only because the profile is what answers it. No report
-	// with it, as for any other argument mistake: the labels would not be the ones asked for.
-	//
-	// --exclude is not held to this. A rename transforms the output, so one that does not happen
-	// leaves a report nobody asked for; a pattern is a filter, and "drop this if it is here" is a
-	// reasonable thing to write. A defensive `--exclude='\.pb\.go$'`, or one config shared by
-	// several repositories, is right to match nothing in a repository that generates nothing —
-	// .gitignore, codecov's ignore list and golangci-lint's exclusions all take the same view.
-	// It still says so on stderr, which is how a typo shows up.
-	if reportRename(cfg, items, renamed, stderr) {
-		return exitFailed
+	// A root that matched nothing did not rename, which is an argument mistake found a step later
+	// only because the profile is what answers it. No report with it: the labels would not be the
+	// ones asked for. --exclude is not held to this — a pattern is a filter, and "drop this if it
+	// is here" is a reasonable thing to write.
+	if reportRename(cfg, items, renamed, s) {
+		return nil, exitError{code: ExitFailed}
 	}
 
 	tree := prettycov.Process(shortened)
 
-	// Settled once here, so the tree and total cannot answer it differently.
-	//
-	// --exclude is named without asking which flag did it. Three things make that safe together: the
-	// profile held statements or the guard above would have returned, only Exclude takes any away,
-	// and ParseProfile refuses a profile whose counts overflow — which is Percentage's other way of
-	// answering !ok, and the one that would put a message here about a flag nobody passed. So there
-	// is no other way to arrive, and weighing the exclusions could only reach the same answer.
+	// Settled once here, so no two commands can answer it differently.
 	if _, ok := tree.Coverage.Percentage(); !ok {
-		return refuseEmpty(cfg, "--exclude left nothing to report", stderr)
+		return nil, refuseEmpty(cfg, "--exclude left nothing to report", s)
 	}
 
-	if cfg.Total != nil {
-		return showTotal(cfg, tree, stdout, stderr)
-	}
-
-	// The destination is asked about here and nowhere earlier: parsing argv is too early to know
-	// where the report goes, and no other flag needs to.
-	// checkThreshold below reads the tree, not the rows, so --hide-covered cannot move the gate.
-	opts := prettycov.Options{
-		Depth:       cfg.Depth,
-		Color:       cfg.Color.palette(stdout),
-		Counts:      cfg.Counts,
-		Files:       cfg.Files,
-		HideCovered: cfg.HideCovered,
-	}
-
-	// misses replaces the report rather than decorating it, so this is a choice of printer and not
-	// a second path through the report. The positions are the drill-down and the tree is the
-	// summary: printing both would answer the question the default invocation already answered, and
-	// a tree row can be read as a location by whatever parses this, since a label may carry a colon.
-	//
-	// Both printers have the same shape — (writer, tree, options) returning what they drew — so the
-	// call below does not know which one it is holding. What they return is each one's own unit,
-	// rows against statements, and the only thing they promise in common is that it is zero exactly
-	// when nothing was written.
-	draw := prettycov.DisplayTree
-	if cfg.Misses {
-		draw = prettycov.DisplayMisses
-	}
-
-	shown := draw(stdout, tree, opts)
-
-	// A command that prints nothing, or less than everything, reads as one that ran clean.
-	cfg.reportOutput(tree, shown, stderr)
-
-	return checkThreshold(cfg.FailUnder, tree, stderr)
+	return tree, nil
 }
 
-// reportOutput says what the printer produced when that is not evident from the output itself. The
-// exit code is unchanged and the report is correct either way.
+// prepare retrieves; each command renders. They are composed in a command's Run and not bundled
+// into one interface: what turns flags into a tree is the same for every command, and what turns a
+// tree into output is the only thing that differs.
+
+// sayNothingShown reports a printer that came up empty, which both drawing commands can be.
 //
-// Printing nothing is the shared case and stays printer-blind: both can be emptied, and by the same
-// filters. Being a fragment is not shared — a tree carries its subtree's count on every row, so the
-// rows it draws account for every statement at any depth, which is what makes a shallow one a
-// summary rather than a short list. So that is asked of the one printer it can happen to, and shown
-// is read as that printer's own unit rather than as a count the two have to agree on.
-//
-// Short is the quieter mistake of the two. `file:line:col` is the shape every linter and compiler
-// emits, and in all of them it is everything they found, so a list that stops early reads as a clean
-// bill: pipe eight of thirty-four into `vim -q -`, fix them, and the quickfix says there is nothing
-// left. On stderr, so the pipe carries only the list.
-func (c config) reportOutput(tree *prettycov.PathTree, shown int, stderr io.Writer) {
-	switch {
-	case shown == 0:
-		_, _ = fmt.Fprintln(stderr, c.whyNothingShown(tree))
-	case c.Misses && shown < tree.Coverage.Uncovered:
-		_, _ = fmt.Fprintf(stderr, "%s lists %d of %s\n",
-			c.outputFilters(), shown, plural(tree.Coverage.Uncovered, "uncovered statement"))
-	}
+// It asks nothing about which printer that was. One drawing rows and one printing positions would
+// need a message each, and a third would need a third — every one of them a second place holding an
+// opinion about what the filters do. The filters emptied it; naming them is the answer either way.
+func sayNothingShown(cfg config, tree *prettycov.PathTree, s Streams) {
+	_, _ = fmt.Fprintln(s.Err, cfg.whyNothingShown(tree))
 }
 
 // underRoot suggests the path with the module root in front of it, when that is what resolves.
@@ -162,7 +109,7 @@ func underRoot(tree *prettycov.PathTree, want string) string {
 // so a pattern that took every file under a perfectly good root would otherwise be reported as a
 // bad root — sending someone to fix a flag that is already right, which is the confusion the
 // overlap branch in reportExclusions exists to prevent.
-func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stderr io.Writer) bool {
+func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, s Streams) bool {
 	// A root alone is refused by parseFlags, which TestRunRefusesHalfARename drives end to end, so
 	// a root that is set means a target came with it. Testing NewRoot here as well would be a guard
 	// no invocation can reach, and an uncoverable branch in a tool that reports coverage.
@@ -170,15 +117,15 @@ func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, stder
 	// renamed is a shortcut, not a second reason: Exclude only drops files, never renames them, so
 	// anything it left that matched the root is in the profile too and HasRoot would agree. It
 	// keeps even that scan off the path where the rename worked, which is every run not a mistake.
-	if cfg.CurrentRoot == "" || renamed > 0 {
+	if !cfg.Rename.asked() || renamed > 0 {
 		return false
 	}
 
-	if prettycov.HasRoot(items, cfg.CurrentRoot) {
+	if prettycov.HasRoot(items, cfg.Rename.From) {
 		return false
 	}
 
-	_, _ = fmt.Fprintf(stderr, "--old %q matched nothing, so no label was shortened\n", cfg.CurrentRoot)
+	_, _ = fmt.Fprintf(s.Err, "--old %q matched nothing, so no label was shortened\n", cfg.Rename.From)
 
 	return true
 }
@@ -204,16 +151,16 @@ func anyStatements(files []prettycov.FileCoverage) bool {
 // The reason is the caller's, and the gate only adds what it wanted — being told to check
 // `go test -coverprofile` for a report your own pattern emptied is the confusion it exists to
 // prevent.
-func refuseEmpty(cfg config, reason string, stderr io.Writer) int {
+func refuseEmpty(cfg config, reason string, s Streams) error {
 	if cfg.FailUnder != nil {
-		_, _ = fmt.Fprintf(stderr, "%s, wanted at least %.2f%%\n", reason, *cfg.FailUnder)
+		_, _ = fmt.Fprintf(s.Err, "%s, wanted at least %.2f%%\n", reason, *cfg.FailUnder)
 
-		return exitBelow
+		return exitError{code: ExitBelow}
 	}
 
-	_, _ = fmt.Fprintln(stderr, reason)
+	_, _ = fmt.Fprintln(s.Err, reason)
 
-	return exitFailed
+	return exitError{code: ExitFailed}
 }
 
 // whyNothingShown says why a printer came up empty.
@@ -264,7 +211,7 @@ func (c config) outputFilters() string {
 	return filters
 }
 
-// showTotal writes one percentage and nothing else, for a caller reading it into a variable.
+// total writes one percentage and nothing else, for a caller reading it into a variable.
 //
 // total <path> reports a node of the tree rather than the whole of it, which is the one number the
 // report shows and nothing could hand back: `prettycov --depth=max` draws `web/handler - 89.66` and
@@ -275,32 +222,32 @@ func (c config) outputFilters() string {
 //
 // The same node is printed and graded. Two lookups would be two chances to disagree, which is
 // exactly how --fail-under=100 came to pass a run whose own report read 99.99.
-func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) int {
-	node, want := tree, *cfg.Total
+func total(cfg config, tree *prettycov.PathTree, want string, s Streams) error {
+	node := tree
 
 	if want != "" {
 		// Quoted, as every message quoting something the reader typed is: a path can be
 		// empty-looking or carry a control byte, and argv is where both arrive from.
 		if node = tree.Get(want); node == nil {
-			_, _ = fmt.Fprintf(stderr, "total: no such package or file in the profile: %q%s\n",
+			_, _ = fmt.Fprintf(s.Err, "total: no such package or file in the profile: %q%s\n",
 				want, underRoot(tree, want))
 
-			return exitFailed
+			return exitError{code: ExitFailed}
 		}
 	}
 
 	// A node with no statements has no percentage. The whole tree cannot be one by here — an empty
-	// profile is refused above — but one node can: a directory whose files declare none. Refused
-	// through refuseEmpty rather than here, so that a gate reads the same for a node as for the
-	// tree: exit 1 and the shortfall, not exit 2 as though prettycov could not run.
+	// profile is refused above — but one node can: a directory whose files declare none. Through
+	// refuseEmpty rather than here, so a gate reads the same for a node as for the tree: exit 1 and
+	// the shortfall, not exit 2 as though prettycov could not run.
 	pct, ok := node.Coverage.Percentage()
 	if !ok {
-		return refuseEmpty(cfg, fmt.Sprintf("total names nothing with statements to cover: %q", want), stderr)
+		return refuseEmpty(cfg, fmt.Sprintf("total names nothing with statements to cover: %q", want), s)
 	}
 
-	_, _ = fmt.Fprintln(stdout, pct)
+	_, _ = fmt.Fprintln(s.Out, pct)
 
-	return checkThreshold(cfg.FailUnder, node, stderr)
+	return checkThreshold(cfg.FailUnder, node, s)
 }
 
 // reportExclusions says what each pattern took out, on stderr so the report itself stays pipeable.
@@ -310,20 +257,20 @@ func showTotal(cfg config, tree *prettycov.PathTree, stdout, stderr io.Writer) i
 //
 // A pattern that matched nothing is said, not refused: see showReport for why --old is and this is
 // not.
-func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
+func reportExclusions(excluded []prettycov.Exclusion, s Streams) {
 	for _, ex := range excluded {
 		// Distinct from matching nothing: the pattern works, an earlier one just got there first.
 		// Saying "matched nothing" here sends someone to fix a pattern that is already right, and
 		// deleting it stops working the day such a file lands outside the earlier pattern's reach.
 		if ex.Files == 0 && ex.Blocks == 0 && ex.Overlapped() > 0 {
-			_, _ = fmt.Fprintf(stderr, "--exclude %q took nothing out, %s already excluded\n",
+			_, _ = fmt.Fprintf(s.Err, "--exclude %q took nothing out, %s already excluded\n",
 				ex.Pattern, units(ex.OverlappedFiles, ex.OverlappedBlocks))
 
 			continue
 		}
 
 		if ex.Files == 0 && ex.Blocks == 0 {
-			_, _ = fmt.Fprintf(stderr, "--exclude %q matched nothing\n", ex.Pattern)
+			_, _ = fmt.Fprintf(s.Err, "--exclude %q matched nothing\n", ex.Pattern)
 
 			continue
 		}
@@ -337,7 +284,7 @@ func reportExclusions(excluded []prettycov.Exclusion, stderr io.Writer) {
 			overlap = ", and " + units(ex.OverlappedFiles, ex.OverlappedBlocks) + " already excluded"
 		}
 
-		_, _ = fmt.Fprintf(stderr, "--exclude %q left out %s in %s%s\n",
+		_, _ = fmt.Fprintf(s.Err, "--exclude %q left out %s in %s%s\n",
 			ex.Pattern, plural(ex.Statements, "statement"), units(ex.Files, ex.Blocks), overlap)
 	}
 }
@@ -377,9 +324,9 @@ func plural(n int, thing string) string {
 //
 // There is always a number by here: showReport refuses a profile with nothing to cover before any
 // caller reaches this, and showTotal refuses a node with none, each saying what this cannot.
-func checkThreshold(want *float64, node *prettycov.PathTree, stderr io.Writer) int {
+func checkThreshold(want *float64, node *prettycov.PathTree, s Streams) error {
 	if want == nil {
-		return exitOK
+		return nil
 	}
 
 	if !node.Coverage.AtLeast(*want) {
@@ -392,10 +339,10 @@ func checkThreshold(want *float64, node *prettycov.PathTree, stderr io.Writer) i
 		// reads back as 100.00%, a figure Percentage will never print, and at 79.999% against
 		// --fail-under=80 both sides round to 80.00 and the line contradicts itself. Printing the
 		// threshold as typed would fix both, and would change this message for everyone.
-		_, _ = fmt.Fprintf(stderr, "total coverage %s%% is below %.2f%%\n", pct, *want)
+		_, _ = fmt.Fprintf(s.Err, "total coverage %s%% is below %.2f%%\n", pct, *want)
 
-		return exitBelow
+		return exitError{code: ExitBelow}
 	}
 
-	return exitOK
+	return nil
 }

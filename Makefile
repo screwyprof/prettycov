@@ -119,7 +119,7 @@ fmt: require-golangci ## format code
 $(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
-	@go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
+	@go test -race -count=1 -timeout=120s -cover -covermode atomic -coverpkg=./... -coverprofile=$@ ./...
 	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -race -count=1 -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/
 	@test -n "$$(ls -A $(COVERDATA) 2>/dev/null)" || \
 		{ echo "no counters in $(COVERDATA): did the -tags=$(GO_TAGS) pass run any tests?"; exit 1; }
@@ -169,7 +169,7 @@ cover-branches: ## report conditions never evaluated both ways
 	@test -n "$(GO_FILES)" || { echo "no Go files; this needs a git checkout"; exit 1; }
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT; \
 	 $(GIT_LS) | tar -cf - -T - | (cd "$$tmp" && tar -xf -); \
-	 for pkg in . ./internal/app; do \
+	 for pkg in . ./internal/cli; do \
 		(cd "$$tmp" && go run github.com/rillig/gobco@$(GOBCO_VERSION) $$pkg) | grep -v "^ok\b" || true; \
 	 done
 
@@ -232,14 +232,15 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@$(MAKE) --no-print-directory build >/dev/null
 	@$(PWD)/$(BINARY) --version
 	@echo; echo '$$ make test'
-	@$(MAKE) --no-print-directory test 2>&1 | grep 'coverage:' | grep -v '/cmd/' | tr -s '\t' ' '
+	@$(MAKE) --no-print-directory test >/dev/null
+	@go tool cover -func=$(COVERAGE) | tail -1 | tr -s '\t' ' '
 	@echo; echo '$$ make lint-all'
 	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
 	@echo; echo '$$ make mutate'
 	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
 	@echo; echo '$$ make cover-branches'
 	@$(MAKE) --no-print-directory cover-branches 2>&1 | grep '^Condition coverage:' \
-		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"} \
+		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/cli"} \
 		       END {if (NR != 2) {print "cover-branches reported " NR " packages, wanted 2" > "/dev/stderr"; exit 1}}'
 
 install: ## install binary

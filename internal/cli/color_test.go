@@ -2,7 +2,7 @@
 // not part of what the package offers.
 //
 //nolint:testpackage // see above.
-package app
+package cli
 
 import (
 	"bytes"
