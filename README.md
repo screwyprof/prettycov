@@ -30,10 +30,10 @@ go install github.com/screwyprof/prettycov/cmd/prettycov@latest
 
 ## What it is for
 
-**Finding the package worth opening.** In the tree below, `handler` is 87.23% covered and
-`pgxdb/pgxdb.go` is 75.00% — but `handler` has six untested statements to `pgxdb`'s four. The worse
-percentage is just the smaller file. `--counts` prints both numbers, so you can sort by the one that
-is actually work:
+**Deciding what to test next.** In the tree below, `handler` is 87.23% covered and
+`pgxdb/pgxdb.go` is 75.00% — but `handler` has six untested statements to `pgxdb`'s four. The lower
+percentage is just the smaller file. `--counts` prints the statement counts alongside, so you can
+rank by how much is left:
 
 ```shell
 ❯ prettycov report --counts --files --depth=2
