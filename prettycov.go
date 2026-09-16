@@ -12,17 +12,19 @@ type CoverageStats struct {
 
 // Total is the statements a node holds, covered or not. Named rather than added up at each use,
 // because it is the denominator of the percentage beside it and the two must be the same number:
-// -counts prints the fraction the percentage stands for, so a second expression for it could drift
+// --counts prints the fraction the percentage stands for, so a second expression for it could drift
 // from the one Percentage divides by.
 //
 // No overflow check: this is the raw sum, and Percentage is what refuses one that has wrapped.
 func (c CoverageStats) Total() int { return c.Covered + c.Uncovered }
 
-// Add takes in another node's statements. Both sides move together or the percentage is drawn from
+// Plus is these statements and another's. Both sides move together, or the percentage is drawn from
 // counts that were never summed the same way.
-func (c *CoverageStats) Add(other CoverageStats) {
-	c.Covered += other.Covered
-	c.Uncovered += other.Uncovered
+//
+// Returns rather than mutates, so CoverageStats has no pointer method and a caller cannot hold one
+// that changes under it. Two ints: the copy costs nothing.
+func (c CoverageStats) Plus(other CoverageStats) CoverageStats {
+	return CoverageStats{Covered: c.Covered + other.Covered, Uncovered: c.Uncovered + other.Uncovered}
 }
 
 // Percentage reports the share of statements covered. The bool is false when there are none to
@@ -59,13 +61,9 @@ func (c CoverageStats) Percentage() (Percentage, bool) {
 // Nothing to cover is not "at least anything": a package with no statements has no share to compare,
 // and treating it as complete would fold two questions into one flag.
 //
-// Nothing reaches more than all of it either. The CLI clamps -fail-under and -hide-covered to
-// [0, 100] before either gets here, so only a library caller can ask — with a threshold it computed,
-// or one it meant as a fraction — and answering the completeness question for 150 would hand that
-// caller a passing gate. It falls through instead of being refused: Percentage never returns a share
-// above 100, so nothing reaches such a threshold, and that holds for +Inf as well. A guard would be
-// a branch saying what the comparison below already says.
-func (c CoverageStats) AtLeast(pct float64) bool {
+// Nothing above 100 can be asked: a Threshold is parsed, so the range is the type's and not a rule
+// a caller is trusted to keep.
+func (c CoverageStats) AtLeast(bar Threshold) bool {
 	share, ok := c.Percentage()
 	if !ok {
 		return false
@@ -73,11 +71,11 @@ func (c CoverageStats) AtLeast(pct float64) bool {
 
 	// Exactly 100, not "at or above": above it is the case above, and asking the counts there would
 	// answer "complete" to a threshold nothing can meet.
-	if pct == 100 {
+	if bar.value == 100 {
 		return share.complete
 	}
 
-	return share.Float() >= pct
+	return share.Float() >= bar.value
 }
 
 // Percentage is a share of statements covered. Build one with CoverageStats.Percentage, which
@@ -124,7 +122,7 @@ type FileCoverage struct {
 // The position is where cmd/cover opens the block, which is not where a reader would point:
 // `if !ok {` on line 32 owns the `return` on line 33.
 //
-// Line and Col are the block's identity. -exclude matches against them and nothing else, so a
+// Line and Col are the block's identity. --exclude matches against them and nothing else, so a
 // pattern like `a\.go:3` means "the block that opens on line 3" however far the block runs.
 // EndLine is how far it runs, which is what Misses folds on — see merge for why the end rather than
 // the opening, and what it is worth.
@@ -134,7 +132,7 @@ type Block struct {
 	Coverage  CoverageStats
 }
 
-// at names the block the way a compiler names a position, and again without the column. -exclude
+// at names the block the way a compiler names a position, and again without the column. --exclude
 // matches a pattern against both, so "a.go:3$" anchors on line 3 rather than never matching: the
 // column is what a reader leaves off, and a pattern ending at the line has nowhere to stop without
 // this.
@@ -152,8 +150,8 @@ func (b Block) at(file string) (withCol, toLine string) {
 	return withCol, withCol[:strings.LastIndexByte(withCol, ':')]
 }
 
-// position names a place in a file the way a compiler does. One spelling, because -exclude matches
-// its patterns against what this returns and -misses prints it: a position a reader judges
+// position names a place in a file the way a compiler does. One spelling, because --exclude matches
+// its patterns against what this returns and the misses command prints it: a position a reader judges
 // unreachable is pasted back as a pattern, and two definitions of the format would let that stop
 // working with nothing to catch it.
 func position(file string, line, col int) string {
@@ -190,11 +188,11 @@ func Process(files []FileCoverage) *PathTree {
 // had already multiplied several times over.
 func rollUp(node *PathTree) CoverageStats {
 	for _, file := range node.Files {
-		node.Coverage.Add(rollUp(file))
+		node.Coverage = node.Coverage.Plus(rollUp(file))
 	}
 
 	for _, child := range node.Children {
-		node.Coverage.Add(rollUp(child))
+		node.Coverage = node.Coverage.Plus(rollUp(child))
 	}
 
 	return node.Coverage
@@ -212,11 +210,11 @@ func rollUp(node *PathTree) CoverageStats {
 // the CLI says so.
 //
 // The prefix has to be leading, and it has to end on a separator: replacing the first match
-// anywhere rewrote "github.com/rapid/api" to "github.com/rcored/api" for -old=api, and a bare
-// prefix rewrote the unrelated "github.com/foobar" to "xbar" for -old=github.com/foo. An empty
-// oldRoot matches at position 0, so -new alone prepended itself to every path instead of replacing
+// anywhere rewrote "github.com/rapid/api" to "github.com/rcored/api" for --old=api, and a bare
+// prefix rewrote the unrelated "github.com/foobar" to "xbar" for --old=github.com/foo. An empty
+// oldRoot matches at position 0, so --new alone prepended itself to every path instead of replacing
 // anything. The separator is implied, so trailing slashes on oldRoot are trimmed rather than left
-// to fail every match. Every one of them, not the last: `-old=$(MODULE)/` with MODULE already
+// to fail every match. Every one of them, not the last: `--old=$(MODULE)/` with MODULE already
 // ending in one spells "example.com/m//", and trimming a single separator left "example.com/m/"
 // to be matched against a path that has one separator there, so a root that is in the profile
 // matched nothing and the CLI reported it as a root that is not.

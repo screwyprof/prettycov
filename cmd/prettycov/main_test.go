@@ -5,7 +5,6 @@ package main_test
 import (
 	"bytes"
 	"context"
-	_ "embed"
 	"errors"
 	"os"
 	"os/exec"
@@ -26,11 +25,22 @@ const (
 	codeFailed = 2
 )
 
-// 6 of 10 statements covered, so the report reads 60.00 and a -fail-under above that fails.
-// Copied in internal/app/testdata/sixty-percent.out too: go:embed cannot reach out of its own package. Change both.
+// 6 of 10 statements covered, so the report reads 60.00 and a --fail-under above that fails. Shared
+// with internal/app's tests, so it sits in the repo's testdata: go:embed cannot reach out of its own
+// directory, which is what kept two copies of this in step by hand.
 //
-//go:embed testdata/sixty-percent.out
-var profile []byte
+//nolint:gochecknoglobals // one read for every test in the file, as the embed it replaces was.
+var profile = fixture("sixty-percent.out")
+
+// fixture reads a shared profile. Panics: a missing one is a broken checkout, not a test failure.
+func fixture(name string) []byte {
+	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", name))
+	if err != nil {
+		panic(err)
+	}
+
+	return data
+}
 
 const buildTimeout = 2 * time.Minute
 
@@ -78,9 +88,9 @@ func TestBinaryExitCodes(t *testing.T) {
 		args []string
 		want int
 	}{
-		{name: "success", args: nil, want: codeOK},
-		{name: "below the threshold", args: []string{"-fail-under", "90"}, want: codeBelow},
-		{name: "could not run", args: []string{"-nope"}, want: codeFailed},
+		{name: "success", args: []string{"report"}, want: codeOK},
+		{name: "below the threshold", args: []string{"report", "--fail-under", "90"}, want: codeBelow},
+		{name: "could not run", args: []string{"--nope"}, want: codeFailed},
 	}
 
 	for _, tc := range tests {
@@ -107,11 +117,11 @@ func TestBinaryWritesToTheRightStream(t *testing.T) {
 	}{
 		{
 			// The rendered row, not the bare number: the gate's message carries "60.00" too.
-			name: "the report is stdout", args: []string{"-color", "never"},
+			name: "the report is stdout", args: []string{"report", "--color", "never"},
 			wantStdout: "m - 60.00",
 		},
 		{
-			name: "the gate's complaint is stderr", args: []string{"-color", "never", "-fail-under", "90"},
+			name: "the gate's complaint is stderr", args: []string{"report", "--color", "never", "--fail-under", "90"},
 			wantStdout: "m - 60.00", wantStderr: "is below 90.00%",
 		},
 	}
@@ -172,11 +182,11 @@ func TestBinaryReportsAVersionWithoutAStamp(t *testing.T) {
 func TestBinaryPassesItsArguments(t *testing.T) {
 	t.Parallel()
 
-	stdout, stderr, code := runBinary(t, "-color", "never", "-depth", "0")
+	stdout, stderr, code := runBinary(t, "report", "--color", "never", "--depth", "0")
 
 	require.Equal(t, codeOK, code, stderr)
 	assert.Contains(t, stdout, "60.00")
-	assert.NotContains(t, stdout, "a - ", "-depth=0 is the top row alone")
+	assert.NotContains(t, stdout, "a - ", "--depth=0 is the top row alone")
 }
 
 // buildBinary compiles the command into out. Always instrumented, so a child's run counts toward

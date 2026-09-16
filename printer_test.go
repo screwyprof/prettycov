@@ -265,7 +265,7 @@ func TestDisplayTreeFilesSortAmongPackages(t *testing.T) {
 		namesWith(t, tree, prettycov.Options{Depth: 1, Files: true}))
 }
 
-// Without -files the tree is exactly what it was: packages only, and a package holding nothing but
+// Without --files the tree is exactly what it was: packages only, and a package holding nothing but
 // files is a leaf. The file nodes are still there, so this is the check that they cost no row and
 // no level when they are not asked for.
 func TestDisplayTreeHidesFilesUnlessAsked(t *testing.T) {
@@ -284,7 +284,7 @@ func TestDisplayTreeHidesFilesUnlessAsked(t *testing.T) {
 
 // One name can be both a file and a directory: "m/a.go" beside "m/a.go/b.go" names a file and a
 // package called the same thing. No filesystem allows it, so no single `go test` run produces it,
-// but merging two profiles or rewriting a root with -old/-new can. Such a node is drawn as the
+// but merging two profiles or rewriting a root with --old/--new can. Such a node is drawn as the
 // directory it also is — hiding it as a file took its whole subtree with it while every ancestor
 // went on counting the statements.
 func TestDisplayTreeKeepsANameThatIsBothAFileAndADirectory(t *testing.T) {
@@ -336,7 +336,7 @@ func TestDisplayTreeOrdersATieBetweenAFileAndADirectory(t *testing.T) {
 		"the directory and its files first, then the file of the same name")
 }
 
-// A file is one level below the package holding it, exactly as a subdirectory is — -depth counts
+// A file is one level below the package holding it, exactly as a subdirectory is — --depth counts
 // levels the way tree -L does, and a file is one of a directory's entries like any other.
 func TestDisplayTreeFilesCountAsALevel(t *testing.T) {
 	t.Parallel()
@@ -356,7 +356,7 @@ func TestDisplayTreeFilesCountAsALevel(t *testing.T) {
 
 // A package whose whole content is one file says the same number twice, so the two rows become
 // one and the label names both. A row's label is a property of the node, not of where the depth
-// cut falls: raising -depth adds rows below, it does not rename the ones already drawn.
+// cut falls: raising --depth adds rows below, it does not rename the ones already drawn.
 func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
 	t.Parallel()
 
@@ -378,11 +378,11 @@ func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
 	assert.Contains(t, out, "one/only.go - 75.00  1/4 uncovered\n")
 	assert.NotContains(t, out, " one - ", "the package row it replaced is gone")
 
-	// Without -files there is no file row to merge with, so the package keeps its own name.
+	// Without --files there is no file row to merge with, so the package keeps its own name.
 	assert.Equal(t, []string{"m", "one", "two"}, nodeNames(t, tree, prettycov.DepthAll))
 }
 
-// A profile can name a file with no directory of its own — `prettycov -new=.` writes every path
+// A profile can name a file with no directory of its own — `prettycov --new=.` writes every path
 // that way — and such a file lands under ".", the row the report draws it beside. Merging the two
 // must not write that "." into the label: the profile has no path spelled "./printer.go", and its
 // siblings are written plainly. The filesystem root is the opposite case and keeps its separator,
@@ -405,9 +405,9 @@ func TestDisplayTreeMergesAFileThatHasNoDirectory(t *testing.T) {
 }
 
 // The top row merges too, so a repository that is one package of one file reports a file path and
-// no row names the package. Deliberate: -files asked for the files, the label still carries the
+// no row names the package. Deliberate: --files asked for the files, the label still carries the
 // whole package path, and refusing to merge at the top would be a rule about where a row sits
-// rather than about what it holds. The default view is untouched, and -total reads the tree.
+// rather than about what it holds. The default view is untouched, and total reads the tree.
 func TestDisplayTreeMergesTheTopRowToo(t *testing.T) {
 	t.Parallel()
 
@@ -418,7 +418,7 @@ func TestDisplayTreeMergesTheTopRowToo(t *testing.T) {
 	assert.Equal(t, []string{"github.com/o/tool"}, nodeNames(t, tree, prettycov.DepthAll))
 }
 
-// -depth counts levels below the root row, exactly as `tree -L` does: `tree -L 1` prints the root
+// --depth counts levels below the root row, exactly as `tree -L` does: `tree -L 1` prints the root
 // and one level under it. A collapsed run counts as the single row it renders as.
 func TestDisplayTreeDepthCountsLevels(t *testing.T) {
 	t.Parallel()
@@ -524,7 +524,9 @@ func renderOpts(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) 
 
 	var buf bytes.Buffer
 
-	prettycov.DisplayTree(&buf, tree, opts)
+	// A bytes.Buffer never fails, so an error here is this package's, not the destination's.
+	_, err := prettycov.DisplayTree(&buf, tree, opts)
+	require.NoError(t, err)
 
 	return buf.String()
 }
@@ -616,9 +618,7 @@ func TestPercentageReportsNothingToCover(t *testing.T) {
 	assert.Zero(t, pct.Float())
 }
 
-func at(pct float64) *float64 { return &pct }
-
-// -hide-covered shapes the report and never the measurement, and it prunes a subtree only when
+// --hide-covered shapes the report and never the measurement, and it prunes a subtree only when
 // there is nothing left to do anywhere inside it.
 func TestDisplayTreeHideCovered(t *testing.T) {
 	t.Parallel()
@@ -632,7 +632,7 @@ func TestDisplayTreeHideCovered(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		hide *float64
+		hide *prettycov.Threshold
 		want string
 	}{
 		"unset draws everything": {want: "" +
@@ -640,17 +640,17 @@ func TestDisplayTreeHideCovered(t *testing.T) {
 
 		// done/ and its subtree go; the glyph on work/ becomes the last-child one, which it would
 		// not if the hidden rows were dropped after the tree was drawn.
-		"bare hides what is finished": {hide: at(100), want: "" +
+		"bare hides what is finished": {hide: new(prettycov.MustThreshold(100.0)), want: "" +
 			" m - 95.24\n └ work - 90.91\n   └ deep - 50.00\n"},
 
 		// work/ is 90.91, at or above the threshold, but holds deep/ at 50. Judging the parent
 		// alone hid the one branch with work in it and left an empty report.
-		"a threshold keeps a parent that holds a lower child": {hide: at(90), want: "" +
+		"a threshold keeps a parent that holds a lower child": {hide: new(prettycov.MustThreshold(90.0)), want: "" +
 			" m - 95.24\n └ work - 90.91\n   └ deep - 50.00\n"},
 
 		// Everything is above 40, so there is nothing the flag was asked to show. showReport says
 		// so rather than leaving a reader wondering whether it crashed.
-		"a threshold under everything empties the report": {hide: at(40), want: ""},
+		"a threshold under everything empties the report": {hide: new(prettycov.MustThreshold(40.0)), want: ""},
 	}
 
 	for name, tc := range tests {
@@ -680,16 +680,16 @@ func TestDisplayTreeHideCoveredKeepsAPackageWithNoStatements(t *testing.T) {
 	})
 
 	got := renderOpts(t, tree, prettycov.Options{
-		Depth: prettycov.DepthAll, HideCovered: at(100),
+		Depth: prettycov.DepthAll, HideCovered: new(prettycov.MustThreshold(100.0)),
 	})
 
 	assert.Equal(t, " m - 100.00\n └ doc - n/a\n", got)
 }
 
-// The threshold is inclusive, and whether a file counts depends on whether -files draws it.
+// The threshold is inclusive, and whether a file counts depends on whether --files draws it.
 //
 // even/ and mixed/ both read exactly 90.00. mixed/ holds a file with nothing covered; even/ does
-// not. Without -files neither file is a row, so both packages say nothing and go. With -files the
+// not. Without --files neither file is a row, so both packages say nothing and go. With --files the
 // one holding work has something to show and comes back, carrying only that file.
 func TestDisplayTreeHideCoveredAtTheThreshold(t *testing.T) {
 	t.Parallel()
@@ -721,7 +721,7 @@ func TestDisplayTreeHideCoveredAtTheThreshold(t *testing.T) {
 			t.Parallel()
 
 			got := renderOpts(t, prettycov.Process(files), prettycov.Options{
-				Depth: prettycov.DepthAll, Files: tc.files, HideCovered: at(90),
+				Depth: prettycov.DepthAll, Files: tc.files, HideCovered: new(prettycov.MustThreshold(90.0)),
 			})
 
 			assert.Equal(t, tc.want, got)
@@ -729,7 +729,7 @@ func TestDisplayTreeHideCoveredAtTheThreshold(t *testing.T) {
 	}
 }
 
-// A file is hidden the way a package is, so -files does not bring back what -hide-covered took.
+// A file is hidden the way a package is, so --files does not bring back what --hide-covered took.
 func TestDisplayTreeHideCoveredHidesFiles(t *testing.T) {
 	t.Parallel()
 
@@ -739,7 +739,7 @@ func TestDisplayTreeHideCoveredHidesFiles(t *testing.T) {
 	})
 
 	got := renderOpts(t, tree, prettycov.Options{
-		Depth: prettycov.DepthAll, Files: true, HideCovered: at(100),
+		Depth: prettycov.DepthAll, Files: true, HideCovered: new(prettycov.MustThreshold(100.0)),
 	})
 
 	assert.Equal(t, " m/pkg - 75.00\n └ todo.go - 0.00\n", got)
@@ -761,13 +761,13 @@ func TestDisplayTreeHideCoveredTrustsTheCountNotTheRatio(t *testing.T) {
 	require.InDelta(t, 100.0, pct.Float(), 0, "the ratio really does round to 100")
 
 	got := renderOpts(t, tree, prettycov.Options{
-		Depth: prettycov.DepthAll, HideCovered: at(100),
+		Depth: prettycov.DepthAll, HideCovered: new(prettycov.MustThreshold(100.0)),
 	})
 
 	assert.Equal(t, " m/huge - 99.99\n", got, "one uncovered statement is still one to do")
 }
 
-// -hide-covered judges what the report draws, not what the tree holds. -depth is a filter too, so
+// --hide-covered judges what the report draws, not what the tree holds. --depth is a filter too, so
 // the two compose: a row the depth limit already cut cannot be the reason a parent survives.
 //
 // pkg/ reads 95.35 and holds logger/ at 93.94, which holds logger.go at 86.67. With the files
@@ -796,7 +796,7 @@ func TestDisplayTreeHideCoveredJudgesWhatIsDrawn(t *testing.T) {
 			depth: 2,
 			want:  " m - 92.31\n └ scraper/store - 77.78\n",
 		},
-		// -files alone does not bring it back: the files sit a level below the cut too.
+		// --files alone does not bring it back: the files sit a level below the cut too.
 		"files drawn but still below the cut": {
 			depth: 2, files: true,
 			want: " m - 92.31\n └ scraper/store/s.go - 77.78\n",
@@ -814,7 +814,7 @@ func TestDisplayTreeHideCoveredJudgesWhatIsDrawn(t *testing.T) {
 			t.Parallel()
 
 			got := renderOpts(t, prettycov.Process(files), prettycov.Options{
-				Depth: tc.depth, Files: tc.files, HideCovered: at(90),
+				Depth: tc.depth, Files: tc.files, HideCovered: new(prettycov.MustThreshold(90.0)),
 			})
 
 			assert.Equal(t, tc.want, got)
@@ -845,11 +845,11 @@ func TestDisplayTreeHideCoveredSpendsALevelPerRowNotPerNode(t *testing.T) {
 
 	// So hiding at 90 may take ok/ and nothing else.
 	assert.Equal(t, " m - 90.91\n └ chain/inner - 90.00\n   └ low - 0.00\n",
-		renderOpts(t, tree, prettycov.Options{Depth: 2, HideCovered: at(90)}))
+		renderOpts(t, tree, prettycov.Options{Depth: 2, HideCovered: new(prettycov.MustThreshold(90.0))}))
 }
 
 // The invariant the empty-report message rests on: a tree with statements always draws a row unless
-// -hide-covered took it, so that message can name the flag and read its threshold without asking.
+// --hide-covered took it, so that message can name the flag and read its threshold without asking.
 func TestDisplayTreeAlwaysDrawsARowWithoutHideCovered(t *testing.T) {
 	t.Parallel()
 
@@ -881,10 +881,10 @@ func TestEmptyResultsAreNilNotEmptySlices(t *testing.T) {
 		withBlocks("m/a.go", covered(1, 1, 2, 3)),
 	})
 
-	bar := 0.0
+	bar := prettycov.MustThreshold(0)
 	hidden := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar}
 
-	assert.Nil(t, prettycov.Rows(tree, hidden), "-hide-covered=0 took every row")
+	assert.Nil(t, prettycov.Rows(tree, hidden), "--hide-covered=0 took every row")
 	assert.Nil(t, prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
 		"nothing uncovered")
 
@@ -913,10 +913,11 @@ func TestDisplayTreeReportsHowManyRowsItDrew(t *testing.T) {
 
 		var buf bytes.Buffer
 
-		drawn := prettycov.DisplayTree(&buf, tree, opts)
+		drawn, err := prettycov.DisplayTree(&buf, tree, opts)
+		require.NoError(t, err)
 
-		assert.Equal(t, len(prettycov.Rows(tree, opts)), drawn, "rows at -depth=%v", depth)
-		assert.Equal(t, strings.Count(buf.String(), "\n"), drawn, "lines at -depth=%v", depth)
+		assert.Equal(t, len(prettycov.Rows(tree, opts)), drawn, "rows at --depth=%v", depth)
+		assert.Equal(t, strings.Count(buf.String(), "\n"), drawn, "lines at --depth=%v", depth)
 		assert.Positive(t, drawn, "the fixture draws something at every depth")
 	}
 }
@@ -931,35 +932,7 @@ func benchDisplayTree(b *testing.B, opts prettycov.Options) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		prettycov.DisplayTree(io.Discard, tree, opts)
-	}
-}
-
-// The default invocation: one level, no files. Cheap, and the one every run pays.
-func BenchmarkDisplayTreeDefault(b *testing.B) {
-	benchDisplayTree(b, prettycov.Options{Depth: 1})
-}
-
-// The deepest the printer goes, which is where a row's cost is multiplied by every file.
-func BenchmarkDisplayTreeMaxFiles(b *testing.B) {
-	benchDisplayTree(b, prettycov.Options{Depth: prettycov.DepthAll, Files: true})
-}
-
-// -hide-covered adds the allCovered re-walk, which is O(n·depth) along the surviving path.
-func BenchmarkDisplayTreeHideCovered(b *testing.B) {
-	bar := 100.0
-
-	benchDisplayTree(b, prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar})
-}
-
-// Rows without the writer, so the traversal is measured rather than the formatting.
-func BenchmarkRows(b *testing.B) {
-	tree := prettycov.Process(syntheticProfile(b))
-	opts := prettycov.Options{Depth: prettycov.DepthAll, Files: true}
-
-	b.ReportAllocs()
-
-	for b.Loop() {
-		_ = prettycov.Rows(tree, opts)
+		// io.Discard never fails, so there is no error here to be interested in.
+		_, _ = prettycov.DisplayTree(io.Discard, tree, opts)
 	}
 }

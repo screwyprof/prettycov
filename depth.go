@@ -1,6 +1,7 @@
 package prettycov
 
 import (
+	"encoding"
 	"errors"
 	"math"
 	"strconv"
@@ -54,4 +55,23 @@ func ParseDepth(s string) (Depth, error) {
 	}
 
 	return Depth(min(levels, uint64(DepthAll))), nil
+}
+
+// Kong finds UnmarshalText by reflection, so nothing refers to it by name and a rename compiles:
+// --depth=max would quietly fall back to kong's uint64 parser and be refused. The assertion makes
+// that a build failure — as it does for Threshold and colorMode, which are found the same way.
+var _ encoding.TextUnmarshaler = (*Depth)(nil)
+
+// UnmarshalText parses a depth, so a Depth exists only because ParseDepth accepted it. Flag and
+// config libraries find this through encoding.TextUnmarshaler, which is what lets a caller hold the
+// parsed type rather than a string it has to remember to parse later.
+func (d *Depth) UnmarshalText(text []byte) error {
+	parsed, err := ParseDepth(string(text))
+	if err != nil {
+		return err
+	}
+
+	*d = parsed
+
+	return nil
 }

@@ -13,7 +13,7 @@ import (
 )
 
 // missOpts is how the CLI runs this mode: a miss is a file position, and a list of them is made of
-// files, so the output includes them whatever -files says about the tree's.
+// files, so the output includes them whatever --files says about the tree's.
 func missOpts(depth prettycov.Depth) prettycov.Options {
 	return prettycov.Options{Depth: depth, Files: true}
 }
@@ -241,7 +241,7 @@ func TestMissesFoldAcrossAnEnclosingCoveredBlock(t *testing.T) {
 	}, got, "a block that opened above them says nothing about what is between them")
 }
 
-// -depth chooses which packages are visited, so it chooses which misses are listed. A miss inside a
+// --depth chooses which packages are visited, so it chooses which misses are listed. A miss inside a
 // package the report does not draw belongs to something the reader did not ask to see; raising the
 // depth reveals it, the same gesture as with the tree.
 func TestMissesFollowTheDepth(t *testing.T) {
@@ -258,7 +258,7 @@ func TestMissesFollowTheDepth(t *testing.T) {
 	}
 
 	// A file is an entry of the package holding it, so it sits one level below that package — the
-	// same level -files gives it, since that is the mode this always runs in.
+	// same level --files gives it, since that is the mode this always runs in.
 	assert.Empty(t, paths(0), "the top row alone, and a file is a level below one")
 	assert.Equal(t, []string{"m/own.go"}, paths(1))
 	// deeper/ holds one file, so the two merge into a single row and b.go arrives at level 2 with
@@ -267,7 +267,7 @@ func TestMissesFollowTheDepth(t *testing.T) {
 	assert.Equal(t, []string{"m/deep/a.go", "m/deep/deeper/b.go", "m/own.go"}, paths(prettycov.DepthAll))
 }
 
-// -hide-covered leaves out subtrees already at the bar, so it leaves out their misses too — which is
+// --hide-covered leaves out subtrees already at the bar, so it leaves out their misses too — which is
 // the point of it: do not show me work in what is already done.
 func TestMissesFollowHideCovered(t *testing.T) {
 	t.Parallel()
@@ -288,7 +288,7 @@ func TestMissesFollowHideCovered(t *testing.T) {
 
 	// nearly/ is 95%, so a bar of 90 takes it and the miss inside it.
 	bar := missOpts(prettycov.DepthAll)
-	bar.HideCovered = at(90)
+	bar.HideCovered = new(prettycov.MustThreshold(90.0))
 
 	focused := prettycov.Misses(tree, bar)
 	require.Len(t, focused, 1)
@@ -297,7 +297,7 @@ func TestMissesFollowHideCovered(t *testing.T) {
 
 // A file already at the bar has no misses worth listing, even when the package holding it is below
 // the bar and so is visited. delegator's logger/ is 96.88 over a logger.go at 86.67 and a
-// middleware.go at 98.77: at -hide-covered=90 the tree draws logger.go alone, and the misses have to
+// middleware.go at 98.77: at --hide-covered=90 the tree draws logger.go alone, and the misses have to
 // agree — listing middleware.go's one uncovered statement contradicts the report beside it.
 //
 // The bar is asked of each file, not only of the package holding it.
@@ -324,7 +324,7 @@ func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 	})
 
 	opts := missOpts(prettycov.DepthAll)
-	opts.HideCovered = at(90)
+	opts.HideCovered = new(prettycov.MustThreshold(90.0))
 
 	assert.Equal(t, []string{"m/logger/logger.go"}, missPaths(prettycov.Misses(tree, opts)))
 }
@@ -336,7 +336,7 @@ func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 func TestMissesIncludeACollapsedFileRow(t *testing.T) {
 	t.Parallel()
 
-	// pgxstore/ holds one file, so with -files the two draw as one row.
+	// pgxstore/ holds one file, so with --files the two draw as one row.
 	tree := prettycov.Process([]prettycov.FileCoverage{
 		withBlocks("m/store/pgxstore/store.go", uncovered(44, 35, 45, 1)),
 		withBlocks("m/other.go", uncovered(9, 2, 10, 1)),
@@ -370,7 +370,7 @@ func TestMissesAreSortedByPosition(t *testing.T) {
 // and erase line -- and made "real\revil/b.go" read as "evil/b.go". A coverage tool that can be
 // made to drop a line of its own output is failing at the one thing it is for.
 //
-// The cost is that such a path no longer opens in an editor or matches as an -exclude pattern. No
+// The cost is that such a path no longer opens in an editor or matches as an --exclude pattern. No
 // Go repository holds one: a module path cannot carry any of this set, so only a file name could.
 func TestMissesScrubTheFileAsTheRowIs(t *testing.T) {
 	t.Parallel()
@@ -381,7 +381,7 @@ func TestMissesScrubTheFileAsTheRowIs(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
-	require.Equal(t, 2, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
+	require.Equal(t, 2, displayMisses(t, &buf, tree, missOpts(prettycov.DepthAll)))
 
 	// real\u2026 sorts first: the replacement is U+FFFD, which outranks every ASCII letter, so scrubbing
 	// moves a row as well as redrawing it \u2014 the reason visible sorts on the label as drawn.
@@ -408,7 +408,7 @@ func TestMissesKeepAZeroWidthJoiner(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{withBlocks(name, uncovered(3, 2, 4, 1))})
 
 	var buf bytes.Buffer
-	require.Equal(t, 1, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
+	require.Equal(t, 1, displayMisses(t, &buf, tree, missOpts(prettycov.DepthAll)))
 
 	assert.Equal(t, name+":3:2: 1 uncovered\n", buf.String())
 }
@@ -416,6 +416,17 @@ func TestMissesKeepAZeroWidthJoiner(t *testing.T) {
 // `file:line:col: message`, as go vet prints it. The message is not decoration: without one an
 // editor's error format cannot match and falls back to file:line:message, reading the column as the
 // text — `a.go:9:2` opens line 9 at column 1 and the column is lost.
+// displayMisses is DisplayMisses where the destination cannot fail, which is every test writing to
+// a bytes.Buffer. The error is the writer's, and a buffer has none.
+func displayMisses(t *testing.T, w io.Writer, tree *prettycov.PathTree, opts prettycov.Options) int {
+	t.Helper()
+
+	listed, err := prettycov.DisplayMisses(w, tree, opts)
+	require.NoError(t, err)
+
+	return listed
+}
+
 func TestDisplayMissesWritesOnePositionPerLine(t *testing.T) {
 	t.Parallel()
 
@@ -426,7 +437,8 @@ func TestDisplayMissesWritesOnePositionPerLine(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	n := prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll))
+	n, err := prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll))
+	require.NoError(t, err)
 
 	assert.Equal(t, "m/a.go:9:2: 3 uncovered\nm/b.go:40:16: 1 uncovered\n", buf.String())
 
@@ -449,29 +461,6 @@ func TestDisplayMissesCountsNothingWhenFullyCovered(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	assert.Equal(t, 0, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
+	assert.Equal(t, 0, displayMisses(t, &buf, tree, missOpts(prettycov.DepthAll)))
 	assert.Empty(t, buf.String())
-}
-
-// The same traversal as the tree benchmarks, plus folding every unrun block in the profile.
-func BenchmarkMisses(b *testing.B) {
-	tree := prettycov.Process(syntheticProfile(b))
-	opts := missOpts(prettycov.DepthAll)
-
-	b.ReportAllocs()
-
-	for b.Loop() {
-		_ = prettycov.Misses(tree, opts)
-	}
-}
-
-func BenchmarkDisplayMisses(b *testing.B) {
-	tree := prettycov.Process(syntheticProfile(b))
-	opts := missOpts(prettycov.DepthAll)
-
-	b.ReportAllocs()
-
-	for b.Loop() {
-		prettycov.DisplayMisses(io.Discard, tree, opts)
-	}
 }

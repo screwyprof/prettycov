@@ -37,19 +37,19 @@ type Miss struct {
 // between runs and reads down a file the way the file does.
 //
 // It reads the same options Rows does and answers them the same way, being the same traversal:
-// -depth decides which packages are visited and so which misses are listed, and -hide-covered
-// leaves out the ones already at the bar. -files is not among them — a miss is a file position
+// --depth decides which packages are visited and so which misses are listed, and --hide-covered
+// leaves out the ones already at the bar. --files is not among them — a miss is a file position
 // whether or not a file is drawn as a row.
 //
-// Which means the list narrows with -depth the way the tree does *with -files*, not the way the
+// Which means the list narrows with --depth the way the tree does *with --files*, not the way the
 // default tree does. Asking for files is also what lets collapse merge a package holding one into a
-// single row, so `-misses -depth=2` reaches m/deep/deeper/b.go where `-depth=2` alone draws the
+// single row, so `misses --depth=2` reaches m/deep/deeper/b.go where `--depth=2` alone draws the
 // deeper package and stops. Same traversal, one option set differently, and that option is the
 // one the list has no choice about.
 //
-// -exclude and a renamed root are not read here. They act on the profile before the tree is built,
+// --exclude and a renamed root are not read here. They act on the profile before the tree is built,
 // so an excluded block is not a miss and a shortened path is what these carry — which is what makes
-// them useful, since the profile's own module paths do not resolve on disk and `-new=.` makes them
+// them useful, since the profile's own module paths do not resolve on disk and `--new=.` makes them
 // repository-relative.
 //
 // A block declaring no statements is not a miss. cmd/cover emits them, and there is nothing in one
@@ -143,6 +143,7 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 			// end of one block and the start of the next on one line — 4.7,7.3 and 7.14,10.3 give
 			// regions 4-7 and 7-10. Refusing to close there would fold them into 4-10 across the
 			// covered condition between, which is the fault. Neither contains the other.
+			//nolint:nilaway // open is an index this loop set, or -1; the guard is the bound.
 			if open >= 0 && block.Line >= out[open].EndLine {
 				open = -1
 			}
@@ -184,7 +185,7 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 // statements it accounted for.
 //
 // The same shape as DisplayTree — (writer, tree, options) returning what it drew — so a caller picks
-// a printer and calls it without a branch. That is the whole of the -misses mode: one selection,
+// a printer and calls it without a branch. That is the whole of the misses command: one selection,
 // not a second path through the report. What each returns is its own unit, and all they promise in
 // common is that it is zero exactly when nothing was written.
 //
@@ -215,21 +216,21 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 // already piping. It disagrees with the GNU text, which asks for display width with tab stops every
 // 8 — and so with Emacs, whose compilation-error-screen-columns defaults to t. Converting would put
 // prettycov alone among Go tools; the README names the setting instead.
-func DisplayMisses(w io.Writer, tree *PathTree, opts Options) int {
+func DisplayMisses(w io.Writer, tree *PathTree, opts Options) (int, error) {
 	buf := bufio.NewWriter(w)
 
 	listed := 0
 
 	for _, m := range Misses(tree, opts) {
-		// position, not a spelling of its own, so one definition of the format serves -exclude's
-		// matching and this. The path is the drawn one, so a position pastes back as an -exclude
+		// position, not a spelling of its own, so one definition of the format serves --exclude's
+		// matching and this. The path is the drawn one, so a position pastes back as an --exclude
 		// pattern for every path a Go repository actually holds — and for one carrying a rune a
 		// terminal would obey it does not, which sanitize weighs and takes.
 		//
 		// What it matches is the block that opens there, not the region: this names the first
 		// block of a fold and the count beside it is the whole region's, so excluding a position
 		// reading "2 uncovered" takes one statement out and leaves the next block listed at its
-		// own position. -exclude works in blocks, which is what makes a coordinate mean one thing.
+		// own position. --exclude works in blocks, which is what makes a coordinate mean one thing.
 		//
 		// And it wants a "$". Patterns are unanchored, so the column is a prefix as the line is:
 		// a.go:9:2 also matches a.go:9:24, which is an ordinary second block on the same line. A
@@ -243,7 +244,6 @@ func DisplayMisses(w io.Writer, tree *PathTree, opts Options) int {
 		listed += m.Statements
 	}
 
-	_ = buf.Flush()
-
-	return listed
+	//nolint:wrapcheck // the writer's own error; this adds no context the caller lacks.
+	return listed, buf.Flush()
 }

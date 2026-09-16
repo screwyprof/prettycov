@@ -164,7 +164,7 @@ func writeProfile(tb testing.TB, content string) string {
 	return path
 }
 
-// Positions are what -exclude matches a coordinate against, and the sum of the blocks has to be
+// Positions are what --exclude matches a coordinate against, and the sum of the blocks has to be
 // the file's Coverage or the two disagree about the same profile. EndLine comes along for Misses,
 // which needs to know where one region stops to tell it from the next.
 func TestParseProfileKeepsBlockPositions(t *testing.T) {
@@ -185,20 +185,8 @@ func TestParseProfileKeepsBlockPositions(t *testing.T) {
 
 	var sum prettycov.CoverageStats
 	for _, b := range items[0].Blocks {
-		sum.Add(b.Coverage)
+		sum = sum.Plus(b.Coverage)
 	}
 
 	assert.Equal(t, items[0].Coverage, sum)
-}
-
-func BenchmarkParseProfile(b *testing.B) {
-	path := writeSyntheticProfile(b)
-
-	b.ReportAllocs()
-
-	for b.Loop() {
-		if _, err := prettycov.ParseProfile(path); err != nil {
-			b.Fatal(err)
-		}
-	}
 }

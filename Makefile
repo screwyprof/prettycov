@@ -21,13 +21,22 @@ GO_FILES := $(wildcard $(shell $(GIT_LS) "*.go"))
 FIXTURES := $(wildcard $(shell $(GIT_LS) "*testdata/*"))
 LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
+# The same figure codecov.yml sets as its project target. Two places, because one is what a
+# contributor sees before pushing and the other is what blocks the merge.
+COVERAGE_FLOOR := 99
+# Tracked Markdown only, so a vendored or downloaded .md is never linted.
+MARKDOWN = $(shell $(GIT_LS) '*.md')
 # Counter files from the binary tests, folded into $(COVERAGE) below.
 COVERDATA := .covdata
 
 # main_test.go spawns a binary, so it is tagged and run in a pass of its own. Also in .golangci.yml,
 # which needs the tag to lint the file at all.
 GO_TAGS := integration
+GOVULNCHECK_VERSION := v1.8.0
 GOBCO_VERSION := v1.3.4
+GOLANGCI_VERSION := v2.13.1
+VALE_VERSION := v3.14.2
+REVIEWDOG_VERSION := v0.21.1
 GREMLINS_VERSION := v0.6.0
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
@@ -79,12 +88,21 @@ build: ## build application
 	@echo -e "$(OK_COLOR)==> Building application$(NO_COLOR)"
 	go build -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
 
-# golangci-lint comes from the devShell or the developer's own install, not go.mod, so the targets
-# needing it say where to get it rather than dying with "command not found".
-GOLANGCI_MISSING := golangci-lint not found. Enter the nix devShell, or install v2.13.1 (the version CI pins) from https://golangci-lint.run/docs/welcome/install/
+# `go run pkg@version`, as govulncheck, gobco, gremlins and reviewdog are: one convention, and the
+# pinned version is what runs. Probing PATH first was faster in the devShell and quietly ran
+# whatever version was installed there instead, which is a pin that lies.
+GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
-require-golangci:
-	@command -v golangci-lint >/dev/null 2>&1 || { echo "$(GOLANGCI_MISSING)"; exit 1; }
+# nilaway is a module plugin, so it has to be compiled into a golangci-lint of our own — see
+# .custom-gcl.yml. A real file rule, so the build happens when that file changes and never again —
+# 13s from a cold GOCACHE, 6s warm, which is the link step alone.
+#
+# Formatting uses the stock binary: the plugin adds a linter, not a formatter.
+GCL := bin/golangci-lint-prettycov
+
+$(GCL): .custom-gcl.yml .golangci.yml
+	@echo -e "$(OK_COLOR)==> Building golangci-lint with nilaway$(NO_COLOR)"
+	@$(GOLANGCI) custom
 
 # golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
 # which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
@@ -94,10 +112,10 @@ require-golangci:
 # loads packages, and the go tool skips directories starting with _ or . on the way. So a checkout
 # left under the root cost this target a minute per commit while lint stayed instant — 74469 files
 # walked to format 25.
-fmt: require-golangci ## format code
+fmt: ## format code
 	@echo -e "$(OK_COLOR)==> Formatting$(NO_COLOR)"
 	@test -n "$(GO_FILES)" || { echo "no Go files; GO_FILES needs a git checkout"; exit 1; }
-	@golangci-lint fmt $(GO_FILES)
+	@$(GOLANGCI) fmt $(GO_FILES)
 
 # One recipe produces the profile, and it is a real file rule so make can tell when it is stale.
 # The reports depend on the file rather than on `test`, so they rebuild it when a source has
@@ -119,8 +137,8 @@ fmt: require-golangci ## format code
 $(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
-	@go test -race -count=1 -timeout=120s -cover -covermode atomic -coverprofile=$@ ./...
-	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -race -count=1 -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/
+	@go test -race -count=1 -shuffle=on -timeout=120s -cover -covermode atomic -coverpkg=./... -coverprofile=$@ ./...
+	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -race -count=1 -shuffle=on -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/
 	@test -n "$$(ls -A $(COVERDATA) 2>/dev/null)" || \
 		{ echo "no counters in $(COVERDATA): did the -tags=$(GO_TAGS) pass run any tests?"; exit 1; }
 	@go tool covdata textfmt -i=$(COVERDATA) -o=$(COVERDATA)/binary.txt
@@ -149,7 +167,7 @@ test-cover-html: coverage.html ## show html coverage report
 # such as codecov.
 test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
-	@go run ./cmd/prettycov -total $(COVERAGE)
+	@go run ./cmd/prettycov total --profile=$(COVERAGE)
 
 # Go measures statements, not branches: `return a && b` is one statement, covered the moment it
 # runs, whichever way it evaluates. gobco instruments the conditions themselves and says which
@@ -162,6 +180,36 @@ test-cover-total: $(COVERAGE) ## show total coverage
 # which filled /tmp and killed the run on ENOSPC. Same shape as the one that made `make fmt` walk
 # 74,469 files — a tool reading the filesystem where the Go package graph was meant.
 #
+# Reachability-aware, so unlike a generic dependency scan it reports only what this binary can
+# actually reach — no triage queue of advisories in code that never runs.
+vulns: ## report known vulnerabilities reachable from this module
+	@echo -e "$(OK_COLOR)==> Vulnerabilities$(NO_COLOR)"
+	@go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+# See GOLANGCI above: same convention, same reason.
+VALE := go run github.com/errata-ai/vale/v3/cmd/vale@$(VALE_VERSION)
+
+# `-diff` rather than tidy-then-`git diff`: it reports what would change without writing, so the
+# gate cannot leave a dirty tree behind when it fails. Both files are checked in, so a stale one is
+# a change that builds here and on no other machine.
+tidy: ## check go.mod and go.sum are what the imports say
+	@echo -e "$(OK_COLOR)==> Checking go.mod$(NO_COLOR)"
+	@go mod tidy -diff
+
+# Google's developer documentation style guide, as Vale packages it, with this repo's deviations
+# recorded in .vale.ini. `vale sync` fetches the package into .vale/, which is gitignored, so the
+# first run on a clean checkout downloads it.
+docs-lint: .vale/Google ## check the Markdown against the prose style guide
+	@echo -e "$(OK_COLOR)==> Linting docs$(NO_COLOR)"
+	@$(VALE) $(MARKDOWN)
+
+# A file rule, so the package is fetched once rather than on every gate run — `make check` then
+# works offline, which an unconditional `vale sync` denied it.
+.vale/Google: .vale.ini
+	@echo -e "$(OK_COLOR)==> Fetching prose styles$(NO_COLOR)"
+	@$(VALE) sync >/dev/null
+	@touch $@
+
 # The copy is $(GIT_LS), the list `fmt` already uses, so uncommitted work is measured. A worktree
 # would be shorter and would silently report on HEAD instead.
 cover-branches: ## report conditions never evaluated both ways
@@ -169,7 +217,7 @@ cover-branches: ## report conditions never evaluated both ways
 	@test -n "$(GO_FILES)" || { echo "no Go files; this needs a git checkout"; exit 1; }
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT; \
 	 $(GIT_LS) | tar -cf - -T - | (cd "$$tmp" && tar -xf -); \
-	 for pkg in . ./internal/app; do \
+	 for pkg in . ./internal/app ./internal/cli; do \
 		(cd "$$tmp" && go run github.com/rillig/gobco@$(GOBCO_VERSION) $$pkg) | grep -v "^ok\b" || true; \
 	 done
 
@@ -199,15 +247,27 @@ mutate: ## report mutants the tests failed to kill
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
 test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
-	@go run ./cmd/prettycov -profile=$(COVERAGE) -old=$(LOCAL_PACKAGES) -new=prettycov -depth=2
+	@go run ./cmd/prettycov report --profile=$(COVERAGE) --old=$(LOCAL_PACKAGES) --new=prettycov --depth=2
 
-lint: require-golangci ## run linters for current changes
+lint: $(GCL) ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
-	golangci-lint run ./...
+	./$(GCL) run ./...
 
-lint-all: require-golangci ## run linters
+# CI only, and the same findings `lint` reports: reviewdog renders them as annotations on the pull
+# request diff, which a log cannot. It reads golangci-lint's own format from stdin, so this works
+# with the nilaway-carrying binary the GCL rule builds — reviewdog's own golangci-lint action
+# downloads the stock one, which cannot load this config at all and exits 3.
+#
+# Output aimed at a machine: no banner, no colour, no stats, or the errorformat has lines it cannot
+# parse. Scoped to the diff, as `lint` is, because that is what an annotation can point at.
+lint-annotate: $(GCL)
+	@./$(GCL) run ./... --output.text.print-issued-lines=false --output.text.colors=false --show-stats=false \
+		| go run github.com/reviewdog/reviewdog/cmd/reviewdog@$(REVIEWDOG_VERSION) \
+			-f=golangci-lint -name=golangci-lint -reporter=github-pr-check -fail-level=any
+
+lint-all: $(GCL) ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
-	golangci-lint run ./... --new-from-rev=""
+	./$(GCL) run ./... --new-from-rev=""
 
 # check runs every gate and prints one line per figure, so a PR description quotes the tools rather
 # than being retyped from them. Six descriptions in this repo have claimed numbers the tree did not
@@ -226,21 +286,33 @@ lint-all: require-golangci ## run linters
 # still print a clean-looking block and exit 0. Scoped to this target, so no other recipe changes.
 check: SHELL := /usr/bin/env bash
 check: .SHELLFLAGS := -o pipefail -c
+# The coverage line is a gate, not a figure: it used to print the total and assert nothing, so
+# `make check` passed at any coverage while codecov failed the pull request at 99%. Same bar now,
+# said in both places, and asserted by the tool this repository is.
 check: ## run every quality gate and print the block to paste into a PR description
 	@echo -e "$(OK_COLOR)==> Checking$(NO_COLOR)" >&2
 	@echo '$$ make build'
 	@$(MAKE) --no-print-directory build >/dev/null
-	@$(PWD)/$(BINARY) -version
+	@$(PWD)/$(BINARY) --version
 	@echo; echo '$$ make test'
-	@$(MAKE) --no-print-directory test 2>&1 | grep 'coverage:' | grep -v '/cmd/' | tr -s '\t' ' '
+	@$(MAKE) --no-print-directory test >/dev/null
+	@go run ./cmd/prettycov report --profile=$(COVERAGE) --old=$(LOCAL_PACKAGES) --new=prettycov \
+		--depth=2 --files --hide-covered --fail-under=$(COVERAGE_FLOOR)
 	@echo; echo '$$ make lint-all'
 	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
+	@echo; echo '$$ make tidy'
+	@$(MAKE) --no-print-directory tidy 2>&1 | tail -1
+	@echo; echo '$$ make vulns'
+	@$(MAKE) --no-print-directory vulns 2>&1 | grep -E 'No vulnerabilities|Vulnerability #'
+	@echo; echo '$$ make docs-lint'
+	@$(MAKE) --no-print-directory docs-lint 2>&1 | grep -E 'errors.*warnings|^ *✔'
 	@echo; echo '$$ make mutate'
 	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
 	@echo; echo '$$ make cover-branches'
 	@$(MAKE) --no-print-directory cover-branches 2>&1 | grep '^Condition coverage:' \
 		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"} \
-		       END {if (NR != 2) {print "cover-branches reported " NR " packages, wanted 2" > "/dev/stderr"; exit 1}}'
+		       NR==3 {print $$0 "    # internal/cli"} \
+		       END {if (NR != 3) {print "cover-branches reported " NR " packages, wanted 3" > "/dev/stderr"; exit 1}}'
 
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
@@ -297,6 +369,7 @@ clean: ## cleans-up artifacts
 	@rm -rf ./coverage.*
 	@rm -rf ./$(COVERDATA)
 	@rm -rf ./prettycov
+	@rm -rf ./bin
 
 help: ## show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(MAKE_COLOR) %s\n", $$1, $$2}'
@@ -304,6 +377,6 @@ help: ## show this help
 # To avoid unintended conflicts with file names, always add to .PHONY
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
-.PHONY: all build fmt require-golangci
+.PHONY: all build fmt
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-all check install hooks nix-hash release publish clean help
+.PHONY: lint lint-annotate lint-all vulns docs-lint tidy check install hooks nix-hash release publish clean help

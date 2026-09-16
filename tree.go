@@ -37,7 +37,7 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// Split with path.Dir rather than by counting components, so a file with no directory at all
 	// still lands somewhere: path.Dir gives it ".", which is the row it renders as. Reading the
 	// directory off the second-to-last component instead left such a file hanging under the tree
-	// root, which nothing draws — `prettycov -new=.` printed an empty report and exited 0.
+	// root, which nothing draws — `prettycov report --new=.` printed an empty report and exited 0.
 	//
 	// path.Dir cleans on the way, which the walk below relies on: splitting a path is not the same
 	// as walking one, and "m//a/b.go" would otherwise give an empty component and read "m//a".
@@ -54,7 +54,7 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// Accumulated, not assigned, so a file named twice adds up rather than keeping the last one.
 	// ParseProfile cannot deliver that — x/tools keys profiles by filename and merges their blocks
 	// — so this is for a caller handing Process a slice of its own.
-	leaf.Coverage.Add(stats)
+	leaf.Coverage = leaf.Coverage.Plus(stats)
 	// Kept because Misses reads positions the counts cannot say. Shared with the caller's slice
 	// rather than copied: the parser hands out one capped window per file, so appending to a leaf
 	// can never reach into the next file's blocks, and nothing here reorders or trims them — merge
@@ -136,15 +136,18 @@ func (a *arena) next() *PathTree {
 // stays two nodes. That map is a field rather than a method, so nothing can make it nil-safe the
 // way this is: a caller reading one still has to check what Get handed back.
 func (n *PathTree) Get(key string) *PathTree {
-	if n == nil {
+	// The empty key names nothing, and has to say so here rather than be left to walk. An absolute
+	// profile splits to a leading empty component, so the filesystem root is held as Children[""] —
+	// which is exactly the entry walk("") reads, handing back the whole tree for a key naming no
+	// path. Here rather than in any one branch below: this is the single point all three resolution
+	// paths pass through, so one guard covers walk, the "." retry and underRoot alike.
+	if n == nil || key == "" {
 		return nil
 	}
 
-	// "./x" is x. That is how a package whose name strconv.ParseBool reads — t, f, true, false, 1,
-	// 0 and their spellings, all of them legal directory names — can be named at all: -total settles
-	// the value before this ever sees it, so -total=t is the bare flag and -total=./t is the
-	// package. Nothing else needs the prefix, and stripping it changes no other answer, since "./x"
-	// and "x" name one node.
+	// "./x" is x: the tree holds one node under either spelling, and "." is a directory of its own
+	// — where a file the profile gave no directory lands — so without the strip "./t" would resolve
+	// under it rather than at the top.
 	if rest, found := strings.CutPrefix(key, "./"); found && rest != "" {
 		key = rest
 	}
@@ -154,7 +157,9 @@ func (n *PathTree) Get(key string) *PathTree {
 	}
 
 	// A key read off a row may be spelled as the report draws it rather than as the tree holds it.
-	// The renderer makes exactly two substitutions, and these undo them.
+	// The two below undo a renderer substitution each; underRoot, last, is not one of those — it
+	// accepts a path relative to the collapsed root, which is a convenience for the one prefix
+	// nobody wants to retype rather than the inverse of anything.
 	//
 	// The filesystem root has no name of its own — an absolute path splits to a leading empty
 	// component — and draws as "/".
@@ -166,10 +171,80 @@ func (n *PathTree) Get(key string) *PathTree {
 	// That row draws as "." on its own, and merged with its file as just the file — path.Clean
 	// drops the component — so "main.go" is a label with no matching path.
 	if dot := n.Children["."]; dot != nil {
-		return dot.walk(key)
+		if node := dot.walk(key); node != nil {
+			return node
+		}
 	}
 
-	return nil
+	return n.underRoot(key, maxRootDepth)
+}
+
+// onlyChild is the one directory below this node when that is all there is: no files of its own,
+// and exactly one child. It is the step a run of pass-through directories is made of.
+//
+// One definition because two callers must agree on it. collapse folds such a run into a single row,
+// and Get puts that run back in front of a path read off the row — so a second copy of this
+// predicate would let `total <label>` grade a node the report never drew, which is the class of bug
+// the renderers already share prepare to avoid.
+func (n *PathTree) onlyChild() (string, *PathTree, bool) {
+	if len(n.Files) != 0 || len(n.Children) != 1 {
+		return "", nil, false
+	}
+
+	for name, child := range n.Children {
+		return name, child, true
+	}
+
+	return "", nil, false
+}
+
+// maxRootDepth bounds how far the collapsed root is followed. A module path is three or four
+// segments and the deepest run measured across the reference checkouts is seven, so this stops a
+// cycle without reaching any real tree.
+const maxRootDepth = 64
+
+// underRoot resolves key under the run of single-child directories the report collapses into its
+// top row, and is Get's last fallback.
+//
+// The third renderer substitution, undone here with the other two: a row carries its own segment,
+// so "pkg/logger" read off a report is what a reader types and the tree holds it under
+// "github.com/x/y". Literal spellings are tried first, above, so this can only add answers.
+//
+// The run is descended first and probed from its deepest node back up, because the whole run is
+// what the report drew as its top row — the same condition collapse stops on. Probing on the way
+// down let a key that matches a segment inside the run answer from above the row the report drew:
+// with "github.com/x/y/y" and "github.com/x/y/z" in the profile, `total y` reached the "y" of the
+// root before the "y" beside "z", so --fail-under graded the whole tree and passed where the
+// package it names failed. Shallower prefixes are still tried, after the full one, so this still
+// only adds answers.
+//
+// walk rather than Get, which is what calls this: probing through Get would recurse without bound.
+// The descent is bounded for the same reason — Children is exported, so a caller assembling a tree
+// by hand can make a cycle, and Get has to answer rather than hang.
+func (n *PathTree) underRoot(key string, depth int) *PathTree {
+	// No empty-key guard here: Get is the only caller and refuses one before this is reached, and
+	// the recursion below passes key through unchanged. A second copy would be a condition nothing
+	// can make true — which is how the first one read once Get grew its own.
+	if depth == 0 {
+		return nil
+	}
+
+	_, child, ok := n.onlyChild()
+	if !ok {
+		return nil
+	}
+
+	// Deepest first: the whole collapsed run is what the report drew as its top row, so a shorter
+	// prefix of it must not answer instead. Recursing gives that order, and the descent path, for
+	// free — collecting the run into a slice to walk it backwards said the same thing with a slice.
+	if found := child.underRoot(key, depth-1); found != nil {
+		return found
+	}
+
+	// walk rather than Get, which is what calls this: probing through Get would recurse without
+	// bound. depth is bounded for the same reason — Children is exported, so a caller assembling a
+	// tree by hand can make a cycle, and Get has to answer rather than hang.
+	return child.walk(key)
 }
 
 // walk resolves key against this node, directories all the way but for the last segment, where a
@@ -202,3 +277,34 @@ func (n *PathTree) walk(key string) *PathTree {
 		key = rest
 	}
 }
+
+// stats is this node's rolled-up counts, and the whole of what the three accessors below read.
+//
+// Answers for a nil node, because Get promises a miss can be chained and these are what a caller
+// reaches for next: tree.Get("pkg").Uncovered() is the obvious line to write, and it panicked. A
+// nil node answers as a node holding nothing does — no statements, so no percentage, and not at
+// any bar, which is the safe direction: a mistyped path fails a gate rather than passing it.
+//
+// One guard rather than one per accessor, so a fourth cannot be added without it.
+func (n *PathTree) stats() CoverageStats {
+	if n == nil {
+		return CoverageStats{}
+	}
+
+	return n.Coverage
+}
+
+// Uncovered is how many statements this node and everything beneath it leave uncovered.
+//
+// A method rather than a caller reading Coverage.Uncovered: a node knows its own counts. Coverage
+// stays exported for a caller assembling a tree of its own, but nothing in this module reaches
+// through it — there is one way to ask.
+func (n *PathTree) Uncovered() int { return n.stats().Uncovered }
+
+// Percentage is the share of this node's statements that are covered, and whether there were any to
+// cover. False is not 0% — there is nothing to report.
+func (n *PathTree) Percentage() (Percentage, bool) { return n.stats().Percentage() }
+
+// AtLeast reports whether this node is covered to the bar, which is not always what comparing the
+// ratio would say — see CoverageStats.AtLeast for why 100 is asked of the counts.
+func (n *PathTree) AtLeast(bar Threshold) bool { return n.stats().AtLeast(bar) }

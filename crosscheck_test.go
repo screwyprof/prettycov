@@ -81,7 +81,7 @@ func assertRowsMatchTheProfile(
 
 // assertRowsHoldEveryStatement is the reconciliation, at full depth: take what the rows beneath a
 // row show away from it, and what is left must be exactly the files that row is the last one to
-// account for. Zero for a directory once -files draws them; the directory's own files without it,
+// account for. Zero for a directory once --files draws them; the directory's own files without it,
 // which is the `du` behaviour the README documents.
 func assertRowsHoldEveryStatement(
 	t *testing.T, tree *prettycov.PathTree, files []prettycov.FileCoverage, withFiles bool,
@@ -130,7 +130,7 @@ func assertRowsHoldEveryStatement(
 
 	// Arithmetic alone is too weak: a row that quietly keeps back a file no deeper row shows still
 	// balances, which is exactly what a folded-away node looks like. So say which rows must exist.
-	// At full depth that is every file when -files is on, and every directory holding one when it
+	// At full depth that is every file when --files is on, and every directory holding one when it
 	// is off — anything less and a statement is drawn beside a row that does not name it.
 	for _, f := range files {
 		want := path.Dir(f.File)
@@ -182,7 +182,7 @@ func nodeTotals(files []prettycov.FileCoverage) map[string][]prettycov.CoverageS
 
 	add := func(into map[string]prettycov.CoverageStats, key string, c prettycov.CoverageStats) {
 		stat := into[key]
-		stat.Add(c)
+		stat = stat.Plus(c)
 		into[key] = stat
 	}
 
@@ -255,7 +255,7 @@ func keptBack(files []prettycov.FileCoverage, drawn map[string]bool, withFiles b
 
 // crosscheckProfiles is every profile in testdata, plus the shapes it has none of. The first three
 // are impossible from one `go test` run — no filesystem lets a file and a directory share a name —
-// but a merge of two profiles or an -old/-new rewrite produces them, and each one hid a lost row.
+// but a merge of two profiles or an --old/--new rewrite produces them, and each one hid a lost row.
 func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 	t.Helper()
 
@@ -304,7 +304,7 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 			file("a.go/c.go", 0, 3),
 		},
 		// And the root can hold a file directly, which is the one node with no name of its own.
-		// `-new=/` reaches this from an ordinary profile.
+		// `--new=/` reaches this from an ordinary profile.
 		"files at the filesystem root": {
 			file("/a.go", 3, 1),
 			file("/b/c.go", 2, 0),
@@ -326,11 +326,11 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 }
 
 // The two printers are two readings of one traversal, so they have to agree about which files they
-// account for. Both times this went wrong they disagreed silently: a file above -hide-covered's bar
+// account for. Both times this went wrong they disagreed silently: a file above --hide-covered's bar
 // had its misses listed while the tree left the row out, and a package merged into its single file
 // was drawn while its misses were lost — the row is the file there, and a file has no Files to read.
 //
-// With -files every file the report accounts for is a row of its own, which makes the claim exact:
+// With --files every file the report accounts for is a row of its own, which makes the claim exact:
 // the rows that name a file holding unrun statements are precisely the files the misses name.
 func TestRowsAndMissesAccountForTheSameFiles(t *testing.T) {
 	t.Parallel()
@@ -347,7 +347,13 @@ func TestRowsAndMissesAccountForTheSameFiles(t *testing.T) {
 			// Every depth, because depth is what decides which nodes are visited, and the bar as
 			// well, because it is the other half of that decision.
 			for _, depth := range []prettycov.Depth{0, 1, 2, 3, prettycov.DepthAll} {
-				for _, bar := range []*float64{nil, at(100), at(90), at(50)} {
+				bars := []*prettycov.Threshold{
+					nil,
+					new(prettycov.MustThreshold(100)),
+					new(prettycov.MustThreshold(90)),
+					new(prettycov.MustThreshold(50)),
+				}
+				for _, bar := range bars {
 					opts := missOpts(depth)
 					opts.HideCovered = bar
 					drawn, missed := fileRowsWithMisses(tree, files, opts), missedFiles(tree, opts)
@@ -359,7 +365,7 @@ func TestRowsAndMissesAccountForTheSameFiles(t *testing.T) {
 					}
 
 					// Both ways once nothing is cut. Past a cut the two are allowed to differ: a
-					// file takes no level, so it is visited where it is not drawn, and -misses
+					// file takes no level, so it is visited where it is not drawn, and misses
 					// answers for the package the reader can see rather than for the rows.
 					if depth == prettycov.DepthAll {
 						assert.Equal(t, drawn, missed, "bar=%v", bar)

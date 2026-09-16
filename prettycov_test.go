@@ -1,9 +1,7 @@
 package prettycov_test
 
 import (
-	"maps"
 	"path/filepath"
-	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -140,7 +138,7 @@ func TestCoverageStatsPercentage(t *testing.T) {
 	}
 }
 
-// AtLeast is the gate -fail-under and -hide-covered are graded by, and at 100 it is not the
+// AtLeast is the gate --fail-under and --hide-covered are graded by, and at 100 it is not the
 // comparison the ratio would make. Exported, so a caller can hand it any number the CLI's own
 // [0, 100] clamp would have refused.
 func TestCoverageStatsAtLeast(t *testing.T) {
@@ -169,16 +167,13 @@ func TestCoverageStatsAtLeast(t *testing.T) {
 		// Nothing to cover has no share to compare, so it is not at any bar — including 0, which
 		// would otherwise make every empty package pass every gate.
 		{name: "no statements", stats: prettycov.CoverageStats{}, pct: 0, want: false},
-		// And nothing reaches more than all of it. A caller passing a computed threshold, or one it
-		// meant as a fraction, gets a refusal rather than a gate that reads 100 as "at least 150".
-		{name: "past 100", stats: prettycov.CoverageStats{Covered: 10}, pct: 150, want: false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tc.want, tc.stats.AtLeast(tc.pct))
+			assert.Equal(t, tc.want, tc.stats.AtLeast(prettycov.MustThreshold(tc.pct)))
 		})
 	}
 }
@@ -189,11 +184,11 @@ func TestCoverageStatsAdd(t *testing.T) {
 	t.Parallel()
 
 	stats := prettycov.CoverageStats{Covered: 3, Uncovered: 1}
-	stats.Add(prettycov.CoverageStats{Covered: 4, Uncovered: 2})
+	stats = stats.Plus(prettycov.CoverageStats{Covered: 4, Uncovered: 2})
 
 	assert.Equal(t, prettycov.CoverageStats{Covered: 7, Uncovered: 3}, stats)
 
-	stats.Add(prettycov.CoverageStats{})
+	stats = stats.Plus(prettycov.CoverageStats{})
 	assert.Equal(t, prettycov.CoverageStats{Covered: 7, Uncovered: 3}, stats, "adding nothing changes nothing")
 }
 
@@ -300,27 +295,12 @@ func TestProcessAddsUpAFileNamedTwice(t *testing.T) {
 
 	// And the second file's blocks are appended to the first's rather than replacing them, in the
 	// order they arrived. Asserted on the leaf, not through a report: this is what add does, and a
-	// report would only show it once merging and the depth had had their say.
+	// report would only show it once merging and the depth have had their say.
 	assert.Equal(t, []prettycov.Block{
 		{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 1}},
 		{Line: 9, Col: 2, EndLine: 10, Coverage: prettycov.CoverageStats{Uncovered: 1}},
 		{Line: 40, Col: 2, EndLine: 41, Coverage: prettycov.CoverageStats{Uncovered: 2}},
 	}, node.Files["a.go"].Blocks)
-}
-
-func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
-	t.Parallel()
-
-	tree := prettycov.Process([]prettycov.FileCoverage{file("m/pkg/a.go", 1, 1)})
-
-	assert.Nil(t, tree.Get("m/absent"))
-	assert.NotNil(t, tree.Get("m/pkg"), "and finds one that is")
-
-	// A miss is chainable, so walking down a path one component at a time does not have to check
-	// after every step. 0.8.0's Get returned the file itself and IsFile answered for a nil node;
-	// with files behind a map, this is what is left to be nil-safe.
-	assert.Nil(t, tree.Get("m/absent").Get("deeper"), "a miss is still a tree to ask")
-	assert.Nil(t, (*prettycov.PathTree)(nil).Get("m"))
 }
 
 // Which paths a root names, and the count that follows from it — a row that rewrites nothing is a
@@ -356,7 +336,7 @@ func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 			old: "github.com/o/repo/", replace: "repo", want: "repo/pkg/a.go", wantRenamed: 1,
 		},
 		{
-			// `-old=$(MODULE)/` with MODULE already ending in one. Trimming a single separator left
+			// `--old=$(MODULE)/` with MODULE already ending in one. Trimming a single separator left
 			// "github.com/o/repo/" to be matched against a path carrying one separator there, so a
 			// root that is in the profile matched nothing and the CLI called it a root that is not.
 			name: "however many of them there are", file: "github.com/o/repo/pkg/a.go",
@@ -399,7 +379,7 @@ func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 
 // Splitting a path is not the same as walking one. Totalling per directory used to go through
 // path.Dir, which cleans on the way, so a doubled separator never reached a label; building the
-// tree from the file path directly has to clean it itself. -new with a trailing slash is how a
+// tree from the file path directly has to clean it itself. --new with a trailing slash is how a
 // caller produces one without meaning to.
 func TestProcessCleansPaths(t *testing.T) {
 	t.Parallel()
@@ -416,7 +396,7 @@ func TestProcessCleansPaths(t *testing.T) {
 			want:  "m/a",
 		},
 		{
-			name:    "trailing slash on -new",
+			name:    "trailing slash on --new",
 			files:   []prettycov.FileCoverage{file("zz/a/x.go", 1, 1), file("zz/b/y.go", 1, 1)},
 			newRoot: "dg/",
 			want:    "dg",
@@ -440,7 +420,7 @@ func TestProcessCleansPaths(t *testing.T) {
 // root, which nothing draws: the statements stayed in the total and appeared beside no row, and a
 // profile of nothing but bare filenames printed an empty report and exited 0.
 // "./x.go" and "x.go" are one file, because they are one path — path.Dir cleans a leading "." away
-// as redundant. Worth pinning: making -new=. draw a single "." root means giving that prefix a
+// as redundant. Worth pinning: making --new=. draw a single "." root means giving that prefix a
 // meaning of its own, and then a profile naming both spellings of one package splits into two rows
 // carrying the same label, with the package's statements divided between them.
 func TestProcessReadsADotPrefixAsTheSamePath(t *testing.T) {
@@ -458,7 +438,7 @@ func TestProcessReadsADotPrefixAsTheSamePath(t *testing.T) {
 	assert.Equal(t, 7, rows[0].Coverage.Total(), "holding every statement of both")
 }
 
-// -new=. strips the root rather than renaming it to a node called ".", because that is what the
+// --new=. strips the root rather than renaming it to a node called ".", because that is what the
 // path means: everything below the old root moves up, and a module whose top level holds more than
 // one entry is drawn as more than one row. Identical to the profile it would have been written as.
 func TestShortenToDotStripsTheRoot(t *testing.T) {
@@ -491,7 +471,7 @@ func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 			want:  []string{"."},
 		},
 		{
-			// -new=. is a natural way to strip a module prefix, and it is how a real profile ends
+			// --new=. is a natural way to strip a module prefix, and it is how a real profile ends
 			// up with a file at the top and packages beneath it.
 			name:    "a bare file beside a package",
 			files:   []prettycov.FileCoverage{file("foo/printer.go", 3, 1), file("foo/internal/app/a.go", 2, 1)},
@@ -522,170 +502,6 @@ func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 				"every statement in the profile is drawn beside some row")
 		})
 	}
-}
-
-// Files and directories are separate maps, so a caller enumerating packages walks Children and is
-// never handed a file by accident. Get answers for directories; a file is reached through Files.
-func TestPathTreeKeepsFilesAndDirectoriesApart(t *testing.T) {
-	t.Parallel()
-
-	tree := prettycov.Process([]prettycov.FileCoverage{
-		file("m/x/own.go", 1, 1),
-		file("m/x/sub/s.go", 1, 1),
-	})
-
-	pkg := tree.Get("m/x")
-	require.NotNil(t, pkg)
-
-	assert.Equal(t, []string{"sub"}, slices.Sorted(maps.Keys(pkg.Children)), "directories only")
-	assert.Equal(t, []string{"own.go"}, slices.Sorted(maps.Keys(pkg.Files)), "and the files it holds")
-
-	// Two maps, so a name belonging to both stays two nodes — but Get reaches through to the file,
-	// since the last segment of a path a reader typed off a row is the row they were looking at.
-	own := tree.Get("m/x/own.go")
-	require.NotNil(t, own, "the last segment may name a file")
-	assert.Same(t, pkg.Files["own.go"], own, "and it is the file, not something rebuilt")
-	assert.Empty(t, own.Children, "a file holds nothing")
-}
-
-// A file wins the last segment, which only matters for a profile no filesystem could have produced:
-// one directory cannot hold a file and a directory of one name. cmd/cover cannot write it, so the
-// rule is here to be predictable rather than to arbitrate a real case — and a path ending in .go is
-// a file to whoever typed it.
-func TestPathTreeGetPrefersAFileOnTheLastSegment(t *testing.T) {
-	t.Parallel()
-
-	tree := prettycov.Process([]prettycov.FileCoverage{
-		file("m/a.go", 1, 9),      // the file
-		file("m/a.go/b.go", 9, 1), // a directory of the same name
-	})
-
-	got := tree.Get("m/a.go")
-	require.NotNil(t, got)
-
-	pct, ok := got.Coverage.Percentage()
-	require.True(t, ok)
-	assert.InDelta(t, 10.00, pct.Float(), ratioTolerance, "the file, not the directory's 90.00")
-
-	// The directory is still there, and still reachable through what it holds.
-	assert.NotNil(t, tree.Get("m/a.go/b.go"), "the directory is not shadowed, only its own name is")
-}
-
-// A key read off a row resolves, and the report draws two labels the tree does not hold under that
-// name: path.Clean drops a "." component, so a file the profile gave no directory of its own merges
-// into a row spelled as just the file; and the filesystem root has no name of its own, so it draws
-// as "/". Both are the renderer's substitutions, and Get undoes them — otherwise -total=main.go is
-// refused for a row the tool printed one line above.
-func TestPathTreeGetTakesTheSpellingTheReportDraws(t *testing.T) {
-	t.Parallel()
-
-	bare := prettycov.Process([]prettycov.FileCoverage{
-		file("main.go", 3, 1), // no directory at all: lands under "."
-		file("pkg/a.go", 2, 0),
-	})
-
-	// "./" alone is not a path to anything: stripping it would leave the empty key, which names the
-	// root and would hand back the whole tree for what reads as a typo.
-	assert.Nil(t, bare.Get("./"), `"./" names nothing`)
-
-	for _, key := range []string{"main.go", "./main.go", "."} {
-		node := bare.Get(key)
-		require.NotNilf(t, node, "Get(%q)", key)
-
-		pct, ok := node.Coverage.Percentage()
-		require.True(t, ok)
-		assert.InDeltaf(t, 75.00, pct.Float(), ratioTolerance, "Get(%q)", key)
-	}
-
-	rooted := prettycov.Process([]prettycov.FileCoverage{
-		file("/a.go", 3, 1),
-		file("/b.go", 0, 1),
-	})
-
-	slash := rooted.Get("/")
-	require.NotNil(t, slash, `the row drawn as "/"`)
-
-	pct, ok := slash.Coverage.Percentage()
-	require.True(t, ok)
-	assert.InDelta(t, 60.00, pct.Float(), ratioTolerance)
-
-	assert.NotNil(t, rooted.Get("/a.go"), "and a file under it")
-}
-
-// A package named as strconv.ParseBool reads it — t, f, true, 1 and their spellings, every one a
-// legal Go directory name — cannot be asked for by name, because -total settles the value before
-// the tree is consulted. "./t" is the escape, and it is the only one: the flag cannot tell them
-// apart, so the library has to offer a spelling the flag never claims.
-func TestPathTreeGetTakesADotSlashEscape(t *testing.T) {
-	t.Parallel()
-
-	tree := prettycov.Process([]prettycov.FileCoverage{
-		file("t/a.go", 2, 0),
-		file("f/b.go", 0, 2),
-	})
-
-	for key, want := range map[string]float64{"t": 100, "./t": 100, "f": 0, "./f": 0} {
-		node := tree.Get(key)
-		require.NotNilf(t, node, "Get(%q)", key)
-
-		pct, ok := node.Coverage.Percentage()
-		require.True(t, ok)
-		assert.InDeltaf(t, want, pct.Float(), ratioTolerance, "Get(%q)", key)
-	}
-
-	// The prefix is stripped, not resolved against a directory called ".": this tree has none.
-	assert.Nil(t, tree.Get("./nope"))
-}
-
-// A segment repeated further down must not resolve early. Get walks with Cut and only asks Files
-// where there is no separator left, so "a/x/a" is the file two levels down; comparing each segment
-// against a precomputed last one would match the first "a" and hand back a file from the top.
-func TestPathTreeGetDoesNotResolveARepeatedSegmentEarly(t *testing.T) {
-	t.Parallel()
-
-	tree := prettycov.Process([]prettycov.FileCoverage{
-		file("a/x/a", 1, 9),         // a file named "a", inside a directory also named "a"
-		file("a/x/a/deep.go", 9, 1), // and a directory of that name beside it
-	})
-
-	deep := tree.Get("a/x/a")
-	require.NotNil(t, deep)
-
-	pct, ok := deep.Coverage.Percentage()
-	require.True(t, ok)
-	assert.InDelta(t, 10.00, pct.Float(), ratioTolerance, "the file two levels down, not the root")
-
-	assert.NotNil(t, tree.Get("a/x/a/deep.go"), "and the walk still passes through the directory")
-}
-
-// Nothing at all is nil rather than a zero node, so a caller can tell "no such path" from "nothing
-// covered" — the two print very differently and only one is a mistake.
-func TestPathTreeGetMissesAreNil(t *testing.T) {
-	t.Parallel()
-
-	tree := prettycov.Process([]prettycov.FileCoverage{file("m/x/own.go", 1, 1)})
-
-	for _, key := range []string{"", "nope", "m/nope", "m/x/own.go/deeper", "m/x/own.go/"} {
-		assert.Nil(t, tree.Get(key), "Get(%q)", key)
-	}
-}
-
-// A name that is both is two nodes, one in each map, and neither has to answer for the other. That
-// is what makes every row the sum of what is drawn beneath it with no exception.
-func TestPathTreeSplitsANameThatIsBothAFileAndADirectory(t *testing.T) {
-	t.Parallel()
-
-	tree := prettycov.Process([]prettycov.FileCoverage{
-		file("m/a.go", 5, 0),
-		file("m/a.go/b.go", 0, 7),
-	})
-
-	m := tree.Get("m")
-	require.NotNil(t, m)
-
-	assert.Equal(t, 5, m.Files["a.go"].Coverage.Total(), "the file")
-	assert.Equal(t, 7, m.Children["a.go"].Coverage.Total(), "the directory of the same name")
-	assert.Equal(t, 12, m.Coverage.Total(), "and m is exactly the two of them")
 }
 
 // Process must not write through the slice it is handed, which it documents and a caller reusing
@@ -743,38 +559,5 @@ func file(name string, covered, uncovered int) prettycov.FileCoverage {
 	return prettycov.FileCoverage{
 		File:     name,
 		Coverage: prettycov.CoverageStats{Covered: covered, Uncovered: uncovered},
-	}
-}
-
-func BenchmarkProcess(b *testing.B) {
-	files := syntheticProfile(b)
-
-	b.ReportAllocs()
-
-	for b.Loop() {
-		_ = prettycov.Process(files)
-	}
-}
-
-// Get is called once per invocation, so this exists to hold a claim rather than to chase a cost:
-// the walk allocates nothing, for a hit, a file hit and a miss alike.
-func BenchmarkGet(b *testing.B) {
-	tree := prettycov.Process(syntheticProfile(b))
-
-	for _, bc := range []struct {
-		name string
-		key  string
-	}{
-		{name: "package", key: "github.com/acme/monorepo/unit3/pkg/logger"},
-		{name: "file", key: "github.com/acme/monorepo/unit3/pkg/logger/logger.go"},
-		{name: "miss", key: "github.com/acme/monorepo/unit3/pkg/nope"},
-	} {
-		b.Run(bc.name, func(b *testing.B) {
-			b.ReportAllocs()
-
-			for b.Loop() {
-				_ = tree.Get(bc.key)
-			}
-		})
 	}
 }

@@ -1,7 +1,9 @@
-package app
+package cli
 
 import (
+	"encoding"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -12,7 +14,7 @@ import (
 
 var errBadColor = errors.New(`want "auto", "never" or "always"`)
 
-// colorMode is what -color said. auto needs the destination to mean anything; never and always
+// colorMode is what --color said. auto needs the destination to mean anything; never and always
 // exist because a caller sometimes knows better than the heuristic, which is why every tool that
 // colours output offers the same three.
 type colorMode int
@@ -26,18 +28,26 @@ const (
 	colorAlways
 )
 
-func parseColorMode(s string) (colorMode, error) {
-	switch s {
-	case "auto":
-		return colorAuto, nil
+// See prettycov.Depth's assertion for why: nothing calls this by name, so without it a rename
+// compiles and --color=never stops being a spelling kong knows.
+var _ encoding.TextUnmarshaler = (*colorMode)(nil)
+
+// UnmarshalText parses a mode, so a colorMode exists only because one of the three spellings was
+// given. Kong finds this through encoding.TextUnmarshaler, so the flag holds the parsed value and
+// there is no window in which an unchecked string is lying around.
+func (m *colorMode) UnmarshalText(text []byte) error {
+	switch string(text) {
 	case "never":
-		return colorNever, nil
+		*m = colorNever
 	case "always":
-		return colorAlways, nil
+		*m = colorAlways
+	case "auto":
+		*m = colorAuto
 	default:
-		//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
-		return colorAuto, errBadColor
+		return fmt.Errorf("%w: %q", errBadColor, text)
 	}
+
+	return nil
 }
 
 // isTerminal is a variable so the tests can answer for a terminal without opening a pty.

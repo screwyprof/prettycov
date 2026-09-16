@@ -10,88 +10,102 @@ on:
 
 # This repo predates GitHub's 2023 switch to a read-only default, so GITHUB_TOKEN would otherwise
 # resolve to Contents/Actions/Deployments: write and be handed to every third-party action in the
-# job. Nothing here needs to write to the repo; the lint job re-adds only checks: write, which
-# reviewdog's github-pr-check reporter requires.
+# job. Nothing here needs to write to the repo.
 permissions:
   contents: read
 
 jobs:
-  build:
+  # One job running one command, because two lists of gates drift and this pair had: CI ran build,
+  # lint and test while `make check` ran seven, so mutation testing, condition coverage,
+  # govulncheck and the prose gate were enforced on a developer's machine and nowhere else. The
+  # reverse happened too — a `go mod tidy` check lived here and not in the Makefile.
+  #
+  # Worse, the lint CI ran was not the lint the Makefile runs. `make lint-all` uses a golangci-lint
+  # with nilaway compiled in as a module plugin; the actions downloaded the stock binary, which
+  # cannot load that config at all:
+  #
+  #   Error: build linters: plugin(nilaway): plugin "nilaway" not found
+  #
+  # `make check` builds the custom binary itself, so the linter here is the linter a contributor
+  # ran before pushing.
+  check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # github-pr-check, the reporter the annotation step uses.
+      checks: write
     steps:
       # Checkout MUST precede setup-go: go-version-file reads go.mod off the working tree.
       - name: Check out code into the Go module directory
         uses: actions/checkout@v7
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
         with:
-          # Single-sourced from go.mod (currently 1.27) so CI can never drift from the module again.
-          go-version-file: go.mod
-          cache: true
-          cache-dependency-path: go.sum
-
-      - name: Build App
-        run: make build
-
-  golangci-lint:
-    name: runner / golangci-lint
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      checks: write
-    steps:
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v7
-        with:
-          # .golangci.yml sets `new-from-rev: main`, which needs real history to diff against.
+          # .golangci.yml sets `new-from-rev: main`, which needs real history to diff against, and
+          # `make cover-branches` copies what git tracks.
           fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
+          # Single-sourced from go.mod (currently 1.26) so CI can never drift from the module.
+          # 1.26 rather than 1.27 on purpose: golang/go#80974 makes 1.27 miscount statements, which
+          # is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27
+          # backport, so this lifts when 1.28 ships and not before.
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
 
-      - name: golangci-lint
-        uses: reviewdog/action-golangci-lint@v2
-        with:
-          github_token: ${{ secrets.github_token }}
-          golangci_lint_version: v2.13.2
+      # Before the gate, so findings reach the diff as annotations even though `make check` is
+      # about to fail on them. `-fail-level=any` makes this a gate in its own right; the step below
+      # runs the same linter again as part of the whole suite.
+      #
+      # Never a gate, whoever opened the pull request. reviewdog's github-pr-check reporter needs a
+      # writable token, and GitHub hands a read-only one to any run it treats as untrusted — a fork,
+      # and Dependabot's own pull requests too, whatever `permissions:` above asks for. With
+      # -fail-level=any the 403 failed the job before `make check` ever ran, so the contributor saw
+      # a permissions error and no lint or test result at all.
+      #
+      # continue-on-error rather than another actor to exclude: the list of actors GitHub treats as
+      # untrusted is not ours to keep, and this step has nothing to gate with. `make check` below
+      # runs the same linter as a real gate, so a failure here costs annotations on the diff and
+      # nothing else. The same-repo condition stays only to skip a step known to be unable to work.
+      - name: Lint annotations
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        run: make lint-annotate
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # reviewdog reports the diff, which .golangci.yml's new-from-rev narrows it to. That is what
-      # keeps a contributor from drowning in what was already there — and it is also why a function
-      # already over a budget can be added to without a word: the lines are new, the issue is not.
-      # newFlagSet grew from 78 to 80 lines against a funlen of 60 that way. This runs the whole
-      # repository so the standing state has to stay clean too.
-      - name: golangci-lint, whole repository
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.13.2
-          # setup-go above already restored the module cache; letting this restore its own on top
-          # unpacks the same files over themselves and tar fails the step.
-          skip-cache: true
-          args: --new-from-rev=""
+      # Every gate, in one command, and the same command CONTRIBUTING tells a contributor to run.
+      # The tools it needs are fetched with `go run pkg@version` rather than installed, so nothing
+      # here has to be kept in step with the Makefile's versions either.
+      # `shell: bash` is load-bearing: it means `bash -eo pipefail`, where the default for `run` on
+      # Linux is `bash -e` with no pipefail. Without it the step exits with tee's status, which is
+      # always 0, and `make check` cannot fail CI at all — the Makefile's own pipefail governs the
+      # pipes inside its recipes, not the one this wraps around it.
+      - name: make check
+        shell: bash
+        run: make check | tee check.out
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
+      # The block `make check` prints is the one a pull request description wants, so put it where
+      # it can be copied without opening the log.
+      #
+      # `always()` means this also runs when a step before `make check` failed, and then there is no
+      # check.out to read — so the cat is guarded rather than left to error and mark a second step
+      # red for the first one's failure.
+      - name: Publish the gate block
+        if: always()
+        run: |
+          {
+            echo '### Gates'
+            echo '```'
+            cat check.out 2>/dev/null || echo '(make check did not run)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Setup go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-          cache-dependency-path: go.sum
-
-      - name: Run tests
-        run: make test
-
-      # Dogfooding: the tool's report on its own profile, written to the run summary so it is
-      # visible without opening the log. Reuses the coverage.out `make test` just wrote.
+      # Dogfooding: the tool's own report on its own profile, from the coverage.out `make check`
+      # already wrote.
       - name: Coverage tree
+        if: always()
         run: |
           {
             echo '### Coverage'
@@ -100,9 +114,19 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Codecov is the one gate that cannot live in the Makefile: it compares against the base
+      # commit, which needs the service. codecov.yml's project target and COVERAGE_FLOOR in the
+      # Makefile are the same number, said in the two places that enforce it.
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
-          fail_ci_if_error: true # optional (default = false)
-          verbose: false # optional (default = false)
+          # Named, not searched for. Left to search, the action reported "Found 2 coverage files"
+          # and uploaded testdata/delegator.coverage.out alongside the real one — a fixture, and a
+          # profile of a different repository, which is what this tool's own tests read. Its paths
+          # resolve to nothing here, so the damage was bounded, but a gate fed a fixture is not a
+          # gate. disable_search makes that a guarantee rather than a fix for the one file we found.
+          files: ./coverage.out
+          disable_search: true
+          fail_ci_if_error: true
+          verbose: false

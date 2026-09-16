@@ -1,18 +1,10 @@
 package app
 
 import (
-	"fmt"
-	"io"
 	"runtime/debug"
 )
 
 var version string // set by the linker
-
-func printVersion(w io.Writer) int {
-	_, _ = fmt.Fprintln(w, buildVersion())
-
-	return exitOK
-}
 
 // buildVersion reads the version rather than caching it back into the linker variable: writing to
 // that variable made two concurrent callers a data race.

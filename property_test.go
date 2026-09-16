@@ -97,7 +97,7 @@ func assertRowsAreInOrder(t *testing.T, tree *prettycov.PathTree, withFiles bool
 	}
 }
 
-// assertDepthOnlyAddsRows checks that raising -depth adds rows below and leaves every row already
+// assertDepthOnlyAddsRows checks that raising --depth adds rows below and leaves every row already
 // drawn exactly as it was — same label, same glyphs, same numbers. Stated in prose on the merge
 // tests, and the reason a one-file package merges at every depth rather than only where its file
 // would have been drawn: a row's label is a property of its node, not of where the cut falls.
@@ -127,12 +127,12 @@ func assertDepthOnlyAddsRows(t *testing.T, tree *prettycov.PathTree, withFiles b
 			}
 		}
 
-		assert.Equalf(t, shallow, kept, "-depth=%d against the rows -depth=%d draws at that level",
+		assert.Equalf(t, shallow, kept, "--depth=%d against the rows --depth=%d draws at that level",
 			cut, cut+1)
 	}
 }
 
-// assertTopRowsSumToTheTotal checks the report against the one number most people read. -total
+// assertTopRowsSumToTheTotal checks the report against the one number most people read. total
 // prints the tree's own coverage without drawing anything, so nothing else in the report is in a
 // position to disagree with it — except the rows at the top, which are every statement there is.
 func assertTopRowsSumToTheTotal(t *testing.T, tree *prettycov.PathTree, withFiles bool) {
@@ -141,10 +141,10 @@ func assertTopRowsSumToTheTotal(t *testing.T, tree *prettycov.PathTree, withFile
 	var top prettycov.CoverageStats
 
 	for _, row := range prettycov.Rows(tree, prettycov.Options{Depth: 0, Files: withFiles}) {
-		top.Add(row.Coverage)
+		top = top.Plus(row.Coverage)
 	}
 
-	assert.Equalf(t, tree.Coverage, top, "the top rows against what -total prints, files=%v", withFiles)
+	assert.Equalf(t, tree.Coverage, top, "the top rows against what total prints, files=%v", withFiles)
 }
 
 // assertRenderIsDeterministic renders the same tree repeatedly. Map order is randomised per range
@@ -166,7 +166,7 @@ func assertRenderIsDeterministic(t *testing.T, tree *prettycov.PathTree, withFil
 // like files, so that the shapes which have gone wrong are ordinary rather than exceptional. Over
 // the seeded three hundred: a package whose whole content is one file in 97% of profiles, an
 // absolute path in 47%, a name used as both a file and a directory in 46%, and a filename repeated
-// in 23%. Real profiles reach the last two through a merge of two runs or an -old/-new rewrite.
+// in 23%. Real profiles reach the last two through a merge of two runs or an --old/--new rewrite.
 //
 // Duplicates are left in. x/tools merges a repeated filename before we see it, so only a caller
 // assembling its own slice gets one — which is the case PathTree.add accumulates for.

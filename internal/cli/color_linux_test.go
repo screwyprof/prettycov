@@ -1,4 +1,4 @@
-package app_test
+package cli_test
 
 import (
 	"bytes"
@@ -48,7 +48,7 @@ func runToTerminal(t *testing.T) string {
 		_, _ = io.Copy(&out, master)
 	}()
 
-	require.Equal(t, codeOK, app.Run([]string{writeProfile(t, profile)}, slave, os.Stderr))
+	require.Equal(t, codeOK, app.Run([]string{"report", "--profile", writeProfile(t, profile)}, slave, os.Stderr))
 
 	// Closing the last slave makes the master's read fail, which is what ends the copy.
 	require.NoError(t, slave.Close())
