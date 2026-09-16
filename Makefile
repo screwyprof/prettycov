@@ -94,8 +94,10 @@ build: ## build application
 GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
 # nilaway is a module plugin, so it has to be compiled into a golangci-lint of our own — see
-# .custom-gcl.yml. A real file rule, so the two-minute build happens when that file changes and
-# never again. Formatting uses the stock binary: the plugin adds a linter, not a formatter.
+# .custom-gcl.yml. A real file rule, so the build happens when that file changes and never again —
+# 13s from a cold GOCACHE, 6s warm, which is the link step alone.
+#
+# Formatting uses the stock binary: the plugin adds a linter, not a formatter.
 GCL := bin/golangci-lint-prettycov
 
 $(GCL): .custom-gcl.yml .golangci.yml
