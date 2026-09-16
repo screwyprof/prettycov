@@ -228,6 +228,47 @@ func TestPathTreeGetPrefersTheDeepestRootPrefix(t *testing.T) {
 	assert.Same(t, tree.Get("github.com/x/y/z"), tree.Get("z"), "and its sibling, as before")
 }
 
+// Get documents that a miss can be chained, and these are what a caller reaches for next. All three
+// panicked on the node Get had just handed back, so the one line the doc invites —
+// tree.Get("pkg").Uncovered() — was the one that crashed.
+//
+// A nil node answers as a node holding nothing does, which is what the tree already says about an
+// empty one: no uncovered statements, no percentage to report, and not at any bar — including 0,
+// since nothing to cover is not "at least anything".
+func TestPathTreeMethodsAnswerForAMissedNode(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/a.go", 1, 1),
+	})
+
+	missed := tree.Get("nope")
+	require.Nil(t, missed, "the case Get promises is chainable")
+
+	assert.Equal(t, 0, missed.Uncovered())
+
+	pct, ok := missed.Percentage()
+	assert.False(t, ok, "no statements, so no share to report")
+	assert.Equal(t, prettycov.Percentage{}, pct)
+
+	assert.False(t, missed.AtLeast(prettycov.MustThreshold(0)), "not at any bar, 0 included")
+	assert.False(t, missed.AtLeast(prettycov.MustThreshold(100)))
+
+	// And the node that is there answers from its counts, which is the contrast that gives the
+	// nil answers their meaning.
+	held := tree.Get("m/a.go")
+	require.NotNil(t, held)
+
+	assert.Equal(t, 1, held.Uncovered())
+
+	pct, ok = held.Percentage()
+	require.True(t, ok)
+	assert.InDelta(t, 50.0, pct.Float(), ratioTolerance)
+
+	assert.True(t, held.AtLeast(prettycov.MustThreshold(50)))
+	assert.False(t, held.AtLeast(prettycov.MustThreshold(51)))
+}
+
 // Get follows the collapsed root by descending single-child directories, and Children is exported,
 // so a tree assembled by hand can point back at itself. Bounded rather than trusted: the answer is
 // a miss, and the point is that there is one.

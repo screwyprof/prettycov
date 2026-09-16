@@ -263,17 +263,40 @@ func (n *PathTree) walk(key string) *PathTree {
 	}
 }
 
+// The three below answer for a nil node, because Get promises a miss can be chained and these are
+// what a caller reaches for next: tree.Get("pkg").Uncovered() is the obvious line to write, and it
+// panicked. A nil node answers as a node holding nothing does — no statements, so no percentage,
+// and not at any bar.
+
 // Uncovered is how many statements this node and everything beneath it leave uncovered.
 //
 // A method rather than a caller reading Coverage.Uncovered: a node knows its own counts. Coverage
 // stays exported for a caller assembling a tree of its own, but nothing in this module reaches
 // through it — there is one way to ask.
-func (n *PathTree) Uncovered() int { return n.Coverage.Uncovered }
+func (n *PathTree) Uncovered() int {
+	if n == nil {
+		return 0
+	}
+
+	return n.Coverage.Uncovered
+}
 
 // Percentage is the share of this node's statements that are covered, and whether there were any to
 // cover. False is not 0% — there is nothing to report.
-func (n *PathTree) Percentage() (Percentage, bool) { return n.Coverage.Percentage() }
+func (n *PathTree) Percentage() (Percentage, bool) {
+	if n == nil {
+		return Percentage{}, false
+	}
+
+	return n.Coverage.Percentage()
+}
 
 // AtLeast reports whether this node is covered to the bar, which is not always what comparing the
 // ratio would say — see CoverageStats.AtLeast for why 100 is asked of the counts.
-func (n *PathTree) AtLeast(bar Threshold) bool { return n.Coverage.AtLeast(bar) }
+func (n *PathTree) AtLeast(bar Threshold) bool {
+	if n == nil {
+		return false
+	}
+
+	return n.Coverage.AtLeast(bar)
+}
