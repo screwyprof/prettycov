@@ -303,7 +303,8 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@echo; echo '$$ make tidy'
 	@$(MAKE) --no-print-directory tidy 2>&1 | tail -1
 	@echo; echo '$$ make vulns'
-	@$(MAKE) --no-print-directory vulns 2>&1 | grep -E 'No vulnerabilities|Vulnerability #'
+	@out=$$($(MAKE) --no-print-directory vulns 2>&1) || { echo "$$out"; exit 1; }; \
+		echo "$$out" | grep -E 'No vulnerabilities|Vulnerability #'
 	@echo; echo '$$ make docs-lint'
 	@$(MAKE) --no-print-directory docs-lint 2>&1 | grep -E 'errors.*warnings|^ *✔'
 	@echo; echo '$$ make mutate'

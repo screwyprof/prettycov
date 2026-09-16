@@ -10,7 +10,7 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
-## [Unreleased]
+## [0.14.0] — 2026-09-16
 
 ### CLI
 
