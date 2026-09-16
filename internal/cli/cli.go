@@ -177,7 +177,7 @@ func (c *reportCmd) render(cfg config, tree *prettycov.PathTree, s Streams) erro
 		sayNothingShown(cfg, tree, s)
 	}
 
-	return checkThreshold(cfg.FailUnder, tree, s)
+	return gate{cfg.FailUnder}.grade(tree, s)
 }
 
 // render has a second message the tree has none of: only a list can stop short of what is behind
@@ -195,7 +195,7 @@ func (c *missesCmd) render(cfg config, tree *prettycov.PathTree, s Streams) erro
 			cfg.outputFilters(), shown, plural(tree.Uncovered(), "uncovered statement"))
 	}
 
-	return checkThreshold(cfg.FailUnder, tree, s)
+	return gate{cfg.FailUnder}.grade(tree, s)
 }
 
 // Streams is where a handler writes, bound by the composition root so nothing reaches os.Stdout
@@ -212,7 +212,7 @@ func (c *reportCmd) Run(s *Streams, m *Measured) error {
 
 	cfg.Files, cfg.Counts = c.Files, c.Counts
 
-	tree, err := treeOf(cfg, *s)
+	tree, err := treeOf(cfg.Request, gate{cfg.FailUnder}, *s)
 	if err != nil {
 		return err
 	}
@@ -226,7 +226,7 @@ func (c *missesCmd) Run(s *Streams, m *Measured) error {
 		return err
 	}
 
-	tree, err := treeOf(cfg, *s)
+	tree, err := treeOf(cfg.Request, gate{cfg.FailUnder}, *s)
 	if err != nil {
 		return err
 	}
@@ -240,12 +240,12 @@ func (c *totalCmd) Run(s *Streams, m *Measured) error {
 		return err
 	}
 
-	tree, err := treeOf(cfg, *s)
+	tree, err := treeOf(cfg.Request, gate{cfg.FailUnder}, *s)
 	if err != nil {
 		return err
 	}
 
-	return total(cfg, tree, c.Node, *s)
+	return total(gate{cfg.FailUnder}, tree, c.Node, *s)
 }
 
 func (c *versionCmd) Run(s *Streams, v Version) error {
