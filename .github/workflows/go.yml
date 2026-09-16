@@ -46,11 +46,20 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          # Single-sourced from go.mod (currently 1.26) so CI can never drift from the module.
           # 1.26 rather than 1.27 on purpose: golang/go#80974 makes 1.27 miscount statements, which
           # is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27
           # backport, so this lifts when 1.28 ships and not before.
-          go-version-file: go.mod
+          #
+          # `.x`, and not go-version-file, which this was. go.mod's directive is a language version
+          # — `go 1.26` — and setup-go reads it as the exact patch 1.26.0, then sets
+          # GOTOOLCHAIN=local so nothing can upgrade it. CI therefore sat on the first 1.26 release
+          # forever and shipped GO-2026-4601 (net/url, fixed in 1.26.1) through a green govulncheck,
+          # while every developer ran a patched toolchain and saw nothing. Single-sourcing the wrong
+          # field is not single-sourcing.
+          #
+          # The minor stays pinned, which is the property go.mod was being read for; only the patch
+          # floats, which is where security fixes land.
+          go-version: '1.26.x'
           cache: true
           cache-dependency-path: go.sum
 
