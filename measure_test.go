@@ -45,10 +45,11 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 			req:     func(p string) prettycov.Request { return prettycov.Request{Profile: p} },
 			want: func(t *testing.T, m prettycov.Measurement) {
 				t.Helper()
-				require.NotNil(t, m.Tree)
-				assert.Equal(t, prettycov.NotEmpty, m.Empty)
-				assert.False(t, m.RootMissed)
-				assert.Equal(t, 10, m.Tree.Coverage.Total())
+
+				tree, ok := m.Tree()
+				require.True(t, ok)
+				assert.Equal(t, prettycov.Measured, m.Outcome())
+				assert.Equal(t, 10, tree.Coverage.Total())
 			},
 		},
 		// Asked before any flag is judged, so a good rename is not blamed for an empty profile.
@@ -59,9 +60,10 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 			},
 			want: func(t *testing.T, m prettycov.Measurement) {
 				t.Helper()
-				assert.Nil(t, m.Tree)
-				assert.Equal(t, prettycov.NoStatements, m.Empty)
-				assert.False(t, m.RootMissed, "the profile is what is empty, not the root")
+
+				_, ok := m.Tree()
+				assert.False(t, ok)
+				assert.Equal(t, prettycov.NoStatements, m.Outcome(), "the profile is what is empty, not the root")
 			},
 		},
 		"patterns that take everything": {
@@ -71,8 +73,10 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 			},
 			want: func(t *testing.T, m prettycov.Measurement) {
 				t.Helper()
-				assert.Nil(t, m.Tree)
-				assert.Equal(t, prettycov.ExcludedAway, m.Empty)
+
+				_, ok := m.Tree()
+				assert.False(t, ok)
+				assert.Equal(t, prettycov.ExcludedAway, m.Outcome())
 				assert.Len(t, m.Exclusions, 1, "and the accounting survives, so a caller can say what took it")
 			},
 		},
@@ -83,9 +87,10 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 			},
 			want: func(t *testing.T, m prettycov.Measurement) {
 				t.Helper()
-				require.NotNil(t, m.Tree)
-				assert.False(t, m.RootMissed)
-				assert.NotNil(t, m.Tree.Get("x"), "the label is the new root")
+
+				tree, ok := m.Tree()
+				require.True(t, ok)
+				assert.NotNil(t, tree.Get("x"), "the label is the new root")
 			},
 		},
 		"a rename that matches nothing": {
@@ -95,8 +100,10 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 			},
 			want: func(t *testing.T, m prettycov.Measurement) {
 				t.Helper()
-				assert.True(t, m.RootMissed, "only the matching can catch a root that moved")
-				assert.Nil(t, m.Tree)
+				assert.Equal(t, prettycov.RootMissed, m.Outcome(), "only the matching can catch a root that moved")
+
+				_, ok := m.Tree()
+				assert.False(t, ok)
 			},
 		},
 		// The order that makes this right: the root is matched against the whole profile, not
@@ -113,9 +120,10 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 			},
 			want: func(t *testing.T, m prettycov.Measurement) {
 				t.Helper()
-				assert.False(t, m.RootMissed, "the pattern took them, the root is not at fault")
-				require.NotNil(t, m.Tree, "and what is outside the root still measures")
-				assert.Nil(t, m.Tree.Get("x"))
+
+				tree, ok := m.Tree()
+				require.True(t, ok, "the pattern took them, the root is not at fault")
+				assert.Nil(t, tree.Get("x"))
 			},
 		},
 	}
@@ -162,14 +170,17 @@ func TestUnderRootPrefixesAPathTheRootWasCollapsedFrom(t *testing.T) {
 	got, err := prettycov.Measure(prettycov.Request{Profile: profile})
 	require.NoError(t, err)
 
-	full, ok := got.Tree.UnderRoot("pkg/logger")
+	tree, ok := got.Tree()
+	require.True(t, ok)
+
+	full, ok := tree.UnderRoot("pkg/logger")
 	require.True(t, ok)
 	assert.Equal(t, "github.com/x/y/pkg/logger", full)
-	assert.NotNil(t, got.Tree.Get(full), "and it only ever names a path the tree holds")
+	assert.NotNil(t, tree.Get(full), "and it only ever names a path the tree holds")
 
-	_, ok = got.Tree.UnderRoot("github.com/x/y/pkg/logger")
+	_, ok = tree.UnderRoot("github.com/x/y/pkg/logger")
 	assert.False(t, ok, "a path that already works has nothing to suggest")
 
-	_, ok = got.Tree.UnderRoot("nowhere")
+	_, ok = tree.UnderRoot("nowhere")
 	assert.False(t, ok)
 }

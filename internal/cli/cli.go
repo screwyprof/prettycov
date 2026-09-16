@@ -14,10 +14,10 @@ import (
 	"github.com/screwyprof/prettycov"
 )
 
-// An ExitCode is what the process exits with. Named, so nothing can hand an ordinary int to
-// exitError and mean something by it.
-// An ExitCode is what the process exits with. Named, so nothing can hand an ordinary int to
-// exitError and mean something by it.
+// An ExitCode is what the process exits with. Named, so an ordinary int cannot be one.
+//
+// Below is distinct from Failed so a CI step can tell "coverage dropped" from "prettycov could not
+// run".
 type ExitCode int
 
 const (
@@ -26,17 +26,18 @@ const (
 	ExitFailed
 )
 
-// exitError carries a status out through the error a Run method returns. A failed --fail-under gate
-// is not a usage mistake: reported as one it would be printed and counted as exit 2.
-// exitError carries a status out through the error a handler returns. A failed --fail-under gate
-// is not a usage mistake: reported as one it would be printed and counted as exit 2.
+// exitError carries a status out through the error a handler returns, which is kong's only channel.
+// A failed --fail-under gate is not a usage mistake: reported as one it would be printed and
+// counted as exit 2.
+//
+// Error is never called — ExitCodeOf reads the code and the composition root prints nothing — but
+// the method is forced, because a status has to be an error to travel this way.
 type exitError struct{ code ExitCode }
 
 func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
 
-// ExitCodeOf reports the status an error asks the process to exit with, and whether it asked. The
-// composition root above this package decides what to do with a plain error; this says only which
-// errors have already been reported and carry a code of their own.
+// ExitCodeOf reports the status an error carries, and whether it carries one. False means a plain
+// error the composition root still has to print.
 func ExitCodeOf(err error) (ExitCode, bool) {
 	if exit, ok := errors.AsType[exitError](err); ok {
 		return exit.code, true
@@ -64,12 +65,12 @@ var errRootNamesNoPkg = errors.New("--old names no package")
 //
 //nolint:lll // a struct tag is one unit; splitting it hides the declaration.
 type Measured struct {
-	Profile   string   `help:"Coverage profile to read."                                                            default:"${profile}" placeholder:"PATH"`
-	Old       string   `help:"Root package path to shorten."                                                                             placeholder:"PATH"   and:"rename"`
-	New       string   `help:"What to shorten it to; --new=. strips it."                                                                 placeholder:"PATH"   and:"rename"`
-	Exclude   []string `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP"              sep:"none"`
-	FailUnder *float64 `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
-	Color     string   `help:"When to colour: auto, never or always."                                               default:"auto"                                                    enum:"auto,never,always"`
+	Profile   string    `help:"Coverage profile to read."                                                            default:"${profile}" placeholder:"PATH"`
+	Old       string    `help:"Root package path to shorten."                                                                             placeholder:"PATH"   and:"rename"`
+	New       string    `help:"What to shorten it to; --new=. strips it."                                                                 placeholder:"PATH"   and:"rename"`
+	Exclude   []string  `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP"              sep:"none"`
+	FailUnder *float64  `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
+	Color     colorMode `help:"When to colour: auto, never or always."                                               default:"auto"`
 }
 
 // Validate is kong's per-struct hook. A root of only separators names no package — `--old=$(MODULE)/`
@@ -101,8 +102,8 @@ func (m *Measured) Validate() error {
 //
 //nolint:lll // a struct tag is one unit.
 type drawn struct {
-	Depth       string   `help:"Levels below the top row, like tree -L, or \"max\"."             default:"${depth}" placeholder:"LEVELS"`
-	HideCovered *float64 `help:"Leave out subtrees at this percentage or above; bare means 100."                    placeholder:"PCT"    type:"hidecovered"`
+	Depth       prettycov.Depth `help:"Levels below the top row, like tree -L, or \"max\"."             default:"${depth}" placeholder:"LEVELS"`
+	HideCovered *float64        `help:"Leave out subtrees at this percentage or above; bare means 100."                    placeholder:"PCT"    type:"hidecovered"`
 }
 
 // CLI is the whole command line. Every command is named: there is no default, so `prettycov` alone
@@ -285,7 +286,7 @@ func (m Measured) settle() (config, error) {
 		cfg.Exclude = append(cfg.Exclude, re)
 	}
 
-	cfg.Color = colorOf(m.Color)
+	cfg.Color = m.Color
 
 	return cfg, nil
 }
@@ -298,7 +299,9 @@ func (d drawn) settled(m *Measured) (config, error) {
 		return config{}, err
 	}
 
-	return cfg, d.shape(&cfg)
+	d.shape(&cfg)
+
+	return cfg, nil
 }
 
 // options is what the printers in package prettycov take, settled against the destination: --color
@@ -313,17 +316,11 @@ func (c config) options(out io.Writer) prettycov.Options {
 	}
 }
 
-// shape adds the flags that decide how a row looks.
-func (d drawn) shape(cfg *config) error {
-	depth, err := prettycov.ParseDepth(d.Depth)
-	if err != nil {
-		return fmt.Errorf("--depth: %w", err)
-	}
-
-	cfg.Depth = depth
+// shape adds the flags that decide how a row looks. Nothing to parse and nothing to fail: both
+// arrived parsed, because both types read themselves.
+func (d drawn) shape(cfg *config) {
+	cfg.Depth = d.Depth
 	cfg.HideCovered = d.HideCovered
-
-	return nil
 }
 
 // OptionalPercentage is --hide-covered, the one flag whose value may be left off. Kong has no

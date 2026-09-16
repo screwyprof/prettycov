@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -8,6 +10,8 @@ import (
 
 	"github.com/screwyprof/prettycov"
 )
+
+var errBadColor = errors.New(`want "auto", "never" or "always"`)
 
 // colorMode is what -color said. auto needs the destination to mean anything; never and always
 // exist because a caller sometimes knows better than the heuristic, which is why every tool that
@@ -23,18 +27,22 @@ const (
 	colorAlways
 )
 
-// colorOf reads a mode kong has already checked against the enum in the flag's tag. Total, with no
-// error to return: anything outside the enum is refused before this runs, so a second check here
-// would be a branch no invocation can take.
-func colorOf(s string) colorMode {
-	switch s {
+// UnmarshalText parses a mode, so a colorMode exists only because one of the three spellings was
+// given. Kong finds this through encoding.TextUnmarshaler, so the flag holds the parsed value and
+// there is no window in which an unchecked string is lying around.
+func (m *colorMode) UnmarshalText(text []byte) error {
+	switch string(text) {
 	case "never":
-		return colorNever
+		*m = colorNever
 	case "always":
-		return colorAlways
+		*m = colorAlways
+	case "auto":
+		*m = colorAuto
 	default:
-		return colorAuto
+		return fmt.Errorf("%w: %q", errBadColor, text)
 	}
+
+	return nil
 }
 
 // isTerminal is a variable so the tests can answer for a terminal without opening a pty.

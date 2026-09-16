@@ -233,7 +233,7 @@ func TestRunColorFlag(t *testing.T) {
 			require.Equal(t, tc.wantCode, code)
 
 			if tc.wantCode != codeOK {
-				assert.Contains(t, stderr.String(), `--color must be one of "auto","never","always"`)
+				assert.Contains(t, stderr.String(), `--color: want "auto", "never" or "always"`)
 
 				return
 			}

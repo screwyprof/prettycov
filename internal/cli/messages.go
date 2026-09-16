@@ -13,10 +13,10 @@ import (
 	"github.com/screwyprof/prettycov"
 )
 
-// reasonFor is how an EmptyReason reads. Here rather than beside the constant, because Measure
+// reasonFor is how an Outcome without a tree reads. Here rather than beside the constant, because Measure
 // states the fact and only a command line has an opinion about the words.
-func reasonFor(e prettycov.EmptyReason) string {
-	if e == prettycov.NoStatements {
+func reasonFor(o prettycov.Outcome) string {
+	if o == prettycov.NoStatements {
 		return "no statements to cover"
 	}
 
@@ -43,44 +43,27 @@ func suggest(tree *prettycov.PathTree, want string) string {
 	return fmt.Sprintf(", did you mean %q?", full)
 }
 
-// whyNothingShown says why a printer came up empty.
+// whyNothingShown says why a printer came up empty. Printer-blind: a message per printer would be a
+// second place with an opinion about what the filters do.
 //
-// It asks nothing about which printer that was. One drawing rows and one printing positions would
-// need a message each, and a third would need a third — and every one of them would be a second
-// place holding an opinion about what the output filters do, which is the drift the single prepare
-// seam exists to prevent. The filters emptied it; naming them is the whole answer either way.
-//
-// Two causes, and they are opposite news. The tree's own count separates them, which is a number
-// already to hand rather than a second pass over the filtering: no uncovered statement anywhere is
-// an all-clear worth printing, and uncovered statements the filters leave out is the opposite.
-// Saying the first when the second happened is a false all-clear on a profile with work left in it —
-// `misses --hide-covered=0` over a fully drawn tree reported completion on 34 statements, exit 0.
-//
-// It does not say what one level deeper would have shown, which nothing here knows. Re-deriving it
-// would put the filtering in a second place.
+// The two causes are opposite news, and the tree's count separates them. Saying "nothing left to
+// cover" for the second is a false all-clear — `misses --hide-covered=0` over a fully drawn tree
+// reported completion on 34 statements, exit 0.
 func (c config) whyNothingShown(tree *prettycov.PathTree) string {
 	if tree.Uncovered() == 0 {
 		return "nothing left to cover"
 	}
 
-	// "left" rather than "remain", which would need a second spelling for the singular that plural
-	// already handles for the count itself.
 	return fmt.Sprintf("nothing to show at %s; %s left",
 		c.outputFilters(), plural(tree.Uncovered(), "uncovered statement"))
 }
 
-// outputFilters names the flags that shape the output, as typed — the one place a filter added
-// later has to be named, which is what keeps whyNothingShown out of the business of diagnosing
-// which one did it.
+// outputFilters names the flags that could have emptied the output, as typed. The one place a
+// filter added later has to be named.
 //
-// --depth is always in play and always has a value, so it is always named. --hide-covered is named
-// when it was given, which is the only time it can have taken anything.
-//
-// --files is not one of these, not because it shapes nothing — it decides which rows exist, and
-// reaches --hide-covered's judgement through the same gate — but because it cannot be the one that
-// emptied the output. A list of positions is made of files whatever it says, and a tree keeps the
-// top row --depth always draws. --exclude is not either: it acts on the profile, and a report it
-// emptied is refused further up with a message of its own.
+// Not --files: a list of positions is made of files whatever it says, and a tree keeps the top row
+// --depth always draws. Not --exclude: it acts on the profile, and a report it emptied is refused
+// further up with its own message.
 func (c config) outputFilters() string {
 	filters := "--depth=" + c.Depth.String()
 
@@ -91,18 +74,16 @@ func (c config) outputFilters() string {
 	return filters
 }
 
-// reportExclusions says what each pattern took out, on stderr so the report itself stays pipeable.
-// Not behind a verbose flag: exclusion moves the denominator. The one run it says nothing on is an
-// empty profile, which showReport answers before it gets here — there every pattern took nothing,
-// so the accounting is a column of zeroes under a line already saying why.
+// reportExclusions says what each pattern took. Not behind a verbose flag: exclusion moves the
+// denominator.
 //
-// A pattern that matched nothing is said, not refused: see showReport for why --old is and this is
-// not.
+// A pattern that matched nothing is said, not refused — unlike --old, which transforms the output,
+// so one that did nothing leaves a report nobody asked for.
 func reportExclusions(excluded []prettycov.Exclusion, s Streams) {
 	for _, ex := range excluded {
-		// Distinct from matching nothing: the pattern works, an earlier one just got there first.
-		// Saying "matched nothing" here sends someone to fix a pattern that is already right, and
-		// deleting it stops working the day such a file lands outside the earlier pattern's reach.
+		// Distinct from matching nothing: the pattern works, an earlier one got there first. Saying
+		// "matched nothing" sends someone to delete a pattern that is holding the line for the day
+		// such a file lands outside the earlier one's reach.
 		if ex.Files == 0 && ex.Blocks == 0 && ex.Overlapped() > 0 {
 			_, _ = fmt.Fprintf(s.Err, "--exclude %q took nothing out, %s already excluded\n",
 				ex.Pattern, units(ex.OverlappedFiles, ex.OverlappedBlocks))

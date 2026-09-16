@@ -21,46 +21,54 @@ type Request struct {
 	Exclude []*regexp.Regexp
 }
 
-// A Measurement is what a profile and the request that read it produced: the tree, and everything
-// worth saying about how it got there.
-//
-// Facts, not sentences and not an exit code. A caller turns these into whatever it speaks — the CLI
-// into English and a status, a service into JSON — without either having to know about the other.
-type Measurement struct {
-	// Tree is nil when there is nothing to report, and then Empty or RootMissed says why.
-	Tree       *PathTree
-	Exclusions []Exclusion
-	// RootMissed is Rename.From naming a package the profile does not hold — a typo, or a module
-	// path that has moved. Only the matching can catch it, which is why it is reported rather than
-	// refused here.
-	RootMissed bool
-	Empty      EmptyReason
-}
-
-// An EmptyReason is why a profile yielded nothing to report. The two are not the same news and a
-// caller that tells them the same way is lying about one of them.
-type EmptyReason int
+// An Outcome is how a measurement turned out. Exactly one of these is true of any run, which is why
+// it is one value and not a tree beside a bool beside a reason: those could spell twelve states
+// where only four mean anything.
+type Outcome int
 
 const (
-	// NotEmpty is a measurement with a tree.
-	NotEmpty EmptyReason = iota
-	// NoStatements is a profile holding nothing to cover. Asked before any pattern or root is
+	// Measured is a run with a tree.
+	Measured Outcome = iota
+	// NoStatements is a profile holding nothing to cover. Decided before any pattern or root is
 	// judged: an empty profile has nothing for either to match, so every one of them would look
 	// stale — a good rename named as the fault when the profile is what is empty.
 	NoStatements
 	// ExcludedAway is a profile that held statements until the patterns ran.
 	ExcludedAway
+	// RootMissed is a rename naming a package the profile does not hold — a typo, or a module path
+	// that has moved. Only the matching can catch it.
+	RootMissed
 )
+
+// A Measurement is what a profile and the request that read it produced.
+//
+// The tree is unexported and reachable only through Tree, which hands it back with whether there is
+// one: a caller cannot read a nil tree without being told, and cannot assemble a Measurement whose
+// outcome and tree disagree.
+type Measurement struct {
+	// Exclusions is what each pattern took, whatever the outcome — a pattern that emptied the
+	// profile is the case a caller most wants to report.
+	Exclusions []Exclusion
+
+	tree    *PathTree
+	outcome Outcome
+}
+
+// Outcome is how the run turned out.
+func (m Measurement) Outcome() Outcome { return m.outcome }
+
+// Tree is the measured tree, and whether there is one. There is one exactly when Outcome is
+// Measured.
+func (m Measurement) Tree() (*PathTree, bool) { return m.tree, m.outcome == Measured }
 
 // Measure reads a profile and applies what decides its contents, in the one order that is correct.
 //
-// The order is the point of this existing. Statements are counted before any flag is judged; the
-// root is matched against the whole profile rather than against what the patterns left, so a
-// pattern that took every file under a good root is not reported as a bad root; and the tree is
-// built last, from what survived both.
+// Statements are counted before any flag is judged; the root is matched against the whole profile
+// rather than against what the patterns left, so a pattern that took every file under a good root
+// is not reported as a bad root; the tree is built last, from what survived both.
 //
-// The error is the profile being unreadable. Everything else a run can go wrong in is a field of
-// Measurement, because a caller may want to report it and carry on.
+// The error is the profile being unreadable. Everything else is an Outcome, because a caller may
+// want to report it and carry on.
 //
 // It does not change directory. It used to chdir to the profile's directory and then open the path
 // it was given, which meant any relative path with a directory component failed to resolve.
@@ -71,22 +79,22 @@ func Measure(req Request) (Measurement, error) {
 	}
 
 	if !anyStatements(items) {
-		return Measurement{Empty: NoStatements}, nil
+		return Measurement{outcome: NoStatements}, nil
 	}
 
 	kept, excluded := Exclude(items, req.Exclude)
 	shortened, renamed := Shorten(kept, req.Rename.From, req.Rename.To)
 
 	if rootMissed(req.Rename, items, renamed) {
-		return Measurement{Exclusions: excluded, RootMissed: true}, nil
+		return Measurement{Exclusions: excluded, outcome: RootMissed}, nil
 	}
 
 	tree := Process(shortened)
-	if _, ok := tree.Coverage.Percentage(); !ok {
-		return Measurement{Exclusions: excluded, Empty: ExcludedAway}, nil
+	if _, ok := tree.Percentage(); !ok {
+		return Measurement{Exclusions: excluded, outcome: ExcludedAway}, nil
 	}
 
-	return Measurement{Tree: tree, Exclusions: excluded}, nil
+	return Measurement{Exclusions: excluded, tree: tree, outcome: Measured}, nil
 }
 
 // rootMissed reports whether the rename named a package the profile does not hold.
