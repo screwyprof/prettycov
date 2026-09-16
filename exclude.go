@@ -177,7 +177,7 @@ func chargeBlocks(
 
 		if charged < 0 {
 			blocks = append(blocks, block)
-			left.Add(block.Coverage)
+			left = left.Plus(block.Coverage)
 		}
 	}
 

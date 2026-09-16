@@ -189,11 +189,11 @@ func TestCoverageStatsAdd(t *testing.T) {
 	t.Parallel()
 
 	stats := prettycov.CoverageStats{Covered: 3, Uncovered: 1}
-	stats.Add(prettycov.CoverageStats{Covered: 4, Uncovered: 2})
+	stats = stats.Plus(prettycov.CoverageStats{Covered: 4, Uncovered: 2})
 
 	assert.Equal(t, prettycov.CoverageStats{Covered: 7, Uncovered: 3}, stats)
 
-	stats.Add(prettycov.CoverageStats{})
+	stats = stats.Plus(prettycov.CoverageStats{})
 	assert.Equal(t, prettycov.CoverageStats{Covered: 7, Uncovered: 3}, stats, "adding nothing changes nothing")
 }
 
@@ -300,7 +300,7 @@ func TestProcessAddsUpAFileNamedTwice(t *testing.T) {
 
 	// And the second file's blocks are appended to the first's rather than replacing them, in the
 	// order they arrived. Asserted on the leaf, not through a report: this is what add does, and a
-	// report would only show it once merging and the depth had had their say.
+	// report would only show it once merging and the depth have had their say.
 	assert.Equal(t, []prettycov.Block{
 		{Line: 3, Col: 2, EndLine: 4, Coverage: prettycov.CoverageStats{Covered: 1}},
 		{Line: 9, Col: 2, EndLine: 10, Coverage: prettycov.CoverageStats{Uncovered: 1}},

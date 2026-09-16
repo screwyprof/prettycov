@@ -18,11 +18,13 @@ type CoverageStats struct {
 // No overflow check: this is the raw sum, and Percentage is what refuses one that has wrapped.
 func (c CoverageStats) Total() int { return c.Covered + c.Uncovered }
 
-// Add takes in another node's statements. Both sides move together or the percentage is drawn from
+// Plus is these statements and another's. Both sides move together, or the percentage is drawn from
 // counts that were never summed the same way.
-func (c *CoverageStats) Add(other CoverageStats) {
-	c.Covered += other.Covered
-	c.Uncovered += other.Uncovered
+//
+// Returns rather than mutates, so CoverageStats has no pointer method and a caller cannot hold one
+// that changes under it. Two ints: the copy costs nothing.
+func (c CoverageStats) Plus(other CoverageStats) CoverageStats {
+	return CoverageStats{Covered: c.Covered + other.Covered, Uncovered: c.Uncovered + other.Uncovered}
 }
 
 // Percentage reports the share of statements covered. The bool is false when there are none to
@@ -190,11 +192,11 @@ func Process(files []FileCoverage) *PathTree {
 // had already multiplied several times over.
 func rollUp(node *PathTree) CoverageStats {
 	for _, file := range node.Files {
-		node.Coverage.Add(rollUp(file))
+		node.Coverage = node.Coverage.Plus(rollUp(file))
 	}
 
 	for _, child := range node.Children {
-		node.Coverage.Add(rollUp(child))
+		node.Coverage = node.Coverage.Plus(rollUp(child))
 	}
 
 	return node.Coverage

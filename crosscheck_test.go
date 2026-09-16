@@ -182,7 +182,7 @@ func nodeTotals(files []prettycov.FileCoverage) map[string][]prettycov.CoverageS
 
 	add := func(into map[string]prettycov.CoverageStats, key string, c prettycov.CoverageStats) {
 		stat := into[key]
-		stat.Add(c)
+		stat = stat.Plus(c)
 		into[key] = stat
 	}
 
@@ -347,7 +347,7 @@ func TestRowsAndMissesAccountForTheSameFiles(t *testing.T) {
 			// Every depth, because depth is what decides which nodes are visited, and the bar as
 			// well, because it is the other half of that decision.
 			for _, depth := range []prettycov.Depth{0, 1, 2, 3, prettycov.DepthAll} {
-				for _, bar := range []*float64{nil, at(100), at(90), at(50)} {
+				for _, bar := range []*float64{nil, new(100.0), new(90.0), new(50.0)} {
 					opts := missOpts(depth)
 					opts.HideCovered = bar
 					drawn, missed := fileRowsWithMisses(tree, files, opts), missedFiles(tree, opts)

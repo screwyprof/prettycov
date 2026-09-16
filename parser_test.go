@@ -185,7 +185,7 @@ func TestParseProfileKeepsBlockPositions(t *testing.T) {
 
 	var sum prettycov.CoverageStats
 	for _, b := range items[0].Blocks {
-		sum.Add(b.Coverage)
+		sum = sum.Plus(b.Coverage)
 	}
 
 	assert.Equal(t, items[0].Coverage, sum)

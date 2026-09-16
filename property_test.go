@@ -141,7 +141,7 @@ func assertTopRowsSumToTheTotal(t *testing.T, tree *prettycov.PathTree, withFile
 	var top prettycov.CoverageStats
 
 	for _, row := range prettycov.Rows(tree, prettycov.Options{Depth: 0, Files: withFiles}) {
-		top.Add(row.Coverage)
+		top = top.Plus(row.Coverage)
 	}
 
 	assert.Equalf(t, tree.Coverage, top, "the top rows against what -total prints, files=%v", withFiles)

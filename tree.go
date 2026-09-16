@@ -54,7 +54,7 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// Accumulated, not assigned, so a file named twice adds up rather than keeping the last one.
 	// ParseProfile cannot deliver that — x/tools keys profiles by filename and merges their blocks
 	// — so this is for a caller handing Process a slice of its own.
-	leaf.Coverage.Add(stats)
+	leaf.Coverage = leaf.Coverage.Plus(stats)
 	// Kept because Misses reads positions the counts cannot say. Shared with the caller's slice
 	// rather than copied: the parser hands out one capped window per file, so appending to a leaf
 	// can never reach into the next file's blocks, and nothing here reorders or trims them — merge

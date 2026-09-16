@@ -164,6 +164,7 @@ type drawn struct {
 	// Row is what the tree printer needs, embedded rather than restated: the two held the same four
 	// fields and Rows copied them across one by one, which is a pair that can drift.
 	Row
+
 	// Blocks is empty unless the row stands for a file.
 	Blocks []Block
 	// Path is the node's whole path, which Row.Label alone is not: a row is drawn with its own
@@ -183,12 +184,13 @@ type drawn struct {
 // asked as shape, which is the output's question rather than the flag's, and leaving the struct in
 // scope would put the wrong answer one field access away on every line of the walk.
 type walker struct {
+	// shape is the output's question, not the options'.
+	shape
+
 	// yield takes each row as it is decided, and reports false when the consumer has stopped.
 	yield func(drawn) bool
 
 	depth Depth
-	// shape is the output's question, not the options': see prepare.
-	shape
 	// hiding says -hide-covered was given at all and hideAt is the threshold, read once rather than
 	// through the pointer at every node. What "at least this much" means is CoverageStats', not
 	// ours: the answer at 100 is about the counts, not the ratio.

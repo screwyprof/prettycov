@@ -14,11 +14,15 @@ linters:
     - copyloopvar
     - cyclop
     - dogsled
+    - dupword
     - dupl
     - durationcheck
+    - embeddedstructfieldcheck
     - err113
     - errcheck
+    - errname
     - errorlint
+    - exptostd
     - exhaustive
     - forcetypeassert
     - funlen
@@ -33,17 +37,22 @@ linters:
     - goheader
     - gomoddirectives
     - gomodguard_v2
+    - godoclint
     - goprintffuncname
     - gosec
     - govet
+    - iface
     - importas
+    - intrange
     - ineffassign
     - lll
     - makezero
     - misspell
+    - modernize
     - nakedret
     - nestif
     - nilerr
+    - nilnesserr
     - nlreturn
     - noctx
     - nolintlint
@@ -51,6 +60,7 @@ linters:
     - prealloc
     - predeclared
     - revive
+    - recvcheck
     - rowserrcheck
     - sqlclosecheck
     - staticcheck
@@ -61,6 +71,7 @@ linters:
     - tparallel
     - unconvert
     - unparam
+    - usestdlibvars
     - unused
     - wastedassign
     - whitespace

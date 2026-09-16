@@ -362,7 +362,7 @@ func block(line, col, covered, uncovered int) prettycov.Block {
 func withBlocks(name string, blocks ...prettycov.Block) prettycov.FileCoverage {
 	item := prettycov.FileCoverage{File: name, Blocks: blocks}
 	for _, b := range blocks {
-		item.Coverage.Add(b.Coverage)
+		item.Coverage = item.Coverage.Plus(b.Coverage)
 	}
 
 	return item

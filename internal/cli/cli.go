@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -60,7 +61,7 @@ var errEmptyExclude = errors.New("want a pattern")
 
 var errRootNamesNoPkg = errors.New("--old names no package")
 
-// measured are the flags that decide what is in the answer. Embedded in every command, because every
+// Measured are the flags that decide what is in the answer. Embedded in every command, because every
 // command measures; a command that only draws differently does not repeat them.
 //
 //nolint:lll // a struct tag is one unit; splitting it hides the declaration.
@@ -84,10 +85,8 @@ func (m *Measured) Validate() error {
 	// Kong's slice flag takes "" without complaint, where the flag package handed it to
 	// ParseExclude and got a refusal. The rule is the same either way: a pattern that matches
 	// everything is never what was meant.
-	for _, pattern := range m.Exclude {
-		if pattern == "" {
-			return fmt.Errorf("--exclude: %w", errEmptyExclude)
-		}
+	if slices.Contains(m.Exclude, "") {
+		return fmt.Errorf("--exclude: %w", errEmptyExclude)
 	}
 
 	if m.Old != "" && strings.TrimRight(m.Old, "/") == "" {
@@ -271,7 +270,7 @@ type config struct {
 }
 
 // settle turns the measured flags into the half of a config every command shares.
-func (m Measured) settle() (config, error) {
+func (m *Measured) settle() (config, error) {
 	cfg := config{
 		Request:   prettycov.Request{Profile: m.Profile, Rename: prettycov.Rename{From: m.Old, To: m.New}},
 		FailUnder: m.FailUnder,
