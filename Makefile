@@ -31,6 +31,7 @@ COVERDATA := .covdata
 GO_TAGS := integration
 GOVULNCHECK_VERSION := v1.8.0
 GOBCO_VERSION := v1.3.4
+VALE_VERSION := v3.14.2
 GREMLINS_VERSION := v0.6.0
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
@@ -180,18 +181,23 @@ vulns: ## report known vulnerabilities reachable from this module
 	@echo -e "$(OK_COLOR)==> Vulnerabilities$(NO_COLOR)"
 	@go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
+# Vale from PATH when the devshell provides one, and `go run` otherwise: vale is a Go program, so
+# this Makefile needs nothing but Go. That is the rule the other pinned tools already follow —
+# govulncheck, gobco, gremlins — and nix is then a fast prebuilt path rather than a requirement.
+VALE := $(shell command -v vale 2>/dev/null || echo "go run github.com/errata-ai/vale/v3/cmd/vale@$(VALE_VERSION)")
+
 # Google's developer documentation style guide, as Vale packages it, with this repo's deviations
 # recorded in .vale.ini. `vale sync` fetches the package into .vale/, which is gitignored, so the
 # first run on a clean checkout downloads it.
 docs-lint: .vale/Google ## check the Markdown against the prose style guide
 	@echo -e "$(OK_COLOR)==> Linting docs$(NO_COLOR)"
-	@vale $(MARKDOWN)
+	@$(VALE) $(MARKDOWN)
 
 # A file rule, so the package is fetched once rather than on every gate run — `make check` then
 # works offline, which an unconditional `vale sync` denied it.
 .vale/Google: .vale.ini
 	@echo -e "$(OK_COLOR)==> Fetching prose styles$(NO_COLOR)"
-	@vale sync >/dev/null
+	@$(VALE) sync >/dev/null
 	@touch $@
 
 # The copy is $(GIT_LS), the list `fmt` already uses, so uncommitted work is measured. A worktree
