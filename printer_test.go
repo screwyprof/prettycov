@@ -632,7 +632,7 @@ func TestDisplayTreeHideCovered(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		hide *prettycov.Threshold
+		hide prettycov.OptionalThreshold
 		want string
 	}{
 		"unset draws everything": {want: "" +
@@ -640,17 +640,23 @@ func TestDisplayTreeHideCovered(t *testing.T) {
 
 		// done/ and its subtree go; the glyph on work/ becomes the last-child one, which it would
 		// not if the hidden rows were dropped after the tree was drawn.
-		"bare hides what is finished": {hide: new(prettycov.MustThreshold(100.0)), want: "" +
+		"bare hides what is finished": {hide: prettycov.SomeThreshold(prettycov.MustThreshold(100.0)), want: "" +
 			" m - 95.24\n └ work - 90.91\n   └ deep - 50.00\n"},
 
 		// work/ is 90.91, at or above the threshold, but holds deep/ at 50. Judging the parent
 		// alone hid the one branch with work in it and left an empty report.
-		"a threshold keeps a parent that holds a lower child": {hide: new(prettycov.MustThreshold(90.0)), want: "" +
-			" m - 95.24\n └ work - 90.91\n   └ deep - 50.00\n"},
+		"a threshold keeps a parent that holds a lower child": {
+			hide: prettycov.SomeThreshold(prettycov.MustThreshold(90.0)),
+			want: "" +
+				" m - 95.24\n └ work - 90.91\n   └ deep - 50.00\n",
+		},
 
 		// Everything is above 40, so there is nothing the flag was asked to show. showReport says
 		// so rather than leaving a reader wondering whether it crashed.
-		"a threshold under everything empties the report": {hide: new(prettycov.MustThreshold(40.0)), want: ""},
+		"a threshold under everything empties the report": {
+			hide: prettycov.SomeThreshold(prettycov.MustThreshold(40.0)),
+			want: "",
+		},
 	}
 
 	for name, tc := range tests {
@@ -680,7 +686,7 @@ func TestDisplayTreeHideCoveredKeepsAPackageWithNoStatements(t *testing.T) {
 	})
 
 	got := renderOpts(t, tree, prettycov.Options{
-		Depth: prettycov.DepthAll, HideCovered: new(prettycov.MustThreshold(100.0)),
+		Depth: prettycov.DepthAll, HideCovered: prettycov.SomeThreshold(prettycov.MustThreshold(100.0)),
 	})
 
 	assert.Equal(t, " m - 100.00\n └ doc - n/a\n", got)
@@ -721,7 +727,9 @@ func TestDisplayTreeHideCoveredAtTheThreshold(t *testing.T) {
 			t.Parallel()
 
 			got := renderOpts(t, prettycov.Process(files), prettycov.Options{
-				Depth: prettycov.DepthAll, Files: tc.files, HideCovered: new(prettycov.MustThreshold(90.0)),
+				Depth:       prettycov.DepthAll,
+				Files:       tc.files,
+				HideCovered: prettycov.SomeThreshold(prettycov.MustThreshold(90.0)),
 			})
 
 			assert.Equal(t, tc.want, got)
@@ -739,7 +747,7 @@ func TestDisplayTreeHideCoveredHidesFiles(t *testing.T) {
 	})
 
 	got := renderOpts(t, tree, prettycov.Options{
-		Depth: prettycov.DepthAll, Files: true, HideCovered: new(prettycov.MustThreshold(100.0)),
+		Depth: prettycov.DepthAll, Files: true, HideCovered: prettycov.SomeThreshold(prettycov.MustThreshold(100.0)),
 	})
 
 	assert.Equal(t, " m/pkg - 75.00\n └ todo.go - 0.00\n", got)
@@ -761,7 +769,7 @@ func TestDisplayTreeHideCoveredTrustsTheCountNotTheRatio(t *testing.T) {
 	require.InDelta(t, 100.0, pct.Float(), 0, "the ratio really does round to 100")
 
 	got := renderOpts(t, tree, prettycov.Options{
-		Depth: prettycov.DepthAll, HideCovered: new(prettycov.MustThreshold(100.0)),
+		Depth: prettycov.DepthAll, HideCovered: prettycov.SomeThreshold(prettycov.MustThreshold(100.0)),
 	})
 
 	assert.Equal(t, " m/huge - 99.99\n", got, "one uncovered statement is still one to do")
@@ -814,7 +822,7 @@ func TestDisplayTreeHideCoveredJudgesWhatIsDrawn(t *testing.T) {
 			t.Parallel()
 
 			got := renderOpts(t, prettycov.Process(files), prettycov.Options{
-				Depth: tc.depth, Files: tc.files, HideCovered: new(prettycov.MustThreshold(90.0)),
+				Depth: tc.depth, Files: tc.files, HideCovered: prettycov.SomeThreshold(prettycov.MustThreshold(90.0)),
 			})
 
 			assert.Equal(t, tc.want, got)
@@ -844,8 +852,15 @@ func TestDisplayTreeHideCoveredSpendsALevelPerRowNotPerNode(t *testing.T) {
 		renderOpts(t, tree, prettycov.Options{Depth: 2}))
 
 	// So hiding at 90 may take ok/ and nothing else.
-	assert.Equal(t, " m - 90.91\n └ chain/inner - 90.00\n   └ low - 0.00\n",
-		renderOpts(t, tree, prettycov.Options{Depth: 2, HideCovered: new(prettycov.MustThreshold(90.0))}))
+	assert.Equal(
+		t,
+		" m - 90.91\n └ chain/inner - 90.00\n   └ low - 0.00\n",
+		renderOpts(
+			t,
+			tree,
+			prettycov.Options{Depth: 2, HideCovered: prettycov.SomeThreshold(prettycov.MustThreshold(90.0))},
+		),
+	)
 }
 
 // The invariant the empty-report message rests on: a tree with statements always draws a row unless
@@ -881,8 +896,8 @@ func TestEmptyResultsAreNilNotEmptySlices(t *testing.T) {
 		withBlocks("m/a.go", covered(1, 1, 2, 3)),
 	})
 
-	bar := prettycov.MustThreshold(0)
-	hidden := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar}
+	bar := prettycov.SomeThreshold(prettycov.MustThreshold(0))
+	hidden := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: bar}
 
 	assert.Nil(t, prettycov.Rows(tree, hidden), "-hide-covered=0 took every row")
 	assert.Nil(t, prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),

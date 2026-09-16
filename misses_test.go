@@ -288,7 +288,7 @@ func TestMissesFollowHideCovered(t *testing.T) {
 
 	// nearly/ is 95%, so a bar of 90 takes it and the miss inside it.
 	bar := missOpts(prettycov.DepthAll)
-	bar.HideCovered = new(prettycov.MustThreshold(90.0))
+	bar.HideCovered = prettycov.SomeThreshold(prettycov.MustThreshold(90.0))
 
 	focused := prettycov.Misses(tree, bar)
 	require.Len(t, focused, 1)
@@ -324,7 +324,7 @@ func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 	})
 
 	opts := missOpts(prettycov.DepthAll)
-	opts.HideCovered = new(prettycov.MustThreshold(90.0))
+	opts.HideCovered = prettycov.SomeThreshold(prettycov.MustThreshold(90.0))
 
 	assert.Equal(t, []string{"m/logger/logger.go"}, missPaths(prettycov.Misses(tree, opts)))
 }

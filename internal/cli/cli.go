@@ -65,11 +65,11 @@ var (
 //
 //nolint:lll // a struct tag is one unit; splitting it hides the declaration.
 type Measured struct {
-	Profile   string               `help:"Coverage profile to read. Default ${profile}."                                        default:"${profile}" placeholder:"PATH"`
-	Old       string               `help:"Root package path to shorten. Needs --new."                                                                placeholder:"PATH"`
-	New       string               `help:"What to shorten it to; --new=. strips it. Needs --old."                                                    placeholder:"PATH"`
-	Exclude   []string             `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP" sep:"none"`
-	FailUnder *prettycov.Threshold `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
+	Profile   string                      `help:"Coverage profile to read. Default ${profile}."                                        default:"${profile}" placeholder:"PATH"`
+	Old       string                      `help:"Root package path to shorten. Needs --new."                                                                placeholder:"PATH"`
+	New       string                      `help:"What to shorten it to; --new=. strips it. Needs --old."                                                    placeholder:"PATH"`
+	Exclude   []string                    `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP" sep:"none"`
+	FailUnder prettycov.OptionalThreshold `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
 }
 
 // Validate is kong's per-struct hook, and the only place the rename is judged. Kong's `and:"rename"`
@@ -108,8 +108,8 @@ func given(oldRoot, newRoot string) string {
 //
 //nolint:lll // a struct tag is one unit.
 type drawn struct {
-	Depth       prettycov.Depth      `help:"Levels below the top row, like tree -L, or \"max\". Default ${depth}." default:"${depth}" placeholder:"LEVELS"`
-	HideCovered *prettycov.Threshold `help:"Leave out subtrees at this percentage or above; bare means 100."                          placeholder:"PCT"    type:"hidecovered"`
+	Depth       prettycov.Depth             `help:"Levels below the top row, like tree -L, or \"max\". Default ${depth}." default:"${depth}" placeholder:"LEVELS"`
+	HideCovered prettycov.OptionalThreshold `help:"Leave out subtrees at this percentage or above; bare means 100."                          placeholder:"PCT"    type:"hidecovered"`
 }
 
 // Name and Description are what the program calls itself. Here rather than in the composition root
@@ -305,7 +305,7 @@ func (OptionalPercentage) Decode(ctx *kong.DecodeContext, target reflect.Value) 
 		}
 	}
 
-	target.Set(reflect.ValueOf(&bar))
+	target.Set(reflect.ValueOf(prettycov.SomeThreshold(bar)))
 
 	return nil
 }

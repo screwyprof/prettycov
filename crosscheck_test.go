@@ -347,11 +347,11 @@ func TestRowsAndMissesAccountForTheSameFiles(t *testing.T) {
 			// Every depth, because depth is what decides which nodes are visited, and the bar as
 			// well, because it is the other half of that decision.
 			for _, depth := range []prettycov.Depth{0, 1, 2, 3, prettycov.DepthAll} {
-				bars := []*prettycov.Threshold{
-					nil,
-					new(prettycov.MustThreshold(100)),
-					new(prettycov.MustThreshold(90)),
-					new(prettycov.MustThreshold(50)),
+				bars := []prettycov.OptionalThreshold{
+					prettycov.NoneThreshold(),
+					prettycov.SomeThreshold(prettycov.MustThreshold(100)),
+					prettycov.SomeThreshold(prettycov.MustThreshold(90)),
+					prettycov.SomeThreshold(prettycov.MustThreshold(50)),
 				}
 				for _, bar := range bars {
 					opts := missOpts(depth)

@@ -25,7 +25,7 @@ type Options struct {
 	Counts bool
 
 	// HideCovered leaves out every subtree covered to this percentage or above, so what is left is
-	// what there is still work in. Nil is the whole report; the CLI's -hide-covered defaults it to
+	// what there is still work in. None is the whole report; the CLI's --hide-covered defaults it to
 	// 100, where nothing hidden holds an uncovered statement and absence means "nothing to do here".
 	//
 	// A threshold below 100 hides misses along with the rows — at 90 on the delegator profile, 9 of
@@ -34,7 +34,7 @@ type Options struct {
 	//
 	// Shaping, never measuring. The tree keeps every statement it had, so -total, -fail-under and
 	// the top row read the same with this set as without — as with Depth, which hides far more.
-	HideCovered *Threshold
+	HideCovered OptionalThreshold
 
 	// Files draws the profile's files as well as its packages, as entries of the package holding
 	// them the way tree -L counts a directory's, so a package's own files and its subpackages
@@ -113,9 +113,7 @@ type shape struct {
 func prepare(tree *PathTree, opts Options, want shape) iter.Seq[drawn] {
 	return func(yield func(drawn) bool) {
 		b := walker{shape: want, depth: opts.Depth, yield: yield}
-		if opts.HideCovered != nil {
-			b.hiding, b.hideAt = true, *opts.HideCovered
-		}
+		b.hideAt, b.hiding = opts.HideCovered.Unwrap()
 
 		// One leading space, with room to grow two bytes per level. Deep enough for any real path;
 		// append handles a deeper one correctly if it comes.
@@ -192,9 +190,9 @@ type walker struct {
 	yield func(drawn) bool
 
 	depth Depth
-	// hiding says -hide-covered was given at all and hideAt is the threshold, read once rather than
-	// through the pointer at every node. What "at least this much" means is CoverageStats', not
-	// ours: the answer at 100 is about the counts, not the ratio.
+	// hiding says --hide-covered was given at all and hideAt is the threshold, unwrapped once rather
+	// than at every node. What "at least this much" means is CoverageStats', not ours: the answer at
+	// 100 is about the counts, not the ratio.
 	hiding bool
 	hideAt Threshold
 }
