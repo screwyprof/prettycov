@@ -130,12 +130,14 @@ func prepare(tree *PathTree, opts Options, want shape) iter.Seq[drawn] {
 // of directories is the one row it renders as.
 //
 // The count is there so a caller can tell an empty report from a full one without building every
-// row a second time to ask.
+// row a second time to ask, and the error is the destination's. bufio holds the first write failure
+// and hands it back at Flush; discarding that reported a full report over a full disk, since the
+// count is of rows decided rather than of bytes that landed.
 //
 // Counted while writing rather than taken from Rows, which would hold every row of the report in
 // memory to hand back a length: this is the path the CLI takes, and on a 30,000-file profile at
 // -depth=max the slice was three quarters of what the whole render allocated.
-func DisplayTree(w io.Writer, tree *PathTree, opts Options) int {
+func DisplayTree(w io.Writer, tree *PathTree, opts Options) (int, error) {
 	buf := bufio.NewWriter(w)
 	drawn := 0
 
@@ -149,9 +151,8 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) int {
 		drawn++
 	}
 
-	_ = buf.Flush()
-
-	return drawn
+	//nolint:wrapcheck // the writer's own error; this adds no context the caller lacks.
+	return drawn, buf.Flush()
 }
 
 // drawn is one row the traversal decided on, and everything a renderer needs to shape it.

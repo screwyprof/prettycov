@@ -1303,13 +1303,25 @@ func TestRunAutoColorAgainstRealFiles(t *testing.T) {
 		assert.NotContains(t, string(written), "\x1b[")
 	})
 
-	t.Run("a closed file is not a panic", func(t *testing.T) {
-		closed, err := os.CreateTemp(t.TempDir(), "closed")
-		require.NoError(t, err)
-		require.NoError(t, closed.Close())
+	// A destination that will not take the report is said, not swallowed. This asserted exit 0,
+	// which is what the bug looked like from the outside: bufio holds the first write failure and
+	// hands it back at Flush, and the discarded Flush error meant a report nobody received exited
+	// as though it had been printed. `prettycov report > /full/disk` was the real case.
+	//
+	// Exit 2 rather than the gate's 1: the coverage is whatever it is, and what failed is writing
+	// it down.
+	for _, command := range []string{"report", "misses"} {
+		t.Run(command+" says when the destination will not take it", func(t *testing.T) {
+			closed, err := os.CreateTemp(t.TempDir(), "closed")
+			require.NoError(t, err)
+			require.NoError(t, closed.Close())
 
-		assert.Equal(t, codeOK, app.Run([]string{"report", "--profile", path}, closed, io.Discard))
-	})
+			stderr := &bytes.Buffer{}
+
+			assert.Equal(t, codeFailed, app.Run([]string{command, "--profile", path}, closed, stderr))
+			assert.Contains(t, stderr.String(), "cannot write the report:")
+		})
+	}
 }
 
 // --hide-covered shapes the report and never the measurement: -total and --fail-under read the same

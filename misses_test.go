@@ -381,7 +381,7 @@ func TestMissesScrubTheFileAsTheRowIs(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
-	require.Equal(t, 2, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
+	require.Equal(t, 2, displayMisses(t, &buf, tree, missOpts(prettycov.DepthAll)))
 
 	// real\u2026 sorts first: the replacement is U+FFFD, which outranks every ASCII letter, so scrubbing
 	// moves a row as well as redrawing it \u2014 the reason visible sorts on the label as drawn.
@@ -408,7 +408,7 @@ func TestMissesKeepAZeroWidthJoiner(t *testing.T) {
 	tree := prettycov.Process([]prettycov.FileCoverage{withBlocks(name, uncovered(3, 2, 4, 1))})
 
 	var buf bytes.Buffer
-	require.Equal(t, 1, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
+	require.Equal(t, 1, displayMisses(t, &buf, tree, missOpts(prettycov.DepthAll)))
 
 	assert.Equal(t, name+":3:2: 1 uncovered\n", buf.String())
 }
@@ -416,6 +416,17 @@ func TestMissesKeepAZeroWidthJoiner(t *testing.T) {
 // `file:line:col: message`, as go vet prints it. The message is not decoration: without one an
 // editor's error format cannot match and falls back to file:line:message, reading the column as the
 // text — `a.go:9:2` opens line 9 at column 1 and the column is lost.
+// displayMisses is DisplayMisses where the destination cannot fail, which is every test writing to
+// a bytes.Buffer. The error is the writer's, and a buffer has none.
+func displayMisses(t *testing.T, w io.Writer, tree *prettycov.PathTree, opts prettycov.Options) int {
+	t.Helper()
+
+	listed, err := prettycov.DisplayMisses(w, tree, opts)
+	require.NoError(t, err)
+
+	return listed
+}
+
 func TestDisplayMissesWritesOnePositionPerLine(t *testing.T) {
 	t.Parallel()
 
@@ -426,7 +437,8 @@ func TestDisplayMissesWritesOnePositionPerLine(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	n := prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll))
+	n, err := prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll))
+	require.NoError(t, err)
 
 	assert.Equal(t, "m/a.go:9:2: 3 uncovered\nm/b.go:40:16: 1 uncovered\n", buf.String())
 
@@ -449,7 +461,7 @@ func TestDisplayMissesCountsNothingWhenFullyCovered(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	assert.Equal(t, 0, prettycov.DisplayMisses(&buf, tree, missOpts(prettycov.DepthAll)))
+	assert.Equal(t, 0, displayMisses(t, &buf, tree, missOpts(prettycov.DepthAll)))
 	assert.Empty(t, buf.String())
 }
 
@@ -472,6 +484,7 @@ func BenchmarkDisplayMisses(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		prettycov.DisplayMisses(io.Discard, tree, opts)
+		// io.Discard never fails, so there is no error here to be interested in.
+		_, _ = prettycov.DisplayMisses(io.Discard, tree, opts)
 	}
 }

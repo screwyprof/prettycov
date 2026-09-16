@@ -73,6 +73,14 @@ tags.
   trusted to keep, and NaN was the one that mattered: every comparison against it is false, so a
   gate passed at any coverage and a filter hid nothing, neither saying so.
 
+- **Breaking:** `DisplayTree` and `DisplayMisses` return `(int, error)` rather than `int`. The
+  destination can fail, and they were the only things that knew: `bufio.Writer` holds the first
+  write failure and hands it back at `Flush`, which both discarded. A report written to a full disk
+  reported its row count and exited 0 — the count is of rows decided, not of bytes that landed.
+  `prettycov report > /dev/full` now says `cannot write the report: … no space left on device` and
+  exits 2. A closed pipe is unaffected: Go raises SIGPIPE for stdout, so `prettycov report | head`
+  dies before the write returns, as every other command-line tool does.
+
 - Added: `Measure(Request) (Measurement, error)` applies a profile's rename and exclusions in the
   one correct order and reports how the run turned out as an `Outcome` — measured, no statements,
   excluded away, or a root that matched nothing. This was assembled in the CLI, where the order was

@@ -216,7 +216,7 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 // already piping. It disagrees with the GNU text, which asks for display width with tab stops every
 // 8 — and so with Emacs, whose compilation-error-screen-columns defaults to t. Converting would put
 // prettycov alone among Go tools; the README names the setting instead.
-func DisplayMisses(w io.Writer, tree *PathTree, opts Options) int {
+func DisplayMisses(w io.Writer, tree *PathTree, opts Options) (int, error) {
 	buf := bufio.NewWriter(w)
 
 	listed := 0
@@ -244,7 +244,6 @@ func DisplayMisses(w io.Writer, tree *PathTree, opts Options) int {
 		listed += m.Statements
 	}
 
-	_ = buf.Flush()
-
-	return listed
+	//nolint:wrapcheck // the writer's own error; this adds no context the caller lacks.
+	return listed, buf.Flush()
 }

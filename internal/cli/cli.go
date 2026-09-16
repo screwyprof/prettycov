@@ -205,7 +205,12 @@ func (c *reportCmd) Run(s *Streams) error {
 
 	// S2: inlined, because render had one caller and its three-argument shape was the interface
 	// that used to need it.
-	if shown := prettycov.DisplayTree(s.Out, tree, opts); shown == 0 {
+	shown, err := prettycov.DisplayTree(s.Out, tree, opts)
+	if err != nil {
+		return wroteNothing(err, *s)
+	}
+
+	if shown == 0 {
 		c.sayNothingShown(tree, *s)
 	}
 
@@ -218,7 +223,10 @@ func (c *missesCmd) Run(s *Streams) error {
 		return err
 	}
 
-	shown := prettycov.DisplayMisses(s.Out, tree, c.options(s.Out))
+	shown, err := prettycov.DisplayMisses(s.Out, tree, c.options(s.Out))
+	if err != nil {
+		return wroteNothing(err, *s)
+	}
 
 	// Two messages where the tree has one: only a list can stop short of what is behind it. A tree
 	// carries its subtree's count on every row, so a shallow one is a summary rather than a

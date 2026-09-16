@@ -524,7 +524,9 @@ func renderOpts(t *testing.T, tree *prettycov.PathTree, opts prettycov.Options) 
 
 	var buf bytes.Buffer
 
-	prettycov.DisplayTree(&buf, tree, opts)
+	// A bytes.Buffer never fails, so an error here is this package's, not the destination's.
+	_, err := prettycov.DisplayTree(&buf, tree, opts)
+	require.NoError(t, err)
 
 	return buf.String()
 }
@@ -911,7 +913,8 @@ func TestDisplayTreeReportsHowManyRowsItDrew(t *testing.T) {
 
 		var buf bytes.Buffer
 
-		drawn := prettycov.DisplayTree(&buf, tree, opts)
+		drawn, err := prettycov.DisplayTree(&buf, tree, opts)
+		require.NoError(t, err)
 
 		assert.Equal(t, len(prettycov.Rows(tree, opts)), drawn, "rows at -depth=%v", depth)
 		assert.Equal(t, strings.Count(buf.String(), "\n"), drawn, "lines at -depth=%v", depth)
@@ -929,7 +932,8 @@ func benchDisplayTree(b *testing.B, opts prettycov.Options) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		prettycov.DisplayTree(io.Discard, tree, opts)
+		// io.Discard never fails, so there is no error here to be interested in.
+		_, _ = prettycov.DisplayTree(io.Discard, tree, opts)
 	}
 }
 
