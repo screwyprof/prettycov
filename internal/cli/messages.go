@@ -42,8 +42,8 @@ func (d drawn) sayNothingShown(tree *prettycov.PathTree, s Streams) {
 func (d drawn) filters() string {
 	filters := "--depth=" + d.Depth.String()
 
-	if bar, ok := d.HideCovered.Unwrap(); ok {
-		filters += fmt.Sprintf(", --hide-covered=%v", bar.Float())
+	if d.HideCovered != nil {
+		filters += fmt.Sprintf(", --hide-covered=%v", d.HideCovered.Float())
 	}
 
 	return filters

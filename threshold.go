@@ -31,10 +31,7 @@ func NewThreshold(pct float64) (Threshold, error) {
 
 // The interface kong looks for, asserted because it looks by reflection. OptionalPercentage.Decode
 // happens to call this by name today, which is the only reason a rename does not compile.
-var (
-	_ encoding.TextUnmarshaler = (*Threshold)(nil)
-	_ encoding.TextUnmarshaler = (*OptionalThreshold)(nil)
-)
+var _ encoding.TextUnmarshaler = (*Threshold)(nil)
 
 // UnmarshalText reads a bar, so flag and config libraries produce the parsed type rather than a
 // float a caller has to remember to range-check.
@@ -67,43 +64,4 @@ func MustThreshold(pct float64) Threshold {
 	}
 
 	return bar
-}
-
-// An OptionalThreshold is a bar that may not have been asked for. The zero value is none, so a
-// struct holding one needs no constructor to be usable.
-//
-// A type rather than *Threshold, because the pointer carried the distinction in a comment: a
-// Threshold's zero value is 0%, which is a real bar, so nil was the only way to say "no bar" and
-// every reader had to be told that. Here the type says it, and a caller cannot dereference the
-// absent case by reaching past a check made four lines earlier.
-type OptionalThreshold struct{ bar *Threshold }
-
-// SomeThreshold is a bar that was asked for, including 0.
-func SomeThreshold(bar Threshold) OptionalThreshold { return OptionalThreshold{bar: &bar} }
-
-// NoneThreshold is no bar at all, which is also the zero value.
-func NoneThreshold() OptionalThreshold { return OptionalThreshold{} }
-
-// Unwrap is the bar and whether there is one, which is the comma-ok shape every other optional in
-// this package uses — see CoverageStats.Percentage and Measurement.Tree.
-func (o OptionalThreshold) Unwrap() (Threshold, bool) {
-	if o.bar == nil {
-		return Threshold{}, false
-	}
-
-	return *o.bar, true
-}
-
-// UnmarshalText reads a bar, so a flag holding one of these is none until the flag is given. Kong
-// finds this by reflection and calls it only when the flag appears, which is exactly the semantics
-// the pointer used to carry.
-func (o *OptionalThreshold) UnmarshalText(text []byte) error {
-	var bar Threshold
-	if err := bar.UnmarshalText(text); err != nil {
-		return err
-	}
-
-	*o = SomeThreshold(bar)
-
-	return nil
 }

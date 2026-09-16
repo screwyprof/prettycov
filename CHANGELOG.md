@@ -73,14 +73,6 @@ tags.
   trusted to keep, and NaN was the one that mattered: every comparison against it is false, so a
   gate passed at any coverage and a filter hid nothing, neither saying so.
 
-- **Breaking:** `Options.HideCovered` is an `OptionalThreshold` rather than a `*Threshold`. It was
-  the last pointer in the exported API, and the pointer was carrying a distinction in prose: a
-  `Threshold`'s zero value is 0%, a real bar, so `nil` was the only way to say "no bar" and every
-  reader had to be told. `OptionalThreshold.Unwrap()` returns `(Threshold, bool)` — the same
-  comma-ok shape `CoverageStats.Percentage` and `Measurement.Tree` already return, so a field can
-  now say what a return value could. Build one with `SomeThreshold`/`NoneThreshold`; the zero value
-  is none.
-
 - **Breaking:** `DisplayTree` and `DisplayMisses` return `(int, error)` rather than `int`. The
   destination can fail, and they were the only things that knew: `bufio.Writer` holds the first
   write failure and hands it back at `Flush`, which both discarded. A report written to a full disk
