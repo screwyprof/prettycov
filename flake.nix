@@ -31,6 +31,8 @@
               pkgs.gopls
               pkgs.gotools
               pkgs.golangci-lint
+              # Prose gate for the Markdown; see .vale.ini.
+              pkgs.vale
               pkgs.pre-commit
               pkgs.gnumake
               # No target uses it; `go test -json ./... | tparse` by hand does.

@@ -356,7 +356,7 @@ The position is the block's start, which `cmd/cover` opens just after the brace 
 is optional, and only tells two blocks opening on one line apart.
 
 Patterns are unanchored here as everywhere, so a bare line number is a prefix: `a\.go:3` reaches
-lines 3, 30 and 300. Anchor it when you mean one line — `a\.go:3$`, or `a\.go:3:2$` to pin the
+lines 3, 30, and 300. Anchor it when you mean one line — `a\.go:3$`, or `a\.go:3:2$` to pin the
 column too.
 
 The accounting goes to stderr, so the report itself stays pipeable. It filters the report, not the
@@ -382,7 +382,7 @@ Percentages are graded red, yellow and green using only the base ANSI colours, s
 theme decides the shades. Colour is on when writing to a terminal and off when piped, honouring
 [`NO_COLOR`](https://no-color.org) and `TERM=dumb`. Override with `--color=always` or `--color=never`.
 
-## What a percentage will not tell you
+## What a percentage does not tell you
 
 Coverage is a weak predictor of whether a suite catches bugs once suite size is controlled for
 ([Inozemtseva & Holmes, ICSE 2014](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf));

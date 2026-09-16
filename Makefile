@@ -21,6 +21,8 @@ GO_FILES := $(wildcard $(shell $(GIT_LS) "*.go"))
 FIXTURES := $(wildcard $(shell $(GIT_LS) "*testdata/*"))
 LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
+# Tracked Markdown only, so a vendored or downloaded .md is never linted.
+MARKDOWN = $(shell $(GIT_LS) '*.md')
 # Counter files from the binary tests, folded into $(COVERAGE) below.
 COVERDATA := .covdata
 
@@ -178,6 +180,14 @@ vulns: ## report known vulnerabilities reachable from this module
 	@echo -e "$(OK_COLOR)==> Vulnerabilities$(NO_COLOR)"
 	@go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
+# Google's developer documentation style guide, as Vale packages it, with this repo's deviations
+# recorded in .vale.ini. `vale sync` fetches the package into .vale/, which is gitignored, so the
+# first run on a clean checkout downloads it.
+docs-lint: ## check the Markdown against the prose style guide
+	@echo -e "$(OK_COLOR)==> Linting docs$(NO_COLOR)"
+	@vale sync >/dev/null
+	@vale $(MARKDOWN)
+
 # The copy is $(GIT_LS), the list `fmt` already uses, so uncommitted work is measured. A worktree
 # would be shorter and would silently report on HEAD instead.
 cover-branches: ## report conditions never evaluated both ways
@@ -254,6 +264,8 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
 	@echo; echo '$$ make vulns'
 	@$(MAKE) --no-print-directory vulns 2>&1 | grep -E 'No vulnerabilities|Vulnerability #'
+	@echo; echo '$$ make docs-lint'
+	@$(MAKE) --no-print-directory docs-lint 2>&1 | grep -E 'errors.*warnings|^ *✔'
 	@echo; echo '$$ make mutate'
 	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
 	@echo; echo '$$ make cover-branches'
@@ -326,4 +338,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt require-golangci
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-all vulns check install hooks nix-hash release publish clean help
+.PHONY: lint lint-all vulns docs-lint check install hooks nix-hash release publish clean help

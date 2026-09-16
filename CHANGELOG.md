@@ -163,9 +163,9 @@ tags.
   makes them openable — and they are scrubbed as the tree's rows are. A position goes to the same
   terminal, so the profile's own spelling let a crafted one erase the miss above it and made
   `real\revil/b.go` read as `evil/b.go`; a coverage tool that can be made to drop a line of its own
-  output is failing at the one thing it is for. A path carrying such a rune therefore will not open
+  output is failing at the one thing it is for. A path carrying such a rune therefore does not open
   in an editor or match as an `-exclude` pattern, which costs nothing real: a module path cannot
-  contain one, so only a file name could, and the joiners that spell words in Persian and Devanagari
+  contain one, so only a filename could, and the joiners that spell words in Persian and Devanagari
   are not in the scrubbed set.
 
   `-total` and `-misses` together are refused. Each says what the whole of stdout is, so one had to

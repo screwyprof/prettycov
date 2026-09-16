@@ -25,8 +25,8 @@ number down.
 
 ## Status
 
-Pre-1.0. Flags, output format and the Go API may all change between minor versions — pin a version
-if you gate CI on it. What changed and what broke is in [CHANGELOG.md](CHANGELOG.md).
+Pre-1.0. Flags, output format and the Go API may all change between minor versions — if you gate CI
+on it, pin a version. What changed and what broke is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Installation
 ```shell
@@ -89,7 +89,7 @@ pkg/logger/logger.go:44:26: 1 uncovered
 
 The count matters: one untaken branch and a whole untested function look alike without it.
 
-**Leaving out what you never meant to test.** `--exclude` drops generated code, mocks or a migrator
+**Leaving out what you never meant to test.** `--exclude` drops generated code, mocks, or a migrator
 before anything is totalled, and says what each pattern took, so a typo cannot pass for a clean run:
 
 ```shell

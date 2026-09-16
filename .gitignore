@@ -30,3 +30,6 @@ coverage.tmp
 
 # golangci-lint built with the nilaway plugin; see .custom-gcl.yml.
 /bin/
+
+# Vale downloads the Google style package here; `make docs-lint` runs `vale sync` first.
+/.vale/Google/
