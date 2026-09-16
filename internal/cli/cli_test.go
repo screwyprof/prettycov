@@ -296,11 +296,15 @@ func TestRunPrintsRequestedHelpOnStdout(t *testing.T) {
 			assert.Contains(t, stdout.String(), "Usage: prettycov <command>")
 			assert.Empty(t, stderr.String())
 
-			// Every flag has to be listed, or the help is worse than none.
-			// The root lists what the root takes. --depth belongs to report, and report --help
-			// lists it — which is the whole point of the flag living on the command that reads it.
+			// The root lists what the root takes, which is every command and nothing else. A flag
+			// belongs to the command that reads it, so listing --profile here would be a claim
+			// that `prettycov --profile x` means something.
+			for _, command := range []string{"report", "misses", "total", "version"} {
+				assert.Contains(t, stdout.String(), command)
+			}
+
 			for _, flag := range []string{"--old", "--new", "--color", "--fail-under", "--profile"} {
-				assert.Contains(t, stdout.String(), flag)
+				assert.NotContains(t, stdout.String(), flag)
 			}
 		})
 	}
@@ -562,7 +566,7 @@ func TestRunExcludesOneBlockByCoordinate(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
 		"total", "--exclude", `version\.go:32`,
-		"--profile", writeProfile(t, twoBlocks), "--color", "never",
+		"--profile", writeProfile(t, twoBlocks),
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
@@ -583,7 +587,7 @@ func TestRunReportsFilesAndBlocksTakenByOnePattern(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
 		"total", "--exclude", `(a\.go$|b\.go:32:)`,
-		"--profile", writeProfile(t, both), "--color", "never",
+		"--profile", writeProfile(t, both),
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
@@ -607,7 +611,7 @@ func TestRunReportsOverlapAlongsideWhatAPatternTook(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
 		"total", "--exclude", "cmd/", "--exclude", `(cmd/|c\.go:32:)`,
-		"--profile", writeProfile(t, overlapping), "--color", "never",
+		"--profile", writeProfile(t, overlapping),
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
@@ -730,9 +734,9 @@ func TestRunRefusesARootThatNamesNoPackage(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string][]string{
-		"one separator, with a target":    {"--old", "/", "--new", "x"},
-		"several separators":              {"--old", "//", "--new", "x"},
-		"one separator, without a target": {"--old", "/"},
+		"one separator, with a target":    {"report", "--old", "/", "--new", "x"},
+		"several separators":              {"report", "--old", "//", "--new", "x"},
+		"one separator, without a target": {"report", "--old", "/"},
 	}
 
 	for name, args := range tests {
@@ -744,7 +748,7 @@ func TestRunRefusesARootThatNamesNoPackage(t *testing.T) {
 
 			assert.Equal(t, codeFailed, code)
 			assert.Empty(t, stdout.String())
-			assert.Contains(t, stderr.String(), `--old names no package: got --old="`+args[1]+`"`)
+			assert.Contains(t, stderr.String(), `--old names no package: got --old="`+args[2]+`"`)
 		})
 	}
 }
@@ -862,7 +866,7 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			// Appending onto a fresh literal, not onto tc.args: the table's slices are shared
 			// across parallel subtests.
-			args := append([]string{"total", "--profile", writeProfile(t, sixtyOfTen), "--color", "never"},
+			args := append([]string{"total", "--profile", writeProfile(t, sixtyOfTen)},
 				tc.args...)
 
 			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
@@ -922,8 +926,7 @@ func TestRunTotalOfOnePath(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-			args := slices.Concat(tc.args,
-				[]string{"--profile", writeProfile(t, totalShaped), "--color", "never"})
+			args := slices.Concat(tc.args, []string{"--profile", writeProfile(t, totalShaped)})
 
 			assert.Equal(t, codeOK, app.Run(args, stdout, stderr), stderr.String())
 			assert.Equal(t, tc.want, stdout.String())
@@ -941,7 +944,7 @@ func TestRunTotalOfOnePathIsWhatFailUnderGrades(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
 		"total", "m/web/handler.go", "--fail-under", "70",
-		"--profile", writeProfile(t, totalShaped), "--color", "never",
+		"--profile", writeProfile(t, totalShaped),
 	}, stdout, stderr)
 
 	assert.Equal(t, codeBelow, code, "the file is 50.00, under the bar; the tree at 74.00 is not")
@@ -957,7 +960,7 @@ func TestRunTotalRefusesAPathTheTreeDoesNotHold(t *testing.T) {
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run(
-		[]string{"total", "m/nope", "--profile", writeProfile(t, totalShaped), "--color", "never"},
+		[]string{"total", "m/nope", "--profile", writeProfile(t, totalShaped)},
 		stdout,
 		stderr,
 	)
@@ -1026,7 +1029,7 @@ func TestRunTotalSuggestsThePathUnderTheRoot(t *testing.T) {
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 			code := app.Run(
-				[]string{"total", "" + tc.want, "--profile", writeProfile(t, shaped), "--color", "never"},
+				[]string{"total", "" + tc.want, "--profile", writeProfile(t, shaped)},
 				stdout,
 				stderr,
 			)
@@ -1074,8 +1077,7 @@ func TestRunTotalRefusesANodeWithNothingToCover(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
-			args := slices.Concat(tc.args,
-				[]string{"--profile", writeProfile(t, shaped), "--color", "never"})
+			args := slices.Concat(tc.args, []string{"--profile", writeProfile(t, shaped)})
 
 			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
 			assert.Empty(t, stdout.String())
@@ -1119,7 +1121,8 @@ func TestRunOnAProfileWithNothingToCover(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			args := slices.Concat(tc.args, []string{"--profile", path, "--color", "never"})
+			// No --color: this table mixes report and total, and only one of them draws.
+			args := slices.Concat(tc.args, []string{"--profile", path})
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
@@ -1156,7 +1159,7 @@ func TestTotalOverAProfileWithNoSingleRoot(t *testing.T) {
 		"other.com/q/b.go:1.1,2.2 1 0\n")
 
 	total, tree := &bytes.Buffer{}, &bytes.Buffer{}
-	require.Equal(t, codeOK, app.Run([]string{"total", "--profile", path, "--color", "never"}, total, io.Discard))
+	require.Equal(t, codeOK, app.Run([]string{"total", "--profile", path}, total, io.Discard))
 	require.Equal(t, codeOK, app.Run([]string{"report", "--profile", path, "--color", "never"}, tree, io.Discard))
 
 	assert.Equal(t, "66.67\n", total.String(), "the union of both roots")
@@ -1174,7 +1177,7 @@ func TestTotalMatchesTheTreesOwnRendering(t *testing.T) {
 		"example.com/p/b.go:1.1,2.2 1 0\n")
 
 	total, tree := &bytes.Buffer{}, &bytes.Buffer{}
-	require.Equal(t, codeOK, app.Run([]string{"total", "--profile", path, "--color", "never"}, total, io.Discard))
+	require.Equal(t, codeOK, app.Run([]string{"total", "--profile", path}, total, io.Discard))
 	require.Equal(
 		t,
 		codeOK,
@@ -1339,7 +1342,7 @@ func TestRunHideCovered(t *testing.T) {
 			// The measurement is untouched whatever was drawn.
 			total := &bytes.Buffer{}
 			require.Equal(t, codeOK, app.Run(
-				[]string{"total", "--profile", path, "--color", "never"}, total, io.Discard))
+				[]string{"total", "--profile", path}, total, io.Discard))
 			assert.Equal(t, "92.86\n", total.String())
 		})
 	}

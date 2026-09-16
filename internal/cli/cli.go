@@ -54,17 +54,22 @@ var (
 	errEmptyTotalPath = errors.New("want a path, or total on its own for the whole tree")
 )
 
-// Measured are the flags that decide what is in the answer. Embedded in every command, because every
-// command measures; a command that only draws differently does not repeat them.
+// Measured are the flags that decide what is in the answer. Embedded by the three commands that
+// read a profile, and by nothing else: version answers without one, so it offers none of these.
+//
+// Not at the root. Kong would make them global, which reads as convenience and is really a claim
+// that every command takes them — `version --help` then lists --exclude. They were at the root
+// because a per-command flag written before the command name used to be read as the default
+// command's positional argument, silently; with every command named there is no default to absorb
+// it, and kong answers "unknown flag" instead.
 //
 //nolint:lll // a struct tag is one unit; splitting it hides the declaration.
 type Measured struct {
-	Profile   string               `help:"Coverage profile to read."                                                            default:"${profile}" placeholder:"PATH"`
-	Old       string               `help:"Root package path to shorten."                                                                             placeholder:"PATH"`
-	New       string               `help:"What to shorten it to; --new=. strips it."                                                                 placeholder:"PATH"`
+	Profile   string               `help:"Coverage profile to read. Default ${profile}."                                        default:"${profile}" placeholder:"PATH"`
+	Old       string               `help:"Root package path to shorten. Needs --new."                                                                placeholder:"PATH"`
+	New       string               `help:"What to shorten it to; --new=. strips it. Needs --old."                                                    placeholder:"PATH"`
 	Exclude   []string             `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP" sep:"none"`
 	FailUnder *prettycov.Threshold `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
-	Color     colorMode            `help:"When to colour: auto, never or always."                                               default:"auto"`
 }
 
 // Validate is kong's per-struct hook, and the only place the rename is judged. Kong's `and:"rename"`
@@ -98,13 +103,18 @@ func given(oldRoot, newRoot string) string {
 	return fmt.Sprintf("--new=%q", newRoot)
 }
 
-// drawn are the flags that shape a report rather than decide what is in it. Embedded by the two
-// commands that draw rows; total does not embed it, so those flags do not exist for total at all.
+// drawn are the flags that shape a drawing rather than decide what is in it. Embedded by the two
+// commands that draw, so they do not exist for total at all.
+//
+// --color is one of them rather than a global terminal policy: total writes a bare number and
+// version a bare string, and --color=always changes neither byte. A flag listed where it does
+// nothing is a question the reader has to answer for themselves.
 //
 //nolint:lll // a struct tag is one unit.
 type drawn struct {
-	Depth       prettycov.Depth      `help:"Levels below the top row, like tree -L, or \"max\"."             default:"${depth}" placeholder:"LEVELS"`
-	HideCovered *prettycov.Threshold `help:"Leave out subtrees at this percentage or above; bare means 100."                    placeholder:"PCT"    type:"hidecovered"`
+	Depth       prettycov.Depth      `help:"Levels below the top row, like tree -L, or \"max\". Default ${depth}." default:"${depth}" placeholder:"LEVELS"`
+	HideCovered *prettycov.Threshold `help:"Leave out subtrees at this percentage or above; bare means 100."                          placeholder:"PCT"    type:"hidecovered"`
+	Color       colorMode            `help:"When to colour: auto, never or always."                                default:"auto"`
 }
 
 // Name and Description are what the program calls itself. Here rather than in the composition root
@@ -115,11 +125,10 @@ const (
 		"\tgo test -covermode=atomic -coverprofile=coverage.out ./...\n\tprettycov report"
 )
 
-// options is how a row is drawn, for the two commands that draw one. The colour comes from
-// Measured because it is a terminal policy every command takes, and is resolved here because where
-// the output goes is a question argv is too early to ask.
-func (d drawn) options(mode colorMode, out io.Writer) prettycov.Options {
-	return prettycov.Options{Depth: d.Depth, HideCovered: d.HideCovered, Color: mode.palette(out)}
+// options is how a row is drawn, for the two commands that draw one. The palette is resolved here
+// because where the output goes is a question argv is too early to ask.
+func (d drawn) options(out io.Writer) prettycov.Options {
+	return prettycov.Options{Depth: d.Depth, HideCovered: d.HideCovered, Color: d.Color.palette(out)}
 }
 
 // CLI is the whole command line. Every command is named: there is no default, so `prettycov` alone
@@ -131,10 +140,6 @@ func (d drawn) options(mode colorMode, out io.Writer) prettycov.Options {
 //
 //nolint:lll // a struct tag is one unit.
 type CLI struct {
-	// Global, so they may be written on either side of the command name. Embedded in each command
-	// instead, they bound only after it, and `--profile X total` silently read the default profile.
-	Measured `embed:""`
-
 	// Two spellings of one request. The flag takes the field name and the command says its own in a
 	// tag: Go will not let both be Version, and naming one of them around that is a workaround
 	// wearing a name.
@@ -147,19 +152,23 @@ type CLI struct {
 }
 
 type reportCmd struct {
-	drawn `embed:""`
+	Measured `embed:""`
+	drawn    `embed:""`
 
 	Files  bool `help:"Draw the profile's files, not only its packages."`
 	Counts bool `help:"Show uncovered/total statements after each percentage."`
 }
 
 type missesCmd struct {
-	drawn `embed:""`
+	Measured `embed:""`
+	drawn    `embed:""`
 }
 
 // Node is a pointer so that no argument and an empty one are different things: `total` is the whole
 // tree, `total ""` is a mistake. A plain string spells both "".
 type totalCmd struct {
+	Measured `embed:""`
+
 	Node *string `arg:"" optional:"" help:"Package or file, spelled as the report prints it." placeholder:"PATH"`
 }
 
@@ -187,13 +196,13 @@ func (m *Measured) measure(s Streams) (*prettycov.PathTree, gate, error) {
 	return tree, g, err
 }
 
-func (c *reportCmd) Run(s *Streams, m *Measured) error {
-	tree, g, err := m.measure(*s)
+func (c *reportCmd) Run(s *Streams) error {
+	tree, g, err := c.measure(*s)
 	if err != nil {
 		return err
 	}
 
-	opts := c.options(m.Color, s.Out)
+	opts := c.options(s.Out)
 	opts.Files, opts.Counts = c.Files, c.Counts
 
 	// S2: inlined, because render had one caller and its three-argument shape was the interface
@@ -205,13 +214,13 @@ func (c *reportCmd) Run(s *Streams, m *Measured) error {
 	return g.grade(tree, *s)
 }
 
-func (c *missesCmd) Run(s *Streams, m *Measured) error {
-	tree, g, err := m.measure(*s)
+func (c *missesCmd) Run(s *Streams) error {
+	tree, g, err := c.measure(*s)
 	if err != nil {
 		return err
 	}
 
-	shown := prettycov.DisplayMisses(s.Out, tree, c.options(m.Color, s.Out))
+	shown := prettycov.DisplayMisses(s.Out, tree, c.options(s.Out))
 
 	// Two messages where the tree has one: only a list can stop short of what is behind it. A tree
 	// carries its subtree's count on every row, so a shallow one is a summary rather than a
@@ -230,13 +239,13 @@ func (c *missesCmd) Run(s *Streams, m *Measured) error {
 // Run refuses an empty path before reading anything. `total "$PKG"` with PKG unset would otherwise
 // grade the whole tree, and a tree passing a gate the package would have failed is the one way this
 // command can be silently wrong in CI.
-func (c *totalCmd) Run(s *Streams, m *Measured) error {
+func (c *totalCmd) Run(s *Streams) error {
 	if c.Node != nil && *c.Node == "" {
 		//nolint:wrapcheck // a sentinel of this package's own.
 		return errEmptyTotalPath
 	}
 
-	tree, g, err := m.measure(*s)
+	tree, g, err := c.measure(*s)
 	if err != nil {
 		return err
 	}
