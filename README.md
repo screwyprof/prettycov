@@ -30,8 +30,10 @@ go install github.com/screwyprof/prettycov/cmd/prettycov@latest
 
 ## What it is for
 
-**Finding the package worth opening.** A percentage hides size, and that changes where to start.
-Ask for counts and the tree tells you what a percentage will not:
+**Finding the package worth opening.** In the tree below, `handler` is 87.23% covered and
+`pgxdb/pgxdb.go` is 75.00% — but `handler` has six untested statements to `pgxdb`'s four. The worse
+percentage is just the smaller file. `--counts` prints both numbers, so you can sort by the one that
+is actually work:
 
 ```shell
 ❯ prettycov report --counts --files --depth=2
@@ -54,9 +56,7 @@ Ask for counts and the tree tells you what a percentage will not:
    └ tezos - 100.00  0/30 uncovered
 ```
 
-`pgxdb/pgxdb.go` reads 75.00 and `handler` reads 87.23 — and `handler` holds **more** untested code,
-six statements against four. Sorting by percentage points at whichever row is smallest, not at the
-one worth your afternoon.
+Every row is a sum, so the counts add up: `scraper`'s 18 are `service.go`'s 5 and `store`'s 13.
 
 **A number for CI or a badge.** `total` prints the figure and nothing else, so a Makefile can read
 it — and `--fail-under` gates on it, for the whole profile or for one package:
