@@ -63,22 +63,11 @@ into the commit body. A result with `~` is not a result.
 
 ## Using an AI assistant
 
-No objection to it. The bar does not move: you are the author of what you send, which means you
-have read it, you can say why it is shaped that way, and you have watched the test fail with the
-fix reverted.
+No objection to it. The bar above does not move: you are the author of what you send, which means
+you have read it, you can say why it is shaped that way, and you have checked it yourself before a
+reviewer does.
 
-Check it before you open the pull request, not after a reviewer does. Three things that come back
-wrong often enough to be worth naming:
-
-- **Output pasted from memory.** Every `❯ prettycov …` block in the docs is real output from a real
-  run. Run the command.
-- **Comments that restate the line below them.** A comment here records a decision, a measurement,
-  or the bug that forced the shape — the code already says what it does.
-- **A test written around the implementation.** `make mutate` holds at zero survivors precisely
-  because a test that executes a line without asserting on it passes coverage and proves nothing.
-
-`make check` passing is the floor, not the case for the change. The commit message is where you
-explain why it is right.
+`make check` passing is the floor, not the case for the change.
 
 ## Layout
 
