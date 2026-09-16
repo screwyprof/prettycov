@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -910,6 +912,231 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 				tc.args...)
 
 			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
+			assert.Equal(t, tc.want, stdout.String())
+		})
+	}
+}
+
+// totalShaped is a tree whose every node reports a different number, so a lookup that returned the
+// wrong one cannot pass. pkg holds a file of its own beside a subpackage, so it is not its child;
+// web holds two files, so it is not either of them — which is what makes the file cases prove that
+// the last segment resolves to a file and not to the directory above it.
+//
+//	m                          74.00
+//	m/pkg                      73.33   m/pkg/util.go               40.00
+//	m/pkg/logger               90.00   m/pkg/logger/logger.go      80.00
+//	                                   m/pkg/logger/middleware.go 100.00
+//	m/web                      75.00   m/web/handler.go            50.00
+//	                                   m/web/router.go            100.00
+const totalShaped = "mode: set\n" +
+	"m/pkg/util.go:1.1,2.2 4 1\n" +
+	"m/pkg/util.go:3.1,4.2 6 0\n" +
+	"m/pkg/logger/logger.go:1.1,2.2 8 1\n" +
+	"m/pkg/logger/logger.go:3.1,4.2 2 0\n" +
+	"m/pkg/logger/middleware.go:1.1,2.2 10 1\n" +
+	"m/web/handler.go:1.1,2.2 5 1\n" +
+	"m/web/handler.go:3.1,4.2 5 0\n" +
+	"m/web/router.go:1.1,2.2 10 1\n"
+
+// -total=path reports one node of the tree, which is the number the report already draws and
+// nothing could hand back. The paths carry the module root because this fixture does not rename
+// one; after -old and -new they would be spelled the way the report prints them, which is the point
+// of looking up the built tree rather than matching the profile.
+func TestRunTotalOfOnePath(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		args []string
+		want string
+	}{
+		"bare is the whole tree": {args: []string{"-total"}, want: "74.00\n"},
+		"the root by name":       {args: []string{"-total=m"}, want: "74.00\n"},
+		// Not 90.00: pkg holds util.go as well as the logger package.
+		"a package":     {args: []string{"-total=m/pkg"}, want: "73.33\n"},
+		"a deeper one":  {args: []string{"-total=m/pkg/logger"}, want: "90.00\n"},
+		"its own file":  {args: []string{"-total=m/pkg/util.go"}, want: "40.00\n"},
+		"a file":        {args: []string{"-total=m/pkg/logger/logger.go"}, want: "80.00\n"},
+		"a second file": {args: []string{"-total=m/pkg/logger/middleware.go"}, want: "100.00\n"},
+		// 75.00 is web's; 50.00 is the file's. The last segment has to resolve to the file.
+		"a package of two files":  {args: []string{"-total=m/web"}, want: "75.00\n"},
+		"and one of them by name": {args: []string{"-total=m/web/handler.go"}, want: "50.00\n"},
+		"and the other":           {args: []string{"-total=m/web/router.go"}, want: "100.00\n"},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			args := slices.Concat(tc.args,
+				[]string{"-profile", writeProfile(t, totalShaped), "-color", "never"})
+
+			assert.Equal(t, codeOK, app.Run(args, stdout, stderr), stderr.String())
+			assert.Equal(t, tc.want, stdout.String())
+			assert.Empty(t, stderr.String())
+		})
+	}
+}
+
+// The gate grades the node that was printed. Two lookups would be two chances to disagree, and this
+// tool has already shipped a -fail-under that passed a run whose own report read 99.99.
+func TestRunTotalOfOnePathIsWhatFailUnderGrades(t *testing.T) {
+	t.Parallel()
+
+	// The tree is at 74.00 and web/handler.go at 50.00, so a threshold between them says which.
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-total=m/web/handler.go", "-fail-under", "70",
+		"-profile", writeProfile(t, totalShaped), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeBelow, code, "the file is 50.00, under the bar; the tree at 74.00 is not")
+	assert.Equal(t, "50.00\n", stdout.String(), "and the number printed is the one graded")
+	assert.Contains(t, stderr.String(), "total coverage 50.00% is below 70.00%")
+}
+
+// A path the profile does not hold is an argument mistake, not a coverage of zero: printing 0.00
+// into `COVERAGE := $(shell ...)` would read as a real and terrible number. Which paths miss is
+// TestPathTreeGetMissesAreNil's; this is the exit code and the message.
+func TestRunTotalRefusesAPathTheTreeDoesNotHold(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-total=m/nope", "-profile", writeProfile(t, totalShaped), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Empty(t, stdout.String(), "nothing a script could mistake for a percentage")
+	assert.Equal(t, "-total names no package or file in the profile: \"m/nope\"\n", stderr.String())
+}
+
+// A row is drawn with its own segment, so reading `pkg - 96.41` off a report and asking for "pkg"
+// is the obvious next thing to type and the wrong one — the tree holds it under the whole module
+// path. The message says so when saying so is certain, which is when the prefixed path resolves.
+func TestRunTotalSuggestsThePathUnderTheRoot(t *testing.T) {
+	t.Parallel()
+
+	// The root is a run of single-child directories, as a module path is, so the suggestion has to
+	// descend it rather than look one level down.
+	const shaped = "mode: set\n" +
+		"example.com/m/pkg/a.go:1.1,2.2 1 1\n" +
+		"example.com/m/web/b.go:1.1,2.2 1 1\n"
+
+	tests := map[string]struct{ want, suggest string }{
+		"a row's own label":      {want: "pkg", suggest: `, did you mean "example.com/m/pkg"?`},
+		"a deeper path":          {want: "web/b.go", suggest: `, did you mean "example.com/m/web/b.go"?`},
+		"nothing like it":        {want: "nope", suggest: ""},
+		"right root, wrong leaf": {want: "pkg/nope", suggest: ""},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{
+				"-total=" + tc.want, "-profile", writeProfile(t, shaped), "-color", "never",
+			}, stdout, stderr)
+
+			assert.Equal(t, codeFailed, code)
+			assert.Empty(t, stdout.String())
+			assert.Equal(t,
+				"-total names no package or file in the profile: "+strconv.Quote(tc.want)+tc.suggest+"\n",
+				stderr.String())
+		})
+	}
+}
+
+// A node whose files declare no statements has no percentage, which the whole tree cannot be by here
+// but one node can. Graded rather than refused outright, exactly as an empty profile is: exit 2
+// would read as "prettycov could not run" where the truth is that there was nothing to cover.
+func TestRunTotalRefusesANodeWithNothingToCover(t *testing.T) {
+	t.Parallel()
+
+	const shaped = "mode: set\nm/pkg/a.go:1.1,2.2 1 1\nm/doc/doc.go:1.1,2.2 0 0\n"
+
+	tests := map[string]struct {
+		args     []string
+		wantCode int
+		wantErr  string
+	}{
+		"without a gate": {
+			args: []string{"-total=m/doc"}, wantCode: codeFailed,
+			wantErr: "-total names nothing with statements to cover: \"m/doc\"\n",
+		},
+		// The same sentence a tree with nothing to cover gets, and the same exit code.
+		"with one": {
+			args: []string{"-total=m/doc", "-fail-under", "80"}, wantCode: codeBelow,
+			wantErr: "-total names nothing with statements to cover: \"m/doc\", wanted at least 80.00%\n",
+		},
+		// A file can be empty too, and calling it a package would be wrong.
+		"a file": {
+			args: []string{"-total=m/doc/doc.go"}, wantCode: codeFailed,
+			wantErr: "-total names nothing with statements to cover: \"m/doc/doc.go\"\n",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			args := slices.Concat(tc.args,
+				[]string{"-profile", writeProfile(t, shaped), "-color", "never"})
+
+			assert.Equal(t, tc.wantCode, app.Run(args, stdout, stderr))
+			assert.Empty(t, stdout.String())
+			assert.Equal(t, tc.wantErr, stderr.String())
+		})
+	}
+}
+
+// -total= with nothing after it is a mistake, not the whole tree: that is what -total=$PKG means
+// when PKG is unset, and a gate quietly grading the repo instead of the package it names is the one
+// way this flag can be wrong without saying so. -hide-covered= is refused for the same reason.
+func TestRunTotalRefusesAnEmptyPath(t *testing.T) {
+	t.Parallel()
+
+	const shaped = "mode: set\nm/pkg/a.go:1.1,2.2 1 1\nm/pkg/b.go:1.1,2.2 0 1\n"
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{
+		"-total=", "-fail-under", "99", "-profile", writeProfile(t, shaped), "-color", "never",
+	}, stdout, stderr)
+
+	assert.Equal(t, codeFailed, code, "a bad argument, not a failed gate")
+	assert.Empty(t, stdout.String(), "and no number for the gate to have graded")
+	assert.Contains(t, stderr.String(), "want a path, or -total on its own for the whole tree")
+}
+
+// -total is still a boolean to the flag package, so every spelling of off has to turn it off rather
+// than be read as a path. The bare form passes "true", which is how `-total=$WANT` reaches here.
+func TestRunTotalTakesTheBooleanSpellings(t *testing.T) {
+	t.Parallel()
+
+	const shaped = "mode: set\nm/pkg/a.go:1.1,2.2 1 1\n"
+
+	for _, tc := range []struct {
+		arg  string
+		want string
+	}{
+		{arg: "-total", want: "100.00\n"},
+		{arg: "-total=true", want: "100.00\n"},
+		{arg: "-total=1", want: "100.00\n"},
+		{arg: "-total=false", want: " m/pkg - 100.00\n"},
+		{arg: "-total=FALSE", want: " m/pkg - 100.00\n"},
+		{arg: "-total=0", want: " m/pkg - 100.00\n"},
+	} {
+		t.Run(tc.arg, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{
+				tc.arg, "-profile", writeProfile(t, shaped), "-color", "never",
+			}, stdout, stderr)
+
+			require.Equal(t, codeOK, code, stderr.String())
 			assert.Equal(t, tc.want, stdout.String())
 		})
 	}

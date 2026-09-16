@@ -10,6 +10,42 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Added
+
+- `-total` takes an optional path — `-total=pkg/logger`, `-total=pkg/logger/logger.go` — and reports
+  that node instead of the whole tree. It is the one number the report already draws and nothing
+  could hand back: `prettycov -depth=max` prints `web/handler - 89.66` and there was no way to get
+  89.66 out of it. With `-fail-under` it gates one package without building a second profile, and the
+  number graded is the number printed.
+
+  The path names a node of the built tree, so it is spelled as the report prints it and `-old`/`-new`
+  apply first — the opposite of `-exclude`, which matches the profile's own paths. A path the tree
+  does not hold exits 2 rather than printing `0.00`, which a script would read as a real figure. One
+  flag with one value, so two packages at once is unrepresentable, which suits an output of one
+  number. The display flags say nothing to it, as they already said nothing to a bare `-total`.
+
+  A package named as `strconv.ParseBool` reads it — `t`, `f`, `true`, `1`, all legal directory names
+  — is the bare flag rather than that package, because the value is settled before the tree is
+  consulted. `-total=./t` is the escape and resolves to the same node.
+
+  Every label the report draws resolves, including the two it spells differently from the tree: a
+  file the profile gave no directory merges into a row named for the file alone, and the filesystem
+  root draws as `/`. `-total=` with nothing after it is refused rather than read as the whole tree —
+  an unset `-total=$PKG` would otherwise gate the repository instead of the package it names.
+
+### Go API
+
+- **Breaking:** `Get` resolves a file on the last segment, so `Get("m/x/a.go")` is the file where
+  0.9.0 made it nil. That reverses 0.9.0's own **Breaking** entry, and deliberately: the two maps it
+  introduced are what mattered — a name belonging to a file and a directory is still two nodes, and
+  `Children` still holds directories only — while the lookup returning nil for a path the report
+  draws was a consequence nobody wanted. It also removes the footgun that entry had to warn about,
+  since `Get("m/x").Files["a.go"]` panics for a profile with no `m/x` and `Get("m/x/a.go")` does not.
+  A file wins the segment: one directory cannot hold a file and a directory of one name, so a
+  profile claiming both did not come from `cmd/cover`.
+
 ## [0.12.0] — 2026-09-15
 
 ### Added

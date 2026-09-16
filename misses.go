@@ -230,6 +230,11 @@ func DisplayMisses(w io.Writer, tree *PathTree, opts Options) int {
 		// block of a fold and the count beside it is the whole region's, so excluding a position
 		// reading "2 uncovered" takes one statement out and leaves the next block listed at its
 		// own position. -exclude works in blocks, which is what makes a coordinate mean one thing.
+		//
+		// And it wants a "$". Patterns are unanchored, so the column is a prefix as the line is:
+		// a.go:9:2 also matches a.go:9:24, which is an ordinary second block on the same line. A
+		// position pasted bare takes both, and the denominator moves with them — the README says so
+		// beside the round trip it is promising.
 		_, _ = buf.WriteString(position(m.File, m.Line, m.Col))
 		_, _ = buf.WriteString(": ")
 		_, _ = buf.WriteString(strconv.Itoa(m.Statements))

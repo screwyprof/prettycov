@@ -30,6 +30,7 @@ var (
 	errHalfARename     = errors.New("-old and -new rename a root package together; one alone does nothing")
 	errRootNamesNoPkg  = errors.New("-old names no package")
 	errTotalAndMisses  = errors.New("-total and -misses each replace the whole report; pick one")
+	errEmptyTotalPath  = errors.New("want a path, or -total on its own for the whole tree")
 )
 
 // parsePercentage reads a threshold both -fail-under and -hide-covered accept. ParseFloat alone
@@ -93,9 +94,13 @@ type config struct {
 	Counts      bool
 	Files       bool
 	Misses      bool
-	Total       bool
-	Help        bool
-	Version     bool
+	// Total is the output being one number: nil for the report, empty for the whole tree, and a
+	// path for one node of it. A pointer for the reason FailUnder and HideCovered are — the value
+	// cannot say whether the flag was given, and here it also makes "a path without the flag"
+	// unrepresentable rather than a rule written in a comment.
+	Total   *string
+	Help    bool
+	Version bool
 }
 
 // newFlagSet wires every flag onto cfg, so a parsed set is a finished config with nothing left to
@@ -165,7 +170,7 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	set.BoolVar(&cfg.Files, "files", false, "show the profile's files, not only its packages")
 	set.BoolVar(&cfg.Misses, "misses", false,
 		"print only the uncovered positions, as file:line:col, for an editor or a pipe")
-	set.BoolVar(&cfg.Total, "total", false, "print only the total percentage, for scripts")
+	total(set, cfg)
 	set.BoolVar(&cfg.Help, "help", false, "show help")
 	set.BoolVar(&cfg.Help, "h", false, "show help (shorthand)")
 	set.BoolVar(&cfg.Version, "version", false, "show version")
@@ -178,6 +183,53 @@ func newFlagSet(cfg *config) *flag.FlagSet {
 	set.Usage = func() {}
 
 	return set
+}
+
+// total registers -total, which takes an optional path for the same reason -hide-covered takes an
+// optional percentage: the bare form is what almost every caller wants, and the value is a
+// refinement rather than a separate flag. One flag with one value also means "two packages at once"
+// is unrepresentable, which is right — the output is a single number.
+//
+// The path names a node of the built tree rather than a pattern over the profile; showTotal, which
+// looks it up, says what follows from that.
+func total(set *flag.FlagSet, cfg *config) {
+	// BoolFunc for the reason -hide-covered is one: it lets -total stand bare without eating the
+	// profile path behind it. `-total pkg/logger` would read the path as the profile, so the help
+	// says "=".
+	set.BoolFunc("total",
+		"print only the total percentage, for scripts; -total=pkg/logger reports one node's, "+
+			"-total=./t a package named like a boolean",
+		func(s string) error {
+			// Refused rather than read as the whole tree, which is what -total=$PKG means when
+			// PKG is unset or misspelled — and the whole tree passing a gate the package would
+			// have failed is the one way this flag can be silently wrong in CI. -hide-covered=
+			// is a flag error for the same reason.
+			if s == "" {
+				//nolint:wrapcheck // a sentinel of this package's own, phrased for the flag package.
+				return errEmptyTotalPath
+			}
+
+			// The bare form passes "true", and a shell writing -total=$WANT wants the other
+			// spellings of off.
+			//
+			// Which collides, and cannot be carved out the way -hide-covered carves out "0" and "1":
+			// a percentage is a narrow shape and a path is any string, so `t`, `f`, `true`, `1` and
+			// the rest are read as the flag and not as the packages of those names — every one of
+			// which is a legal Go directory. The escape is `-total=./t`, which Get reads as `t`;
+			// the usage line says so, because nothing here can tell the two apart.
+			if on, err := strconv.ParseBool(s); err == nil {
+				cfg.Total = nil
+				if on {
+					cfg.Total = new(string)
+				}
+
+				return nil
+			}
+
+			cfg.Total = &s
+
+			return nil
+		})
 }
 
 // hideCovered registers -hide-covered, which is its own function only because it is long: the flag
@@ -296,7 +348,7 @@ func parseFlags(args []string) (config, error) {
 	// returns before a printer is ever chosen, so `-misses -total` printed a percentage and dropped
 	// the positions with nothing on stderr. Refused rather than ranked, as for any other argument
 	// mistake — there is no report either could give that answers both.
-	if cfg.Total && cfg.Misses {
+	if cfg.Total != nil && cfg.Misses {
 		// The two beside it quote the root they were given, since a root is a value that can be
 		// empty-looking or carry a control byte. Both of these are booleans, so naming them is the
 		// whole of the message and there is nothing to quote back.

@@ -539,7 +539,135 @@ func TestPathTreeKeepsFilesAndDirectoriesApart(t *testing.T) {
 
 	assert.Equal(t, []string{"sub"}, slices.Sorted(maps.Keys(pkg.Children)), "directories only")
 	assert.Equal(t, []string{"own.go"}, slices.Sorted(maps.Keys(pkg.Files)), "and the files it holds")
-	assert.Nil(t, tree.Get("m/x/own.go"), "a file is not a directory, so Get does not find one")
+
+	// Two maps, so a name belonging to both stays two nodes — but Get reaches through to the file,
+	// since the last segment of a path a reader typed off a row is the row they were looking at.
+	own := tree.Get("m/x/own.go")
+	require.NotNil(t, own, "the last segment may name a file")
+	assert.Same(t, pkg.Files["own.go"], own, "and it is the file, not something rebuilt")
+	assert.Empty(t, own.Children, "a file holds nothing")
+}
+
+// A file wins the last segment, which only matters for a profile no filesystem could have produced:
+// one directory cannot hold a file and a directory of one name. cmd/cover cannot write it, so the
+// rule is here to be predictable rather than to arbitrate a real case — and a path ending in .go is
+// a file to whoever typed it.
+func TestPathTreeGetPrefersAFileOnTheLastSegment(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/a.go", 1, 9),      // the file
+		file("m/a.go/b.go", 9, 1), // a directory of the same name
+	})
+
+	got := tree.Get("m/a.go")
+	require.NotNil(t, got)
+
+	pct, ok := got.Coverage.Percentage()
+	require.True(t, ok)
+	assert.InDelta(t, 10.00, pct.Float(), ratioTolerance, "the file, not the directory's 90.00")
+
+	// The directory is still there, and still reachable through what it holds.
+	assert.NotNil(t, tree.Get("m/a.go/b.go"), "the directory is not shadowed, only its own name is")
+}
+
+// A key read off a row resolves, and the report draws two labels the tree does not hold under that
+// name: path.Clean drops a "." component, so a file the profile gave no directory of its own merges
+// into a row spelled as just the file; and the filesystem root has no name of its own, so it draws
+// as "/". Both are the renderer's substitutions, and Get undoes them — otherwise -total=main.go is
+// refused for a row the tool printed one line above.
+func TestPathTreeGetTakesTheSpellingTheReportDraws(t *testing.T) {
+	t.Parallel()
+
+	bare := prettycov.Process([]prettycov.FileCoverage{
+		file("main.go", 3, 1), // no directory at all: lands under "."
+		file("pkg/a.go", 2, 0),
+	})
+
+	// "./" alone is not a path to anything: stripping it would leave the empty key, which names the
+	// root and would hand back the whole tree for what reads as a typo.
+	assert.Nil(t, bare.Get("./"), `"./" names nothing`)
+
+	for _, key := range []string{"main.go", "./main.go", "."} {
+		node := bare.Get(key)
+		require.NotNilf(t, node, "Get(%q)", key)
+
+		pct, ok := node.Coverage.Percentage()
+		require.True(t, ok)
+		assert.InDeltaf(t, 75.00, pct.Float(), ratioTolerance, "Get(%q)", key)
+	}
+
+	rooted := prettycov.Process([]prettycov.FileCoverage{
+		file("/a.go", 3, 1),
+		file("/b.go", 0, 1),
+	})
+
+	slash := rooted.Get("/")
+	require.NotNil(t, slash, `the row drawn as "/"`)
+
+	pct, ok := slash.Coverage.Percentage()
+	require.True(t, ok)
+	assert.InDelta(t, 60.00, pct.Float(), ratioTolerance)
+
+	assert.NotNil(t, rooted.Get("/a.go"), "and a file under it")
+}
+
+// A package named as strconv.ParseBool reads it — t, f, true, 1 and their spellings, every one a
+// legal Go directory name — cannot be asked for by name, because -total settles the value before
+// the tree is consulted. "./t" is the escape, and it is the only one: the flag cannot tell them
+// apart, so the library has to offer a spelling the flag never claims.
+func TestPathTreeGetTakesADotSlashEscape(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("t/a.go", 2, 0),
+		file("f/b.go", 0, 2),
+	})
+
+	for key, want := range map[string]float64{"t": 100, "./t": 100, "f": 0, "./f": 0} {
+		node := tree.Get(key)
+		require.NotNilf(t, node, "Get(%q)", key)
+
+		pct, ok := node.Coverage.Percentage()
+		require.True(t, ok)
+		assert.InDeltaf(t, want, pct.Float(), ratioTolerance, "Get(%q)", key)
+	}
+
+	// The prefix is stripped, not resolved against a directory called ".": this tree has none.
+	assert.Nil(t, tree.Get("./nope"))
+}
+
+// A segment repeated further down must not resolve early. Get walks with Cut and only asks Files
+// where there is no separator left, so "a/x/a" is the file two levels down; comparing each segment
+// against a precomputed last one would match the first "a" and hand back a file from the top.
+func TestPathTreeGetDoesNotResolveARepeatedSegmentEarly(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("a/x/a", 1, 9),         // a file named "a", inside a directory also named "a"
+		file("a/x/a/deep.go", 9, 1), // and a directory of that name beside it
+	})
+
+	deep := tree.Get("a/x/a")
+	require.NotNil(t, deep)
+
+	pct, ok := deep.Coverage.Percentage()
+	require.True(t, ok)
+	assert.InDelta(t, 10.00, pct.Float(), ratioTolerance, "the file two levels down, not the root")
+
+	assert.NotNil(t, tree.Get("a/x/a/deep.go"), "and the walk still passes through the directory")
+}
+
+// Nothing at all is nil rather than a zero node, so a caller can tell "no such path" from "nothing
+// covered" — the two print very differently and only one is a mistake.
+func TestPathTreeGetMissesAreNil(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{file("m/x/own.go", 1, 1)})
+
+	for _, key := range []string{"", "nope", "m/nope", "m/x/own.go/deeper", "m/x/own.go/"} {
+		assert.Nil(t, tree.Get(key), "Get(%q)", key)
+	}
 }
 
 // A name that is both is two nodes, one in each map, and neither has to answer for the other. That
@@ -625,5 +753,28 @@ func BenchmarkProcess(b *testing.B) {
 
 	for b.Loop() {
 		_ = prettycov.Process(files)
+	}
+}
+
+// Get is called once per invocation, so this exists to hold a claim rather than to chase a cost:
+// the walk allocates nothing, for a hit, a file hit and a miss alike.
+func BenchmarkGet(b *testing.B) {
+	tree := prettycov.Process(syntheticProfile(b))
+
+	for _, bc := range []struct {
+		name string
+		key  string
+	}{
+		{name: "package", key: "github.com/acme/monorepo/unit3/pkg/logger"},
+		{name: "file", key: "github.com/acme/monorepo/unit3/pkg/logger/logger.go"},
+		{name: "miss", key: "github.com/acme/monorepo/unit3/pkg/nope"},
+	} {
+		b.Run(bc.name, func(b *testing.B) {
+			b.ReportAllocs()
+
+			for b.Loop() {
+				_ = tree.Get(bc.key)
+			}
+		})
 	}
 }
