@@ -18,22 +18,18 @@ import (
 // It asks nothing about which printer that was. One drawing rows and one printing positions would
 // need a message each, and a third would need a third — every one of them a second place holding an
 // opinion about what the filters do. The filters emptied it; naming them is the answer either way.
-func sayNothingShown(d drawn, tree *prettycov.PathTree, s Streams) {
-	_, _ = fmt.Fprintln(s.Err, d.whyNothingShown(tree))
-}
-
-// whyNothingShown says why a printer came up empty. Printer-blind: a message per printer would be a
-// second place with an opinion about what the filters do.
 //
 // The two causes are opposite news, and the tree's count separates them. Saying "nothing left to
 // cover" for the second is a false all-clear — `misses --hide-covered=0` over a fully drawn tree
 // reported completion on 34 statements, exit 0.
-func (d drawn) whyNothingShown(tree *prettycov.PathTree) string {
+func (d drawn) sayNothingShown(tree *prettycov.PathTree, s Streams) {
 	if tree.Uncovered() == 0 {
-		return "nothing left to cover"
+		_, _ = fmt.Fprintln(s.Err, "nothing left to cover")
+
+		return
 	}
 
-	return fmt.Sprintf("nothing to show at %s; %s left",
+	_, _ = fmt.Fprintf(s.Err, "nothing to show at %s; %s left\n",
 		d.filters(), plural(tree.Uncovered(), "uncovered statement"))
 }
 
@@ -60,17 +56,19 @@ func (d drawn) filters() string {
 // so one that did nothing leaves a report nobody asked for.
 func reportExclusions(excluded []prettycov.Exclusion, s Streams) {
 	for _, ex := range excluded {
+		took := ex.Files > 0 || ex.Blocks > 0
+
 		// Distinct from matching nothing: the pattern works, an earlier one got there first. Saying
 		// "matched nothing" sends someone to delete a pattern that is holding the line for the day
 		// such a file lands outside the earlier one's reach.
-		if ex.Files == 0 && ex.Blocks == 0 && ex.Overlapped() > 0 {
+		if !took && ex.Overlapped() > 0 {
 			_, _ = fmt.Fprintf(s.Err, "--exclude %q took nothing out, %s already excluded\n",
 				ex.Pattern, units(ex.OverlappedFiles, ex.OverlappedBlocks))
 
 			continue
 		}
 
-		if ex.Files == 0 && ex.Blocks == 0 {
+		if !took {
 			_, _ = fmt.Fprintf(s.Err, "--exclude %q matched nothing\n", ex.Pattern)
 
 			continue

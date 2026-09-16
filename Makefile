@@ -183,10 +183,16 @@ vulns: ## report known vulnerabilities reachable from this module
 # Google's developer documentation style guide, as Vale packages it, with this repo's deviations
 # recorded in .vale.ini. `vale sync` fetches the package into .vale/, which is gitignored, so the
 # first run on a clean checkout downloads it.
-docs-lint: ## check the Markdown against the prose style guide
+docs-lint: .vale/Google ## check the Markdown against the prose style guide
 	@echo -e "$(OK_COLOR)==> Linting docs$(NO_COLOR)"
-	@vale sync >/dev/null
 	@vale $(MARKDOWN)
+
+# A file rule, so the package is fetched once rather than on every gate run — `make check` then
+# works offline, which an unconditional `vale sync` denied it.
+.vale/Google: .vale.ini
+	@echo -e "$(OK_COLOR)==> Fetching prose styles$(NO_COLOR)"
+	@vale sync >/dev/null
+	@touch $@
 
 # The copy is $(GIT_LS), the list `fmt` already uses, so uncommitted work is measured. A worktree
 # would be shorter and would silently report on HEAD instead.

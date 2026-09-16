@@ -160,9 +160,10 @@ func TestRenameWantedReadsTheSource(t *testing.T) {
 	assert.False(t, prettycov.Rename{To: "x"}.Wanted())
 }
 
-// UnderRoot prefixes and nothing else, which is the whole of what it promises: it is asked only
-// after Get has missed, so a path that already works has nothing to suggest.
-func TestUnderRootPrefixesAPathTheRootWasCollapsedFrom(t *testing.T) {
+// Get resolves a path under the root the report collapsed away, which is the third substitution the
+// renderer makes and the last one Get undoes. A row carries its own segment, so "pkg/logger" is what
+// a reader copies off a report and the tree holds it under "github.com/x/y".
+func TestGetResolvesAPathTheRootWasCollapsedFrom(t *testing.T) {
 	t.Parallel()
 
 	profile := writeProfile(t, "mode: set\ngithub.com/x/y/pkg/logger/a.go:1.1,2.2 1 1\n")
@@ -173,16 +174,15 @@ func TestUnderRootPrefixesAPathTheRootWasCollapsedFrom(t *testing.T) {
 	tree, ok := got.Tree()
 	require.True(t, ok)
 
-	full, ok := tree.UnderRoot("pkg/logger")
-	require.True(t, ok)
-	assert.Equal(t, "github.com/x/y/pkg/logger", full)
-	assert.NotNil(t, tree.Get(full), "and it only ever names a path the tree holds")
+	full := tree.Get("github.com/x/y/pkg/logger")
+	require.NotNil(t, full, "the spelling the profile holds")
 
-	_, ok = tree.UnderRoot("github.com/x/y/pkg/logger")
-	assert.False(t, ok, "a path that already works has nothing to suggest")
+	// The same node, not merely a node: the literal spelling is tried first, so prefixing can only
+	// add answers and never change one.
+	assert.Same(t, full, tree.Get("pkg/logger"))
+	assert.Same(t, full.Files["a.go"], tree.Get("pkg/logger/a.go"))
 
-	_, ok = tree.UnderRoot("nowhere")
-	assert.False(t, ok)
+	assert.Nil(t, tree.Get("nowhere"))
 }
 
 // NamesNoPackage is Shorten's own rule, asked where a caller can reach it: Shorten trims every
@@ -215,9 +215,9 @@ func TestRenameHalfReadsBothValues(t *testing.T) {
 	assert.False(t, prettycov.Rename{From: "m", To: "/"}.Half(), "the filesystem root is a target")
 }
 
-// UnderRoot stops where the run does. A directory holding a file as well as a single subdirectory
-// ends it, because past there the path is a choice rather than the root.
-func TestUnderRootStopsWhereTheRunBranches(t *testing.T) {
+// The prefixing stops where the run does. A directory holding a file as well as a single
+// subdirectory ends it, because past there the path is a choice rather than the root.
+func TestGetStopsPrefixingWhereTheRunBranches(t *testing.T) {
 	t.Parallel()
 
 	// m holds one subdirectory and a file of its own, so the run ends at m.
@@ -229,12 +229,10 @@ func TestUnderRootStopsWhereTheRunBranches(t *testing.T) {
 	tree, ok := got.Tree()
 	require.True(t, ok)
 
-	full, ok := tree.UnderRoot("deep")
-	require.True(t, ok, "m is the root the report collapsed away")
-	assert.Equal(t, "m/deep", full)
+	assert.Same(t, tree.Get("m/deep"), tree.Get("deep"), "m is the root the report collapsed away")
 
-	_, ok = tree.UnderRoot("deep/a.go/nope")
-	assert.False(t, ok, "and the run does not continue past a directory holding files")
+	assert.Nil(t, tree.Get("deep/a.go/nope"),
+		"and the run does not continue past a directory holding files")
 }
 
 // Depth and Threshold read themselves, which is what lets a flag hold the parsed value.

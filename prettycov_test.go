@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -663,8 +664,31 @@ func TestPathTreeGetMissesAreNil(t *testing.T) {
 
 	tree := prettycov.Process([]prettycov.FileCoverage{file("m/x/own.go", 1, 1)})
 
+	// "" is in the list because prefixing under the collapsed root nearly broke it: an empty key
+	// joins to the root itself, so Get("") handed back the top node where every other spelling of
+	// "nothing" is nil.
 	for _, key := range []string{"", "nope", "m/nope", "m/x/own.go/deeper", "m/x/own.go/"} {
 		assert.Nil(t, tree.Get(key), "Get(%q)", key)
+	}
+}
+
+// Get follows the collapsed root by descending single-child directories, and Children is exported,
+// so a tree assembled by hand can point back at itself. Bounded rather than trusted: the answer is
+// a miss, and the point is that there is one.
+func TestPathTreeGetSurvivesACycle(t *testing.T) {
+	t.Parallel()
+
+	loop := &prettycov.PathTree{}
+	loop.Children = map[string]*prettycov.PathTree{"m": loop}
+
+	done := make(chan *prettycov.PathTree, 1)
+	go func() { done <- loop.Get("nope") }()
+
+	select {
+	case got := <-done:
+		assert.Nil(t, got)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Get did not return: the descent past the collapsed root is unbounded")
 	}
 }
 

@@ -164,11 +164,56 @@ func (n *PathTree) Get(key string) *PathTree {
 	// That row draws as "." on its own, and merged with its file as just the file — path.Clean
 	// drops the component — so "main.go" is a label with no matching path.
 	if dot := n.Children["."]; dot != nil {
-		return dot.walk(key)
+		if node := dot.walk(key); node != nil {
+			return node
+		}
+	}
+
+	return n.underRoot(key)
+}
+
+// underRoot resolves key under the run of single-child directories the report collapses into its
+// top row, and is Get's last fallback.
+//
+// The third renderer substitution, undone here with the other two: a row carries its own segment,
+// so "pkg/logger" read off a report is what a reader types and the tree holds it under
+// "github.com/x/y". Literal spellings are tried first, above, so this can only add answers.
+//
+// walk rather than Get, which is what calls this: probing through Get would recurse without bound.
+// The descent is bounded for the same reason — Children is exported, so a caller assembling a tree
+// by hand can make a cycle, and Get has to answer rather than hang.
+func (n *PathTree) underRoot(key string) *PathTree {
+	// An empty key names no path. Without this it joins to the root itself and Get("") hands back
+	// the top node, where every other spelling of "nothing" is nil.
+	if key == "" {
+		return nil
+	}
+
+	root, node := "", n
+
+	for range maxRootDepth {
+		if len(node.Children) != 1 || len(node.Files) != 0 {
+			return nil
+		}
+
+		for name, child := range node.Children {
+			// path.Join, not join: it drops the empty first name, where join would read it as the
+			// filesystem root and prefix a separator this early.
+			root, node = path.Join(root, name), child
+		}
+
+		if found := n.walk(join(root, key)); found != nil {
+			return found
+		}
 	}
 
 	return nil
 }
+
+// maxRootDepth bounds how far the collapsed root is followed. A module path is three or four
+// segments and the deepest run measured across the reference checkouts is seven, so this stops a
+// cycle without reaching any real tree.
+const maxRootDepth = 64
 
 // walk resolves key against this node, directories all the way but for the last segment, where a
 // file wins.
@@ -199,33 +244,6 @@ func (n *PathTree) walk(key string) *PathTree {
 
 		key = rest
 	}
-}
-
-// UnderRoot reports want with the module root in front of it, when that spelling is a path the tree
-// holds.
-//
-// A row carries its own segment, so "pkg/logger" read off a report is the obvious thing to type and
-// the wrong one: the tree holds it under the root the report collapsed away. This returns the
-// spelling that is there — "github.com/x/y/pkg/logger".
-//
-// It prefixes and nothing else, so a path the tree already holds reports false. Every candidate is
-// checked with Get, so what comes back is always a path the tree holds.
-func (n *PathTree) UnderRoot(want string) (string, bool) {
-	root := ""
-
-	for node := n; len(node.Children) == 1 && len(node.Files) == 0; {
-		for name, child := range node.Children {
-			// path.Join, not join: it drops the empty first name, where join would read it as the
-			// filesystem root and prefix a separator this early.
-			root, node = path.Join(root, name), child
-		}
-
-		if full := join(root, want); n.Get(full) != nil {
-			return full, true
-		}
-	}
-
-	return "", false
 }
 
 // Uncovered is how many statements this node and everything beneath it leave uncovered.

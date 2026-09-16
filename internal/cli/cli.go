@@ -208,7 +208,7 @@ func (c *reportCmd) Run(s *Streams) error {
 	// S2: inlined, because render had one caller and its three-argument shape was the interface
 	// that used to need it.
 	if shown := prettycov.DisplayTree(s.Out, tree, opts); shown == 0 {
-		sayNothingShown(c.drawn, tree, *s)
+		c.sayNothingShown(tree, *s)
 	}
 
 	return g.grade(tree, *s)
@@ -227,7 +227,7 @@ func (c *missesCmd) Run(s *Streams) error {
 	// fragment, where a short list reads as a clean bill.
 	switch {
 	case shown == 0:
-		sayNothingShown(c.drawn, tree, *s)
+		c.sayNothingShown(tree, *s)
 	case shown < tree.Uncovered():
 		_, _ = fmt.Fprintf(s.Err, "%s lists %d of %s\n",
 			c.filters(), shown, plural(tree.Uncovered(), "uncovered statement"))
@@ -240,19 +240,17 @@ func (c *missesCmd) Run(s *Streams) error {
 // grade the whole tree, and a tree passing a gate the package would have failed is the one way this
 // command can be silently wrong in CI.
 func (c *totalCmd) Run(s *Streams) error {
-	if c.Node != nil && *c.Node == "" {
-		//nolint:wrapcheck // a sentinel of this package's own.
-		return errEmptyTotalPath
+	want := ""
+	if c.Node != nil {
+		if want = *c.Node; want == "" {
+			//nolint:wrapcheck // a sentinel of this package's own.
+			return errEmptyTotalPath
+		}
 	}
 
 	tree, g, err := c.measure(*s)
 	if err != nil {
 		return err
-	}
-
-	want := ""
-	if c.Node != nil {
-		want = *c.Node
 	}
 
 	return total(g, tree, want, *s)
