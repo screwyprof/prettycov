@@ -672,6 +672,42 @@ func TestPathTreeGetMissesAreNil(t *testing.T) {
 	}
 }
 
+// Prefixing under the collapsed root must not let a key climb out of it. Building each candidate as
+// a path meant path.Clean, which folds "..", so `total ..` resolved to an ancestor and printed its
+// percentage with exit 0 — the one failure the "a path the profile does not hold is exit 2" rule
+// exists to prevent, since a CI gate would grade a different node instead of failing.
+func TestPathTreeGetRefusesToClimbOutOfTheRoot(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("m/x/y/p/a.go", 1, 0),
+		file("m/x/y/q/b.go", 0, 1),
+	})
+
+	require.NotNil(t, tree.Get("p"), "the run is collapsed, so a bare row label resolves")
+
+	for _, key := range []string{"..", "p/..", "x/../p", "../q"} {
+		assert.Nil(t, tree.Get(key), "Get(%q) names no node", key)
+	}
+}
+
+// An absolute profile collapses the same way, and the prefixing has to reach it. Rebuilding the
+// path to probe with lost this: an absolute path splits to a leading empty component, path.Join
+// drops it, and "/abs/x/y/p" was probed as "abs/x/y/p" — so no absolute tree ever resolved a row
+// label, while the identical relative profile did.
+func TestPathTreeGetResolvesUnderAnAbsoluteRoot(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("/abs/x/y/p/a.go", 1, 0),
+		file("/abs/x/y/q/b.go", 0, 1),
+	})
+
+	assert.Same(t, tree.Get("/abs/x/y/p"), tree.Get("p"), "the label the report draws")
+	assert.Same(t, tree.Get("/abs/x/y/q/b.go"), tree.Get("q/b.go"))
+	assert.Nil(t, tree.Get("nowhere"))
+}
+
 // Get follows the collapsed root by descending single-child directories, and Children is exported,
 // so a tree assembled by hand can point back at itself. Bounded rather than trusted: the answer is
 // a miss, and the point is that there is one.

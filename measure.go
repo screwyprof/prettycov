@@ -42,13 +42,16 @@ type Request struct {
 }
 
 // An Outcome is how a measurement turned out. Exactly one of these is true of any run, which is why
-// it is one value and not a tree beside a bool beside a reason: those could spell twelve states
-// where only four mean anything.
+// it is one value and not a tree beside a bool beside a reason: those could spell twenty states
+// where only five mean anything.
 type Outcome int
 
 const (
+	// Unmeasured is the zero Outcome, and so what a Measurement returned beside an error carries:
+	// nothing was read, and none of the outcomes below is true of it.
+	Unmeasured Outcome = iota
 	// Measured is a run with a tree.
-	Measured Outcome = iota
+	Measured
 	// NoStatements is a profile holding nothing to cover. Decided before any pattern or root is
 	// judged: an empty profile has nothing for either to match, so every one of them would look
 	// stale — a good rename named as the fault when the profile is what is empty.
@@ -62,24 +65,33 @@ const (
 
 // A Measurement is what a profile and the request that read it produced.
 //
-// The tree is unexported and reachable only through Tree, which hands it back with whether there is
-// one: a caller cannot read a nil tree without being told, and cannot assemble a Measurement whose
-// outcome and tree disagree.
+// The tree is the whole of the state: Measured is derived from it rather than stored beside it, so
+// there is no pair to fall out of step. Holding both is what let the zero Measurement — the one
+// returned with an error — answer Tree with (nil, true), which is the single thing this type
+// promises cannot happen.
 type Measurement struct {
 	// Exclusions is what each pattern took, whatever the outcome — a pattern that emptied the
 	// profile is the case a caller most wants to report.
 	Exclusions []Exclusion
 
-	tree    *PathTree
-	outcome Outcome
+	tree *PathTree
+	// why there is no tree, read only when there is none. Measured is never written here, so it can
+	// neither be stale nor contradict the tree.
+	why Outcome
 }
 
 // Outcome is how the run turned out.
-func (m Measurement) Outcome() Outcome { return m.outcome }
+func (m Measurement) Outcome() Outcome {
+	if m.tree != nil {
+		return Measured
+	}
 
-// Tree is the measured tree, and whether there is one. There is one exactly when Outcome is
-// Measured.
-func (m Measurement) Tree() (*PathTree, bool) { return m.tree, m.outcome == Measured }
+	return m.why
+}
+
+// Tree is the measured tree, and whether there is one. True exactly when Outcome is Measured,
+// because that is what Outcome asks.
+func (m Measurement) Tree() (*PathTree, bool) { return m.tree, m.tree != nil }
 
 // Measure reads a profile and applies what decides its contents, in the one order that is correct.
 //
@@ -99,22 +111,22 @@ func Measure(req Request) (Measurement, error) {
 	}
 
 	if !anyStatements(items) {
-		return Measurement{outcome: NoStatements}, nil
+		return Measurement{why: NoStatements}, nil
 	}
 
 	kept, excluded := Exclude(items, req.Exclude)
 	shortened, renamed := Shorten(kept, req.Rename.From, req.Rename.To)
 
 	if rootMissed(req.Rename, items, renamed) {
-		return Measurement{Exclusions: excluded, outcome: RootMissed}, nil
+		return Measurement{Exclusions: excluded, why: RootMissed}, nil
 	}
 
 	tree := Process(shortened)
 	if _, ok := tree.Percentage(); !ok {
-		return Measurement{Exclusions: excluded, outcome: ExcludedAway}, nil
+		return Measurement{Exclusions: excluded, why: ExcludedAway}, nil
 	}
 
-	return Measurement{Exclusions: excluded, tree: tree, outcome: Measured}, nil
+	return Measurement{Exclusions: excluded, tree: tree}, nil
 }
 
 // rootMissed reports whether the rename named a package the profile does not hold.

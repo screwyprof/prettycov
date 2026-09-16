@@ -51,6 +51,7 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 	case prettycov.ExcludedAway:
 		return nil, g.refuse("--exclude left nothing to report", s)
 	case prettycov.Measured: // returned above, where the tree is
+	case prettycov.Unmeasured: // returned above, with the error that produced it
 	}
 
 	return nil, exitError{code: ExitFailed}

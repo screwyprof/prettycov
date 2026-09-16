@@ -6,8 +6,31 @@ built, and why the output is shaped the way it is.
 ## Reading the report
 
 
-**A run of directories that each hold nothing but the next one is one row.** Otherwise every report
-would spend three levels on `github.com`, `owner`, `repo` before reaching anything worth reading.
+**Directories that hold nothing but one another are drawn as a single row.** `github.com` holds only
+`screwyprof`, which holds only `delegator`: three directories, one path through them, no choice to
+make at any step. Drawn one per level, the default report would be this —
+
+```
+ github.com - 91.54
+ └ screwyprof - 91.54
+   └ delegator - 91.54
+     └ …
+```
+
+— three rows carrying the same number, and `--depth=1` would stop before reaching a package. What
+you get instead:
+
+```shell
+❯ prettycov report
+ github.com/screwyprof/delegator - 91.54
+ ├ pkg - 93.33
+ ├ scraper - 88.00
+ └ web - 93.94
+```
+
+The first block is an illustration; every block with a `❯` on this page is output from a real run.
+That collapsed chain is what the rest of this page calls the *root* — what `--old` renames, and what
+`total` puts back in front of a path you copied off a row.
 
 **The profile's files are the tree's leaves**, so every row is the sum of what is drawn beneath it —
 `scraper`'s 150 statements are `config/config.go`'s 1, `service.go`'s 65, `store`'s 51 and
@@ -287,8 +310,8 @@ finished. The count is on stderr, so the pipe is unaffected. An empty list names
 same way, rather than guessing which of them did it: `nothing to show at --depth=1; 34 uncovered
 statements left`.
 
-`--files` says nothing here. It adds files to the *tree's* output; a list of positions is made of them
-either way.
+`misses` has no `--files`: it adds files to the *tree's* output, and a list of positions is made of
+them either way. Passing it is exit 2, like any other flag a command does not take.
 
 `--exclude` removes them outright, since it acts on the profile before any of this — and it takes the
 same `file:line:col` spelling, so a position you judge unreachable pastes back as a pattern. It

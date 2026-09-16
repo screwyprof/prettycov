@@ -194,20 +194,22 @@ func (n *PathTree) underRoot(key string) *PathTree {
 		return nil
 	}
 
-	root, node := "", n
+	node := n
 
 	for range maxRootDepth {
 		if len(node.Children) != 1 || len(node.Files) != 0 {
 			return nil
 		}
 
-		for name, child := range node.Children {
-			// path.Join, not join: it drops the empty first name, where join would read it as the
-			// filesystem root and prefix a separator this early.
-			root, node = path.Join(root, name), child
+		for _, child := range node.Children {
+			node = child
 		}
 
-		if found := n.walk(join(root, key)); found != nil {
+		// Walked from the node itself, never from a path rebuilt to reach it. Assembling one meant
+		// path.Join, which drops the empty component an absolute path begins with — so "/abs/x/p"
+		// was probed as "abs/x/p" and no absolute tree ever resolved — and path.Clean, which folds
+		// "..", so `total ..` climbed out of the run and graded an ancestor with exit 0.
+		if found := node.walk(key); found != nil {
 			return found
 		}
 	}

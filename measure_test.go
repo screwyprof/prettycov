@@ -185,6 +185,33 @@ func TestGetResolvesAPathTheRootWasCollapsedFrom(t *testing.T) {
 	assert.Nil(t, tree.Get("nowhere"))
 }
 
+// Measured is derived from the tree rather than stored beside it, so the two cannot disagree. The
+// zero Measurement is the case that proves it matters: it is what Measure returns with an error, and
+// while Measured was a stored field at zero it answered Tree with (nil, true) — a library caller
+// switching on that bool nil-dereferenced on any unreadable profile.
+func TestMeasurementOutcomeFollowsTheTree(t *testing.T) {
+	t.Parallel()
+
+	var zero prettycov.Measurement
+
+	tree, ok := zero.Tree()
+	assert.Nil(t, tree)
+	assert.False(t, ok, "a nil tree is never handed back as one")
+	assert.Equal(t, prettycov.Unmeasured, zero.Outcome())
+
+	// And the other way: a run that produced a tree reports Measured without anything having
+	// written it down.
+	got, err := prettycov.Measure(prettycov.Request{
+		Profile: writeProfile(t, "mode: set\nm/a.go:1.1,2.2 1 1\n"),
+	})
+	require.NoError(t, err)
+
+	tree, ok = got.Tree()
+	require.True(t, ok)
+	assert.NotNil(t, tree)
+	assert.Equal(t, prettycov.Measured, got.Outcome())
+}
+
 // NamesNoPackage is Shorten's own rule, asked where a caller can reach it: Shorten trims every
 // trailing separator before matching, so a source that trims away renames nothing and says nothing.
 func TestRenameNamesNoPackage(t *testing.T) {
