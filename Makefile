@@ -21,6 +21,9 @@ GO_FILES := $(wildcard $(shell $(GIT_LS) "*.go"))
 FIXTURES := $(wildcard $(shell $(GIT_LS) "*testdata/*"))
 LOCAL_PACKAGES=github.com/screwyprof/prettycov
 COVERAGE := coverage.out
+# The same figure codecov.yml sets as its project target. Two places, because one is what a
+# contributor sees before pushing and the other is what blocks the merge.
+COVERAGE_FLOOR := 99
 # Tracked Markdown only, so a vendored or downloaded .md is never linted.
 MARKDOWN = $(shell $(GIT_LS) '*.md')
 # Counter files from the binary tests, folded into $(COVERAGE) below.
@@ -32,6 +35,7 @@ GO_TAGS := integration
 GOVULNCHECK_VERSION := v1.8.0
 GOBCO_VERSION := v1.3.4
 VALE_VERSION := v3.14.2
+REVIEWDOG_VERSION := v0.21.1
 GREMLINS_VERSION := v0.6.0
 
 # ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
@@ -185,6 +189,13 @@ vulns: ## report known vulnerabilities reachable from this module
 # govulncheck, gobco, gremlins — and nix is then a fast prebuilt path rather than a requirement.
 VALE := $(shell command -v vale 2>/dev/null || echo "go run github.com/errata-ai/vale/v3/cmd/vale@$(VALE_VERSION)")
 
+# `-diff` rather than tidy-then-`git diff`: it reports what would change without writing, so the
+# gate cannot leave a dirty tree behind when it fails. Both files are checked in, so a stale one is
+# a change that builds here and on no other machine.
+tidy: ## check go.mod and go.sum are what the imports say
+	@echo -e "$(OK_COLOR)==> Checking go.mod$(NO_COLOR)"
+	@go mod tidy -diff
+
 # Google's developer documentation style guide, as Vale packages it, with this repo's deviations
 # recorded in .vale.ini. `vale sync` fetches the package into .vale/, which is gitignored, so the
 # first run on a clean checkout downloads it.
@@ -242,6 +253,18 @@ lint: $(GCL) ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
 	./$(GCL) run ./...
 
+# CI only, and the same findings `lint` reports: reviewdog renders them as annotations on the pull
+# request diff, which a log cannot. It reads golangci-lint's own format from stdin, so this works
+# with the nilaway-carrying binary the GCL rule builds — reviewdog's own golangci-lint action
+# downloads the stock one, which cannot load this config at all and exits 3.
+#
+# Output aimed at a machine: no banner, no colour, no stats, or the errorformat has lines it cannot
+# parse. Scoped to the diff, as `lint` is, because that is what an annotation can point at.
+lint-annotate: $(GCL)
+	@./$(GCL) run ./... --output.text.print-issued-lines=false --output.text.colors=false --show-stats=false \
+		| go run github.com/reviewdog/reviewdog/cmd/reviewdog@$(REVIEWDOG_VERSION) \
+			-f=golangci-lint -name=golangci-lint -reporter=github-pr-check -fail-level=any
+
 lint-all: $(GCL) ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
 	./$(GCL) run ./... --new-from-rev=""
@@ -263,6 +286,9 @@ lint-all: $(GCL) ## run linters
 # still print a clean-looking block and exit 0. Scoped to this target, so no other recipe changes.
 check: SHELL := /usr/bin/env bash
 check: .SHELLFLAGS := -o pipefail -c
+# The coverage line is a gate, not a figure: it used to print the total and assert nothing, so
+# `make check` passed at any coverage while codecov failed the pull request at 99%. Same bar now,
+# said in both places, and asserted by the tool this repository is.
 check: ## run every quality gate and print the block to paste into a PR description
 	@echo -e "$(OK_COLOR)==> Checking$(NO_COLOR)" >&2
 	@echo '$$ make build'
@@ -270,9 +296,11 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@$(PWD)/$(BINARY) --version
 	@echo; echo '$$ make test'
 	@$(MAKE) --no-print-directory test >/dev/null
-	@go tool cover -func=$(COVERAGE) | tail -1 | tr -s '\t' ' '
+	@go run ./cmd/prettycov total --fail-under=$(COVERAGE_FLOOR) --profile=$(COVERAGE)
 	@echo; echo '$$ make lint-all'
 	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
+	@echo; echo '$$ make tidy'
+	@$(MAKE) --no-print-directory tidy 2>&1 | tail -1
 	@echo; echo '$$ make vulns'
 	@$(MAKE) --no-print-directory vulns 2>&1 | grep -E 'No vulnerabilities|Vulnerability #'
 	@echo; echo '$$ make docs-lint'
@@ -349,4 +377,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-all vulns docs-lint check install hooks nix-hash release publish clean help
+.PHONY: lint lint-annotate lint-all vulns docs-lint tidy check install hooks nix-hash release publish clean help

@@ -28,16 +28,19 @@ condition for lifting the pin are in [.modernize](.modernize).
 
 ## The gates
 
-`make check` runs what CI runs, and prints the block to paste into a pull request:
+`make check` is what CI runs — one command, one list, so the two cannot drift. It prints the block
+to paste into a pull request:
 
 | target | what it asks |
 | --- | --- |
 | `make test` | tests, with `-race` and `-shuffle=on` on both passes |
 | `make lint-all` | 74 linters, including nilaway compiled in as a plugin |
+| `make lint` | the same, narrowed to your diff — what CI annotates on the pull request |
 | `make vulns` | govulncheck, reachability-aware |
 | `make docs-lint` | Vale over the Markdown, against Google's style guide |
 | `make mutate` | mutation testing; a surviving mutant is a test that asserts nothing |
 | `make cover-branches` | condition coverage, which statement coverage cannot see |
+| `make tidy` | `go mod tidy -diff`, so a stale go.sum cannot reach main |
 
 All of them are expected to pass before a pull request. `make help` lists the rest.
 
