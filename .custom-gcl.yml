@@ -8,4 +8,12 @@ plugins:
     # The plugin entrypoint, not the module root: the root has no golangci registration, and
     # without this the binary compiles nilaway in and then reports "plugin not found".
     import: go.uber.org/nilaway/cmd/gclplugin
-    version: latest
+    # Pinned, like the six tool versions in the Makefile and for the same reason: `latest` turns CI
+    # red on an upstream release with no commit here, and because $(GCL) is a file rule keyed on
+    # this file's mtime, a cached binary keeps an older nilaway than a fresh CI build — two linters
+    # disagreeing with nothing to catch it.
+    #
+    # nilaway publishes no tags, so this is the pseudo-version the proxy answers with, and no bot
+    # reads this file: bump it by hand from `go list -m -f '{{.Version}}' go.uber.org/nilaway@latest`
+    # after checking `make lint-all` is still clean.
+    version: v0.0.0-20260915140140-59aa42bdc591
