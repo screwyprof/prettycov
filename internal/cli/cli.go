@@ -168,6 +168,8 @@ type helpCmd struct {
 // help as though nope were fine.
 func (c *helpCmd) Run(k *kong.Context) error {
 	ctx, _ := kong.Trace(k.Kong, c.Command)
+
+	//nolint:nilaway // Trace's last line is `return c, nil`: the context is never nil.
 	if ctx.Error != nil {
 		//nolint:wrapcheck // kong names the command it could not find.
 		return ctx.Error
@@ -291,7 +293,7 @@ func (OptionalPercentage) Decode(ctx *kong.DecodeContext, target reflect.Value) 
 	bar := prettycov.MustThreshold(bareHideCovered)
 
 	if ctx.Scan.Peek().Type == kong.FlagValueToken {
-		if err := bar.UnmarshalText([]byte(fmt.Sprint(ctx.Scan.Pop().Value))); err != nil {
+		if err := bar.UnmarshalText(fmt.Append(nil, ctx.Scan.Pop().Value)); err != nil {
 			//nolint:wrapcheck // Threshold's error is already phrased for a flag.
 			return err
 		}

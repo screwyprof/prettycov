@@ -27,6 +27,8 @@ COVERDATA := .covdata
 # main_test.go spawns a binary, so it is tagged and run in a pass of its own. Also in .golangci.yml,
 # which needs the tag to lint the file at all.
 GO_TAGS := integration
+GOVULNCHECK_VERSION := v1.8.0
+NILAWAY_VERSION := latest
 GOBCO_VERSION := v1.3.4
 GREMLINS_VERSION := v0.6.0
 
@@ -162,6 +164,24 @@ test-cover-total: $(COVERAGE) ## show total coverage
 # which filled /tmp and killed the run on ENOSPC. Same shape as the one that made `make fmt` walk
 # 74,469 files — a tool reading the filesystem where the Go package graph was meant.
 #
+# Reachability-aware, so unlike a generic dependency scan it reports only what this binary can
+# actually reach — no triage queue of advisories in code that never runs.
+vulns: ## report known vulnerabilities reachable from this module
+	@echo -e "$(OK_COLOR)==> Vulnerabilities$(NO_COLOR)"
+	@go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+# Production code only. nilaway traces nil through a whole package, so a test that slices the empty
+# slice an assertion just built is a true observation about code that cannot ship — eight of the
+# eleven it found here were that. -include-pkgs keeps it off the dependencies for the same reason.
+#
+# Two of the three it finds in production are invariants it cannot see: an index guarded by a
+# variable it does not track, and kong.Trace, which is documented to return a nil error and a
+# non-nil context. Both are marked; a third was real and is fixed.
+nilaway: ## report potential nil panics in production code
+	@echo -e "$(OK_COLOR)==> Nil analysis$(NO_COLOR)"
+	@go run go.uber.org/nilaway/cmd/nilaway@$(NILAWAY_VERSION) \
+		-exclude-test-files -include-pkgs=github.com/screwyprof/prettycov ./...
+
 # The copy is $(GIT_LS), the list `fmt` already uses, so uncommitted work is measured. A worktree
 # would be shorter and would silently report on HEAD instead.
 cover-branches: ## report conditions never evaluated both ways
@@ -236,6 +256,11 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@go tool cover -func=$(COVERAGE) | tail -1 | tr -s '\t' ' '
 	@echo; echo '$$ make lint-all'
 	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
+	@echo; echo '$$ make vulns'
+	@$(MAKE) --no-print-directory vulns 2>&1 | grep -E 'No vulnerabilities|Vulnerability #'
+	@echo; echo '$$ make nilaway'
+	@$(MAKE) --no-print-directory nilaway 2>&1 \
+		| awk '/error:/ {n++} END {print n ? n " potential nil panics" : "no potential nil panics"}'
 	@echo; echo '$$ make mutate'
 	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
 	@echo; echo '$$ make cover-branches'

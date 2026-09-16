@@ -36,9 +36,11 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 	// handed anything it did not recognise whichever sentence happened to be last.
 	switch res.Outcome() {
 	case prettycov.Measured:
-		tree, _ := res.Tree()
-
-		return tree, nil
+		// The bool, not just the case: Tree hands it back so a caller cannot read a nil tree
+		// without being told, and discarding it here defeated the point of returning it.
+		if tree, ok := res.Tree(); ok {
+			return tree, nil
+		}
 
 	// Refused, not merely said: a rename transforms the output, so one that did not happen leaves a
 	// report nobody asked for. --exclude is not held to this — a pattern is a filter, and "drop this
@@ -53,6 +55,8 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 		return nil, g.refuse("--exclude left nothing to report", s)
 	}
 
+	// Measured without a tree cannot happen — Measure sets the two together — and neither can a
+	// fifth Outcome, which exhaustive refuses. This is what Go needs said anyway.
 	return nil, exitError{code: ExitFailed}
 }
 
