@@ -83,21 +83,20 @@ build: ## build application
 	@echo -e "$(OK_COLOR)==> Building application$(NO_COLOR)"
 	go build -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
 
-# golangci-lint comes from the devShell or the developer's own install, not go.mod, so the targets
-# needing it say where to get it rather than dying with "command not found".
-GOLANGCI_MISSING := golangci-lint not found. Enter the nix devShell, or install v2.13.1 (the version CI pins) from https://golangci-lint.run/docs/welcome/install/
-
-require-golangci:
-	@command -v golangci-lint >/dev/null 2>&1 || { echo "$(GOLANGCI_MISSING)"; exit 1; }
+# From PATH when there is one, `go run` otherwise, as with vale: golangci-lint is a Go program, so
+# needing it does not mean needing nix. The fallback compiles it once, which is slow and then
+# cached — the devShell is the fast path rather than the only one.
+GOLANGCI_VERSION := v2.13.1
+GOLANGCI := $(shell command -v golangci-lint 2>/dev/null || echo "go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)")
 
 # nilaway is a module plugin, so it has to be compiled into a golangci-lint of our own — see
 # .custom-gcl.yml. A real file rule, so the two-minute build happens when that file changes and
 # never again. Formatting uses the stock binary: the plugin adds a linter, not a formatter.
 GCL := bin/golangci-lint-prettycov
 
-$(GCL): .custom-gcl.yml .golangci.yml | require-golangci
+$(GCL): .custom-gcl.yml .golangci.yml
 	@echo -e "$(OK_COLOR)==> Building golangci-lint with nilaway$(NO_COLOR)"
-	@golangci-lint custom
+	@$(GOLANGCI) custom
 
 # golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
 # which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
@@ -107,10 +106,10 @@ $(GCL): .custom-gcl.yml .golangci.yml | require-golangci
 # loads packages, and the go tool skips directories starting with _ or . on the way. So a checkout
 # left under the root cost this target a minute per commit while lint stayed instant — 74469 files
 # walked to format 25.
-fmt: require-golangci ## format code
+fmt: ## format code
 	@echo -e "$(OK_COLOR)==> Formatting$(NO_COLOR)"
 	@test -n "$(GO_FILES)" || { echo "no Go files; GO_FILES needs a git checkout"; exit 1; }
-	@golangci-lint fmt $(GO_FILES)
+	@$(GOLANGCI) fmt $(GO_FILES)
 
 # One recipe produces the profile, and it is a real file rule so make can tell when it is stale.
 # The reports depend on the file rather than on `test`, so they rebuild it when a source has
@@ -348,6 +347,6 @@ help: ## show this help
 # To avoid unintended conflicts with file names, always add to .PHONY
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
-.PHONY: all build fmt require-golangci
+.PHONY: all build fmt
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
 .PHONY: lint lint-all vulns docs-lint check install hooks nix-hash release publish clean help

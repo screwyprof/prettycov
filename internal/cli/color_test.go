@@ -1,7 +1,9 @@
 // Internal, unlike the rest: it reaches the isTerminal seam and the colorMode values, which are
 // not part of what the package offers.
 //
-//nolint:testpackage // see above.
+// Detached by a blank line so it is not read as a second package doc — cli.go carries that one.
+
+//nolint:testpackage // internal by design; see above.
 package cli
 
 import (

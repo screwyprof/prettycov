@@ -23,6 +23,12 @@ prettycov reads the profile `go test` already wrote and answers that:
 Every row is the sum of everything beneath it, so you can start at the top and follow the worst
 number down.
 
+## Contributing
+
+Go and make, nothing else — every tool the build needs is fetched at a pinned version when it is
+not already on your PATH. [CONTRIBUTING.md](CONTRIBUTING.md) has the gates and what a change is
+expected to carry.
+
 ## Status
 
 Pre-1.0. Flags, output format and the Go API may all change between minor versions — if you gate CI

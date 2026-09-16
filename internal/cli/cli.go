@@ -1,3 +1,13 @@
+// Package cli is the command line: the commands, the flags they take, and every sentence prettycov
+// says that is not the report itself.
+//
+// The router and its handlers, in the shape an HTTP service uses. A command reads its flags, asks
+// the domain to measure, and turns what came back into output and a status; it decides no coverage
+// question of its own. Everything user-facing lives here — the domain returns facts and outcomes,
+// never words — which is why this is the one place a flag is named in a sentence.
+//
+// The composition root is internal/app: it builds the parser and binds these handlers to their
+// dependencies. A depguard rule keeps that direction, so nothing here imports it.
 package cli
 
 import (
