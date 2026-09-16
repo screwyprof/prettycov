@@ -137,5 +137,3 @@ it removed.
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-With thanks to [antongr](https://github.com/kannman), whose nudge got this started.
