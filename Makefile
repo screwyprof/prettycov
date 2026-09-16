@@ -217,7 +217,7 @@ cover-branches: ## report conditions never evaluated both ways
 	@test -n "$(GO_FILES)" || { echo "no Go files; this needs a git checkout"; exit 1; }
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT; \
 	 $(GIT_LS) | tar -cf - -T - | (cd "$$tmp" && tar -xf -); \
-	 for pkg in . ./internal/cli; do \
+	 for pkg in . ./internal/app ./internal/cli; do \
 		(cd "$$tmp" && go run github.com/rillig/gobco@$(GOBCO_VERSION) $$pkg) | grep -v "^ok\b" || true; \
 	 done
 
@@ -296,7 +296,8 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@$(PWD)/$(BINARY) --version
 	@echo; echo '$$ make test'
 	@$(MAKE) --no-print-directory test >/dev/null
-	@go run ./cmd/prettycov total --fail-under=$(COVERAGE_FLOOR) --profile=$(COVERAGE)
+	@go run ./cmd/prettycov report --profile=$(COVERAGE) --old=$(LOCAL_PACKAGES) --new=prettycov \
+		--depth=2 --files --hide-covered --fail-under=$(COVERAGE_FLOOR)
 	@echo; echo '$$ make lint-all'
 	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
 	@echo; echo '$$ make tidy'
@@ -309,8 +310,9 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
 	@echo; echo '$$ make cover-branches'
 	@$(MAKE) --no-print-directory cover-branches 2>&1 | grep '^Condition coverage:' \
-		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/cli"} \
-		       END {if (NR != 2) {print "cover-branches reported " NR " packages, wanted 2" > "/dev/stderr"; exit 1}}'
+		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"} \
+		       NR==3 {print $$0 "    # internal/cli"} \
+		       END {if (NR != 3) {print "cover-branches reported " NR " packages, wanted 3" > "/dev/stderr"; exit 1}}'
 
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
