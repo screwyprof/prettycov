@@ -1,6 +1,7 @@
 package prettycov
 
 import (
+	"encoding"
 	"errors"
 	"math"
 	"strconv"
@@ -27,6 +28,10 @@ func NewThreshold(pct float64) (Threshold, error) {
 
 	return Threshold{value: pct}, nil
 }
+
+// The interface kong looks for, asserted because it looks by reflection. OptionalPercentage.Decode
+// happens to call this by name today, which is the only reason a rename does not compile.
+var _ encoding.TextUnmarshaler = (*Threshold)(nil)
 
 // UnmarshalText reads a bar, so flag and config libraries produce the parsed type rather than a
 // float a caller has to remember to range-check.

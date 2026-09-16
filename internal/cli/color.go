@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +27,10 @@ const (
 	// colorAlways colours even into a pipe, for a caller that will render the escapes itself.
 	colorAlways
 )
+
+// Reflection again, and nothing calls this by name: without the assertion a rename compiles and
+// --color=never silently stops being a spelling kong knows.
+var _ encoding.TextUnmarshaler = (*colorMode)(nil)
 
 // UnmarshalText parses a mode, so a colorMode exists only because one of the three spellings was
 // given. Kong finds this through encoding.TextUnmarshaler, so the flag holds the parsed value and
