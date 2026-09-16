@@ -23,6 +23,11 @@ prettycov reads the profile `go test` already wrote and answers that:
 Every row is the sum of everything beneath it, so you can start at the top and follow the worst
 number down.
 
+## Status
+
+Pre-1.0. Flags, output format and the Go API may all change between minor versions — pin a version
+if you gate CI on it. What changed and what broke is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Installation
 ```shell
 go install github.com/screwyprof/prettycov/cmd/prettycov@latest
@@ -122,10 +127,5 @@ was asked — distinct, so a CI step can tell a bad invocation from a failed gat
 collapse, what `--depth` and `--hide-covered` do to a report, how `total` resolves a path, the
 `file:line:col` format and the editor settings that read it, and how `--exclude` accounts for what
 it removed.
-
-## Status
-
-Pre-1.0. Flags, output format and the Go API may all change between minor versions — pin a version
-if you gate CI on it. What changed and what broke is in [CHANGELOG.md](CHANGELOG.md).
 
 With thanks to [antongr](https://github.com/kannman), whose nudge got this started.
