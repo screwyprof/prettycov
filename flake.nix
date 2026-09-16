@@ -66,7 +66,7 @@
             src = ./.;
             # Pins the whole module set — bump it whenever go.mod or go.sum moves. `make nix-hash`
             # does that, and the pre-commit hook runs it for anyone with nix.
-            vendorHash = "sha256-NwJfEfDBkv8MO/l0qxteajQAMUTXmZmINW6owLeVot0=";
+            vendorHash = "sha256-slAt2tntfgT/OgQ3x/pi+zaK5t8KFxgHxpSrWLdd1WU=";
             # Without this the version lives only in the derivation name and the binary answers
             # "(devel)": the source has no .git, so the toolchain stamps nothing of its own.
             # No +commit suffix, unlike the Makefile's dev builds — a nix build is pinned to a rev

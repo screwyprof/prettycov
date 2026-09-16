@@ -165,8 +165,18 @@ linters:
       - builtin$
       - examples$
 issues:
-  # Show only new issues created after git revision `REV`.
-  new-from-rev: main
+  # Only what this branch added, measured against where it left main.
+  #
+  # origin/main, not main: a CI checkout has no local branch of that name, only remote-tracking
+  # refs, so revgrep failed with `fatal: bad revision 'main'` and golangci-lint fell back to
+  # reporting everything. It warned rather than failed, and the repository lints clean, so the
+  # annotation step has been unfiltered for as long as it has existed without anything to show for
+  # it. `make lint-all` passes --new-from-rev="" and is the gate, so this never affected `make
+  # check`.
+  #
+  # merge-base rather than the tip: against the tip, anything landing on main after the branch
+  # started reads as this branch's work.
+  new-from-merge-base: origin/main
 formatters:
   enable:
     - gofumpt
