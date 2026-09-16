@@ -10,6 +10,81 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### CLI
+
+- **Breaking:** every invocation is now `prettycov <command>`, where the commands are `report`,
+  `misses`, `total [PATH]` and `version`. `prettycov` alone drew a report; it prints help. The flags
+  that used to select an output are the commands — `-misses` is `misses`, `-total` is `total`,
+  `-total=pkg/logger` is `total pkg/logger` — and the rest keep their names with a second dash:
+  `-depth=2` is `--depth=2`.
+
+  The implicit report was the cause of three separate problems, not a convenience: its flags had to
+  live at the root, where `--help` did not list them; a bare word was ambiguous between a command
+  and a file, which took 56 lines to disambiguate; and `-total` had to settle its value before the
+  tree existed, which is why a package named `t` or `true` could not be asked for. Naming the
+  command costs one word and removes all three.
+
+- **Breaking:** the profile is `--profile` only. It was also accepted as the sole positional
+  argument, which is the ambiguity above: `prettycov total` cannot tell a command from a filename
+  if either may be bare.
+
+- **Breaking:** flags belong to the command that reads them rather than to the root, so
+  `prettycov --profile x report` is now `prettycov report --profile x`. At the root kong listed
+  every flag under every command, which reads as convenience and is really a claim that they all
+  apply: `version --help` offered `--exclude`, and `total --help` offered `--color`, which changes
+  no byte of a bare number. Each listing is now exactly what that command takes.
+
+- `total PATH` resolves a path against the module root, so `total pkg/logger` works where only
+  `total github.com/you/m/pkg/logger` did. A row is drawn with its own segment, so the path you read
+  off a report is missing the root the report collapsed away; the spelling that is there is put back
+  when the literal one is not found. The literal is tried first, so nothing that already resolved
+  has changed, and the prefixed path is checked against the tree before it is used. It replaces the
+  "did you mean" this used to print instead.
+
+- `--hide-covered` takes a percentage and nothing else. It previously accepted any spelling
+  `strconv.ParseBool` reads as a way of turning it off — leave the flag out instead. A bare
+  `--hide-covered` still means 100.
+
+- Two guards that a flag library's tag syntax could not express, both restored as value checks:
+  `--old=` or `--new=` given empty is refused, where kong's `and:"rename"` group passed it because
+  both flags were present — `--old=$(MODULE) --new=.` with `MODULE` unset then renamed nothing and
+  said nothing. And `total ""` is refused rather than read as the whole tree, so an unset
+  `total "$PKG"` fails instead of quietly gating the repository.
+
+- The `help` command is gone; `--help` is the one spelling, and it reaches a command as
+  `prettycov report --help`. The two printed identical bytes, and kong's own help footer advertises
+  the flag.
+
+### Go API
+
+- **Breaking:** `CoverageStats.Add` is `Plus`, which returns rather than mutates:
+  `c.Add(other)` is now `c = c.Plus(other)`. A value type with one pointer method meant a caller
+  could hold a reference that changed under it, for a saving of nothing — the struct is two ints.
+
+- **Breaking:** `CoverageStats.AtLeast` and `Options.HideCovered` take a `Threshold` rather than a
+  `float64`. `Threshold` is parsed — `NewThreshold`, `MustThreshold`, or `encoding.TextUnmarshaler`
+  — and refuses NaN and anything outside [0, 100]. The range used to be a rule the caller was
+  trusted to keep, and NaN was the one that mattered: every comparison against it is false, so a
+  gate passed at any coverage and a filter hid nothing, neither saying so.
+
+- Added: `Measure(Request) (Measurement, error)` applies a profile's rename and exclusions in the
+  one correct order and reports how the run turned out as an `Outcome` — measured, no statements,
+  excluded away, or a root that matched nothing. This was assembled in the CLI, where the order was
+  a thing to get right rather than a thing the API guaranteed.
+
+- Added: `PathTree.Uncovered`, `Percentage`, `AtLeast` and `UnderRoot`; `Depth.UnmarshalText`;
+  `Rename` with `Wanted`, `Half` and `NamesNoPackage`.
+
+### Documentation
+
+- The README is a pitch rather than a manual: what problem this solves, and four things it is good
+  for. The reference material it carried — how the tree is built, what each flag does to a report,
+  the `file:line:col` format and the editor settings that read it — moved to
+  [docs/reference.md](docs/reference.md) unchanged. It no longer recites `--help`, which drifts by
+  construction.
+
 ## [0.13.0] — 2026-09-16
 
 ### Added
