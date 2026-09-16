@@ -427,22 +427,6 @@ func TestExcludeDropsAFileLeftWithNoStatements(t *testing.T) {
 	assert.Equal(t, 1, dropped[0].Blocks)
 }
 
-// Two patterns, one matching whole files and one matching block coordinates, because Exclude asks
-// every pattern about both spellings of every block and the coordinate path is the hot one.
-func BenchmarkExclude(b *testing.B) {
-	files := syntheticProfile(b)
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`/sub7/`),
-		regexp.MustCompile(`file1\d\d\.go:3`),
-	}
-
-	b.ReportAllocs()
-
-	for b.Loop() {
-		_, _ = prettycov.Exclude(files, patterns)
-	}
-}
-
 // A column is a prefix as a line is, so a position pasted out of -misses takes every block whose
 // column starts with those digits: a.go:9:2 also matches a.go:9:24, which is an ordinary second
 // block on one line — `if err != nil {` at column 2 and a closure at column 24.

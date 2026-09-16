@@ -561,36 +561,3 @@ func file(name string, covered, uncovered int) prettycov.FileCoverage {
 		Coverage: prettycov.CoverageStats{Covered: covered, Uncovered: uncovered},
 	}
 }
-
-func BenchmarkProcess(b *testing.B) {
-	files := syntheticProfile(b)
-
-	b.ReportAllocs()
-
-	for b.Loop() {
-		_ = prettycov.Process(files)
-	}
-}
-
-// Get is called once per invocation, so this exists to hold a claim rather than to chase a cost:
-// the walk allocates nothing, for a hit, a file hit and a miss alike.
-func BenchmarkGet(b *testing.B) {
-	tree := prettycov.Process(syntheticProfile(b))
-
-	for _, bc := range []struct {
-		name string
-		key  string
-	}{
-		{name: "package", key: "github.com/acme/monorepo/unit3/pkg/logger"},
-		{name: "file", key: "github.com/acme/monorepo/unit3/pkg/logger/logger.go"},
-		{name: "miss", key: "github.com/acme/monorepo/unit3/pkg/nope"},
-	} {
-		b.Run(bc.name, func(b *testing.B) {
-			b.ReportAllocs()
-
-			for b.Loop() {
-				_ = tree.Get(bc.key)
-			}
-		})
-	}
-}
