@@ -9,16 +9,11 @@ import (
 	"github.com/screwyprof/prettycov"
 )
 
-// prepare turns the profile into a tree, or an error
-// carrying the status for something already reported.
-//
-// It does not know which command asked. What is done with the tree is the command's, which is why
-// config no longer carries a flag saying which one ran.
-//
-// It does not change directory. It used to chdir to the profile's directory and then open the path
-// it was given, which meant any relative path with a directory component failed to resolve.
-func prepare(cfg config, s Streams) (*prettycov.PathTree, error) {
-	items, err := prettycov.ParseProfile(cfg.Profile)
+// treeOf is what the commands call: it measures, says on stderr what the measuring found, and
+// hands back the tree. The writers are here and not in measure, because saying is the only reason
+// they are needed at all.
+func treeOf(cfg config, s Streams) (*prettycov.PathTree, error) {
+	res, err := prettycov.Measure(cfg.Request)
 	if err != nil {
 		_, _ = fmt.Fprintf(s.Err, "%v\n", err)
 
@@ -31,34 +26,33 @@ func prepare(cfg config, s Streams) (*prettycov.PathTree, error) {
 		return nil, exitError{code: ExitFailed}
 	}
 
-	// Asked before any flag is judged. A profile with nothing in it has nothing for a pattern or a
-	// root to match, so every one of them would be reported stale — a good `--old=$(MODULE)` named
-	// as the fault when the profile is what is empty, and exit 2 where the gate below says 1.
-	if !anyStatements(items) {
-		return nil, refuseEmpty(cfg, "no statements to cover", s)
-	}
+	// Said before the two failures below, because a pattern that took everything is how a run ends
+	// up with nothing to report and the accounting is what shows it.
+	reportExclusions(res.Exclusions, s)
 
-	kept, excluded := prettycov.Exclude(items, cfg.Exclude)
-	reportExclusions(excluded, s)
+	switch {
+	// Refused, not merely said: a rename transforms the output, so one that did not happen leaves a
+	// report nobody asked for. --exclude is not held to this — a pattern is a filter, and "drop this
+	// if it is here" is a reasonable thing to write.
+	case res.RootMissed:
+		_, _ = fmt.Fprintf(s.Err, "--old %q matched nothing, so no label was shortened\n", cfg.Rename.From)
 
-	shortened, renamed := prettycov.Shorten(kept, cfg.Rename.From, cfg.Rename.To)
-
-	// A root that matched nothing did not rename, which is an argument mistake found a step later
-	// only because the profile is what answers it. No report with it: the labels would not be the
-	// ones asked for. --exclude is not held to this — a pattern is a filter, and "drop this if it
-	// is here" is a reasonable thing to write.
-	if reportRename(cfg, items, renamed, s) {
 		return nil, exitError{code: ExitFailed}
+	case res.Empty != prettycov.NotEmpty:
+		return nil, refuseEmpty(cfg, reasonFor(res.Empty), s)
 	}
 
-	tree := prettycov.Process(shortened)
+	return res.Tree, nil
+}
 
-	// Settled once here, so no two commands can answer it differently.
-	if _, ok := tree.Coverage.Percentage(); !ok {
-		return nil, refuseEmpty(cfg, "--exclude left nothing to report", s)
+// reasonFor is how an EmptyReason reads. Here rather than beside the constant, because Measure
+// states the fact and only a command line has an opinion about the words.
+func reasonFor(e prettycov.EmptyReason) string {
+	if e == prettycov.NoStatements {
+		return "no statements to cover"
 	}
 
-	return tree, nil
+	return "--exclude left nothing to report"
 }
 
 // prepare retrieves; each command renders. They are composed in a command's Run and not bundled
@@ -99,47 +93,6 @@ func underRoot(tree *prettycov.PathTree, want string) string {
 	}
 
 	return ""
-}
-
-// reportRename reports whether --old named a package the profile does not hold — a typo, or a module
-// path that has moved — and says so. parseFlags has already refused a root that names no package at
-// all; this is one that names the wrong one, which only the matching can catch.
-//
-// Asked of the whole profile rather than of what survived --exclude. Shorten runs on what is left,
-// so a pattern that took every file under a perfectly good root would otherwise be reported as a
-// bad root — sending someone to fix a flag that is already right, which is the confusion the
-// overlap branch in reportExclusions exists to prevent.
-func reportRename(cfg config, items []prettycov.FileCoverage, renamed int, s Streams) bool {
-	// A root alone is refused by parseFlags, which TestRunRefusesHalfARename drives end to end, so
-	// a root that is set means a target came with it. Testing NewRoot here as well would be a guard
-	// no invocation can reach, and an uncoverable branch in a tool that reports coverage.
-	//
-	// renamed is a shortcut, not a second reason: Exclude only drops files, never renames them, so
-	// anything it left that matched the root is in the profile too and HasRoot would agree. It
-	// keeps even that scan off the path where the rename worked, which is every run not a mistake.
-	if !cfg.Rename.asked() || renamed > 0 {
-		return false
-	}
-
-	if prettycov.HasRoot(items, cfg.Rename.From) {
-		return false
-	}
-
-	_, _ = fmt.Fprintf(s.Err, "--old %q matched nothing, so no label was shortened\n", cfg.Rename.From)
-
-	return true
-}
-
-// anyStatements reports whether the profile holds anything to cover. Statements rather than files:
-// cmd/cover emits blocks declaring none, so a profile can name files and still be empty.
-func anyStatements(files []prettycov.FileCoverage) bool {
-	for _, f := range files {
-		if f.Coverage.Total() > 0 {
-			return true
-		}
-	}
-
-	return false
 }
 
 // refuseEmpty says why there is nothing to report and grades the absence.

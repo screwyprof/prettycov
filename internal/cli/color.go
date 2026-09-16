@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"io"
 	"os"
 
@@ -9,8 +8,6 @@ import (
 
 	"github.com/screwyprof/prettycov"
 )
-
-var errBadColor = errors.New(`want "auto", "never" or "always"`)
 
 // colorMode is what -color said. auto needs the destination to mean anything; never and always
 // exist because a caller sometimes knows better than the heuristic, which is why every tool that
@@ -26,17 +23,17 @@ const (
 	colorAlways
 )
 
-func parseColorMode(s string) (colorMode, error) {
+// colorOf reads a mode kong has already checked against the enum in the flag's tag. Total, with no
+// error to return: anything outside the enum is refused before this runs, so a second check here
+// would be a branch no invocation can take.
+func colorOf(s string) colorMode {
 	switch s {
-	case "auto":
-		return colorAuto, nil
 	case "never":
-		return colorNever, nil
+		return colorNever
 	case "always":
-		return colorAlways, nil
+		return colorAlways
 	default:
-		//nolint:wrapcheck // the flag package already prefixes the flag name and the value.
-		return colorAuto, errBadColor
+		return colorAuto
 	}
 }
 

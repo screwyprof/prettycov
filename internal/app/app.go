@@ -23,7 +23,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// Recorded rather than obeyed: --help and --version print and then ask kong to exit.
 	done := -1
 
-	parser, err := kong.New(&root,
+	// Must, not New: the only thing that fails here is a malformed CLI struct, which is a constant
+	// of this package. That is a broken build rather than a runtime condition — every test run
+	// builds this, so a mistake in it cannot reach a user — and an error branch for it would be one
+	// no test could take.
+	parser := kong.Must(&root,
 		kong.Name("prettycov"),
 		kong.Description("Given a coverage profile produced by 'go test', draw the packages and what they cover.\n\n"+
 			"\tgo test -covermode=atomic -coverprofile=coverage.out ./...\n\tprettycov report"),
@@ -32,11 +36,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		kong.Exit(func(code int) { done = code }),
 		kong.NamedMapper("hidecovered", cli.OptionalPercentage{}),
 	)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%v\n", err)
-
-		return int(cli.ExitFailed)
-	}
 
 	// No command at all is not a mistake, it is someone finding out what this does. Kong would
 	// answer "expected one of ..."; the help says that and more, through kong's own printer.

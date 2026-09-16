@@ -1667,3 +1667,48 @@ func TestExitCodeOfReportsOnlyWhatAHandlerSet(t *testing.T) {
 	_, reported = cli.ExitCodeOf(nil)
 	assert.False(t, reported)
 }
+
+// A bare `prettycov` is someone finding out what this does, not a mistake. Kong would answer
+// "expected one of report, misses, total, version"; the help says that and more, and exits 0.
+func TestRunWithNoArgumentsPrintsHelp(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+	assert.Equal(t, codeOK, app.Run(nil, stdout, stderr))
+	assert.Contains(t, stdout.String(), "Usage: prettycov <command>")
+	assert.Contains(t, stdout.String(), "report")
+	assert.Empty(t, stderr.String(), "help that was asked for is output, not a diagnostic")
+}
+
+// A flag that parses but cannot be used fails from every command, not only the one whose tests
+// happened to cover it. --exclude is the one that can: kong takes any string, and the pattern is
+// compiled after.
+func TestRunRefusesABadPatternFromEveryCommand(t *testing.T) {
+	t.Parallel()
+
+	for _, command := range []string{"report", "misses", "total"} {
+		t.Run(command, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			code := app.Run([]string{command, "--exclude", "[", "--profile", writeProfile(t, profile)},
+				stdout, stderr)
+
+			assert.Equal(t, codeFailed, code)
+			assert.Empty(t, stdout.String())
+			assert.Contains(t, stderr.String(), "error parsing regexp")
+		})
+	}
+}
+
+// `help nope` used to print the root's help as though nope were a command: kong's Trace always
+// returns a nil error and puts the failure in Context.Error.
+func TestRunHelpRefusesAnUnknownCommand(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+	assert.Equal(t, codeFailed, app.Run([]string{"help", "nope"}, stdout, stderr))
+	assert.Contains(t, stderr.String(), "nope")
+}

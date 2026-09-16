@@ -6,7 +6,6 @@ import (
 	"io"
 	"math"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -39,9 +38,7 @@ func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code)
 // composition root above this package decides what to do with a plain error; this says only which
 // errors have already been reported and carry a code of their own.
 func ExitCodeOf(err error) (ExitCode, bool) {
-	var exit exitError
-
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[exitError](err); ok {
 		return exit.code, true
 	}
 
@@ -159,11 +156,16 @@ type helpCmd struct {
 	Command []string `arg:"" optional:"" help:"Command to print help for."`
 }
 
+// Run resolves the named command and prints its usage.
+//
+// Trace always returns a nil error — it puts the failure in Context.Error (kong context.go, the
+// last line of Trace). Reading the return instead meant `prettycov help nope` printed the root's
+// help as though nope were fine.
 func (c *helpCmd) Run(k *kong.Context) error {
-	ctx, err := kong.Trace(k.Kong, c.Command)
-	if err != nil {
+	ctx, _ := kong.Trace(k.Kong, c.Command)
+	if ctx.Error != nil {
 		//nolint:wrapcheck // kong names the command it could not find.
-		return err
+		return ctx.Error
 	}
 
 	//nolint:wrapcheck // kong writes the help itself.
@@ -210,7 +212,7 @@ func (c *reportCmd) Run(s *Streams, m *Measured) error {
 
 	cfg.Files, cfg.Counts = c.Files, c.Counts
 
-	tree, err := prepare(cfg, *s)
+	tree, err := treeOf(cfg, *s)
 	if err != nil {
 		return err
 	}
@@ -224,7 +226,7 @@ func (c *missesCmd) Run(s *Streams, m *Measured) error {
 		return err
 	}
 
-	tree, err := prepare(cfg, *s)
+	tree, err := treeOf(cfg, *s)
 	if err != nil {
 		return err
 	}
@@ -238,7 +240,7 @@ func (c *totalCmd) Run(s *Streams, m *Measured) error {
 		return err
 	}
 
-	tree, err := prepare(cfg, *s)
+	tree, err := treeOf(cfg, *s)
 	if err != nil {
 		return err
 	}
@@ -255,30 +257,24 @@ func (c *versionCmd) Run(s *Streams, v Version) error {
 // config is what the report needs, whichever command asked for it. The kong structs above are the
 // command line; this is the answer they agree on.
 type config struct {
-	Profile     string
-	Rename      rename
+	// Request is what the domain measures: the profile, the rename, the patterns. Embedded rather
+	// than copied field by field, so Measure takes it directly and the two cannot drift.
+	prettycov.Request
+
 	Depth       prettycov.Depth
 	Color       colorMode
-	Exclude     []*regexp.Regexp
 	FailUnder   *float64
 	HideCovered *float64
 	Counts      bool
 	Files       bool
 }
 
-// A rename is --old and --new. One value because they are only ever set, validated, reported and
-// applied together: either alone does nothing, which is a mistake with a message of its own.
-type rename struct {
-	From, To string
-}
-
-// asked reports whether a rename was wanted at all, which is what separates "not asked for" from
-// "asked for and did not happen".
-func (r rename) asked() bool { return r.From != "" }
-
 // settle turns the measured flags into the half of a config every command shares.
 func (m Measured) settle() (config, error) {
-	cfg := config{Profile: m.Profile, Rename: rename{From: m.Old, To: m.New}, FailUnder: m.FailUnder}
+	cfg := config{
+		Request:   prettycov.Request{Profile: m.Profile, Rename: prettycov.Rename{From: m.Old, To: m.New}},
+		FailUnder: m.FailUnder,
+	}
 
 	for _, pattern := range m.Exclude {
 		re, err := prettycov.ParseExclude(pattern)
@@ -289,12 +285,7 @@ func (m Measured) settle() (config, error) {
 		cfg.Exclude = append(cfg.Exclude, re)
 	}
 
-	mode, err := parseColorMode(m.Color)
-	if err != nil {
-		return config{}, fmt.Errorf("--color: %w", err)
-	}
-
-	cfg.Color = mode
+	cfg.Color = colorOf(m.Color)
 
 	return cfg, nil
 }
@@ -336,14 +327,12 @@ func (d drawn) shape(cfg *config) error {
 }
 
 // OptionalPercentage is --hide-covered, the one flag whose value may be left off. Kong has no
-// NoOptDefVal, so it is a mapper: IsBool stops the scanner consuming the next argument, and Decode
-// takes the value only when "=" supplied one. It is the same shape kong's own boolMapper uses.
+// NoOptDefVal, so it is a mapper: Decode takes a value only when "=" supplied one, which is the
+// same shape kong's own boolMapper uses. `--hide-covered 90` is not the bare form with a number
+// after it, it is the bare form and a stray argument — as it is under cobra's NoOptDefVal too.
 //
 // Named rather than registered for *float64, which --fail-under also is and which has no bare form.
 type OptionalPercentage struct{}
-
-// IsBool reports that no following argument belongs to this flag.
-func (OptionalPercentage) IsBool() bool { return true }
 
 func (OptionalPercentage) Decode(ctx *kong.DecodeContext, target reflect.Value) error {
 	pct := bareHideCovered
