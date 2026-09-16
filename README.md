@@ -1,5 +1,5 @@
 # Prettycov
-[![codecov](https://codecov.io/gh/screwyprof/prettycov/graph/badge.svg)](https://codecov.io/gh/screwyprof/prettycov) [![Go](https://github.com/screwyprof/prettycov/actions/workflows/go.yml/badge.svg)](https://github.com/screwyprof/prettycov/actions/workflows/go.yml)
+[![codecov](https://codecov.io/gh/screwyprof/prettycov/graph/badge.svg)](https://codecov.io/gh/screwyprof/prettycov) [![Go](https://github.com/screwyprof/prettycov/actions/workflows/go.yml/badge.svg)](https://github.com/screwyprof/prettycov/actions/workflows/go.yml) [![Go Reference](https://pkg.go.dev/badge/github.com/screwyprof/prettycov.svg)](https://pkg.go.dev/github.com/screwyprof/prettycov) [![License](https://img.shields.io/github/license/screwyprof/prettycov)](LICENSE)
 
 **Go coverage as a tree, with a total on every row.**
 
@@ -22,12 +22,6 @@ prettycov reads the profile `go test` already wrote and answers that:
 
 Every row is the sum of everything beneath it, so you can start at the top and follow the worst
 number down.
-
-## Contributing
-
-Go and make, nothing else — every tool the build needs is fetched at a pinned version when it is
-not already on your PATH. [CONTRIBUTING.md](CONTRIBUTING.md) has the gates and what a change is
-expected to carry.
 
 ## Status
 
@@ -127,11 +121,21 @@ written after the command name.
 Exit codes are `0`, `1` when `--fail-under` was not met, and `2` when prettycov could not do what
 was asked — distinct, so a CI step can tell a bad invocation from a failed gate.
 
+## Contributing
+
+Go and make, nothing else — every tool the build needs is fetched at a pinned version when it is
+not already on your PATH. [CONTRIBUTING.md](CONTRIBUTING.md) has the gates and what a change is
+expected to carry.
+
 ## More
 
 [**docs/reference.md**](docs/reference.md) covers the rest: how the tree is built and why rows
 collapse, what `--depth` and `--hide-covered` do to a report, how `total` resolves a path, the
 `file:line:col` format and the editor settings that read it, and how `--exclude` accounts for what
 it removed.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 With thanks to [antongr](https://github.com/kannman), whose nudge got this started.
