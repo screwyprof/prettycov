@@ -172,6 +172,11 @@ func (n *PathTree) Get(key string) *PathTree {
 	return n.underRoot(key)
 }
 
+// maxRootDepth bounds how far the collapsed root is followed. A module path is three or four
+// segments and the deepest run measured across the reference checkouts is seven, so this stops a
+// cycle without reaching any real tree.
+const maxRootDepth = 64
+
 // underRoot resolves key under the run of single-child directories the report collapses into its
 // top row, and is Get's last fallback.
 //
@@ -209,11 +214,6 @@ func (n *PathTree) underRoot(key string) *PathTree {
 
 	return nil
 }
-
-// maxRootDepth bounds how far the collapsed root is followed. A module path is three or four
-// segments and the deepest run measured across the reference checkouts is seven, so this stops a
-// cycle without reaching any real tree.
-const maxRootDepth = 64
 
 // walk resolves key against this node, directories all the way but for the last segment, where a
 // file wins.
