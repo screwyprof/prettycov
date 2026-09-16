@@ -68,7 +68,7 @@ func (c config) outputFilters() string {
 	filters := "--depth=" + c.Depth.String()
 
 	if c.HideCovered != nil {
-		filters += fmt.Sprintf(", --hide-covered=%v", *c.HideCovered)
+		filters += fmt.Sprintf(", --hide-covered=%v", c.HideCovered.Float())
 	}
 
 	return filters

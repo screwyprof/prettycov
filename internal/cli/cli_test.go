@@ -138,7 +138,7 @@ func TestRunFailUnder(t *testing.T) {
 			args: []string{"report", "--fail-under", "abc"}, wantCode: codeFailed,
 			// Kong reads the type before this package grades the value, so a word that is not a
 			// number is its sentence, not ours.
-			wantErr: "expected a float",
+			wantErr: "want a percentage from 0 to 100",
 		},
 		{
 			// The dangerous one: `total < NaN` is false, so this used to clear the gate at any

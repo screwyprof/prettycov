@@ -4,10 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/alecthomas/kong"
@@ -55,8 +53,6 @@ const DefaultProfile = "coverage.out"
 // fixed value that stays on a screen everywhere: hugo is 37 rows at depth 1, 152 at depth 2.
 const DefaultDepth = "1"
 
-var errBadPercentage = errors.New("want a percentage from 0 to 100")
-
 var errEmptyExclude = errors.New("want a pattern")
 
 var errRootNamesNoPkg = errors.New("--old names no package")
@@ -66,22 +62,18 @@ var errRootNamesNoPkg = errors.New("--old names no package")
 //
 //nolint:lll // a struct tag is one unit; splitting it hides the declaration.
 type Measured struct {
-	Profile   string    `help:"Coverage profile to read."                                                            default:"${profile}" placeholder:"PATH"`
-	Old       string    `help:"Root package path to shorten."                                                                             placeholder:"PATH"   and:"rename"`
-	New       string    `help:"What to shorten it to; --new=. strips it."                                                                 placeholder:"PATH"   and:"rename"`
-	Exclude   []string  `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP"              sep:"none"`
-	FailUnder *float64  `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
-	Color     colorMode `help:"When to colour: auto, never or always."                                               default:"auto"`
+	Profile   string               `help:"Coverage profile to read."                                                            default:"${profile}" placeholder:"PATH"`
+	Old       string               `help:"Root package path to shorten."                                                                             placeholder:"PATH"   and:"rename"`
+	New       string               `help:"What to shorten it to; --new=. strips it."                                                                 placeholder:"PATH"   and:"rename"`
+	Exclude   []string             `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP"              sep:"none"`
+	FailUnder *prettycov.Threshold `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
+	Color     colorMode            `help:"When to colour: auto, never or always."                                               default:"auto"`
 }
 
 // Validate is kong's per-struct hook. A root of only separators names no package — `--old=$(MODULE)/`
 // with MODULE unset — which the `and:"rename"` tag cannot say, because it is about a value rather
 // than about the pair.
 func (m *Measured) Validate() error {
-	if m.FailUnder != nil && badPercentage(*m.FailUnder) {
-		return fmt.Errorf("--fail-under: %w", errBadPercentage)
-	}
-
 	// Kong's slice flag takes "" without complaint, where the flag package handed it to
 	// ParseExclude and got a refusal. The rule is the same either way: a pattern that matches
 	// everything is never what was meant.
@@ -101,8 +93,8 @@ func (m *Measured) Validate() error {
 //
 //nolint:lll // a struct tag is one unit.
 type drawn struct {
-	Depth       prettycov.Depth `help:"Levels below the top row, like tree -L, or \"max\"."             default:"${depth}" placeholder:"LEVELS"`
-	HideCovered *float64        `help:"Leave out subtrees at this percentage or above; bare means 100."                    placeholder:"PCT"    type:"hidecovered"`
+	Depth       prettycov.Depth      `help:"Levels below the top row, like tree -L, or \"max\"."             default:"${depth}" placeholder:"LEVELS"`
+	HideCovered *prettycov.Threshold `help:"Leave out subtrees at this percentage or above; bare means 100."                    placeholder:"PCT"    type:"hidecovered"`
 }
 
 // CLI is the whole command line. Every command is named: there is no default, so `prettycov` alone
@@ -263,8 +255,8 @@ type config struct {
 
 	Depth       prettycov.Depth
 	Color       colorMode
-	FailUnder   *float64
-	HideCovered *float64
+	FailUnder   *prettycov.Threshold
+	HideCovered *prettycov.Threshold
 	Counts      bool
 	Files       bool
 }
@@ -331,28 +323,22 @@ func (d drawn) shape(cfg *config) {
 type OptionalPercentage struct{}
 
 func (OptionalPercentage) Decode(ctx *kong.DecodeContext, target reflect.Value) error {
-	pct := bareHideCovered
-
-	if ctx.Scan.Peek().Type == kong.FlagValueToken {
-		parsed, err := strconv.ParseFloat(fmt.Sprint(ctx.Scan.Pop().Value), 64)
-		if err != nil || badPercentage(parsed) {
-			//nolint:wrapcheck // a sentinel of this package's own.
-			return errBadPercentage
-		}
-
-		pct = parsed
+	bar, err := prettycov.NewThreshold(bareHideCovered)
+	if err != nil {
+		//nolint:wrapcheck // Threshold's error is already phrased for a flag.
+		return err
 	}
 
-	target.Set(reflect.ValueOf(&pct))
+	if ctx.Scan.Peek().Type == kong.FlagValueToken {
+		if err := bar.UnmarshalText([]byte(fmt.Sprint(ctx.Scan.Pop().Value))); err != nil {
+			//nolint:wrapcheck // Threshold's error is already phrased for a flag.
+			return err
+		}
+	}
+
+	target.Set(reflect.ValueOf(&bar))
 
 	return nil
-}
-
-// badPercentage is the one rule both thresholds obey. NaN needs naming: every comparison against it
-// is false, so a gate would pass at any coverage and say nothing about it — --fail-under=nan printed
-// "is below NaN%" and exited 1 on a report that was fine.
-func badPercentage(pct float64) bool {
-	return math.IsNaN(pct) || pct < 0 || pct > 100
 }
 
 // bareHideCovered is what --hide-covered means with nothing after it: hide what is fully covered,

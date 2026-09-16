@@ -34,7 +34,7 @@ type Options struct {
 	//
 	// Shaping, never measuring. The tree keeps every statement it had, so -total, -fail-under and
 	// the top row read the same with this set as without — as with Depth, which hides far more.
-	HideCovered *float64
+	HideCovered *Threshold
 
 	// Files draws the profile's files as well as its packages, as entries of the package holding
 	// them the way tree -L counts a directory's, so a package's own files and its subpackages
@@ -195,7 +195,7 @@ type walker struct {
 	// through the pointer at every node. What "at least this much" means is CoverageStats', not
 	// ours: the answer at 100 is about the counts, not the ratio.
 	hiding bool
-	hideAt float64
+	hideAt Threshold
 }
 
 // entry is one row to draw: the node, and the label it will carry once any run below it has been

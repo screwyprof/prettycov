@@ -255,6 +255,6 @@ func (n *PathTree) Uncovered() int { return n.Coverage.Uncovered }
 // cover. False is not 0% — there is nothing to report.
 func (n *PathTree) Percentage() (Percentage, bool) { return n.Coverage.Percentage() }
 
-// AtLeast reports whether this node is covered to pct, which is not always what comparing the ratio
-// would say — see CoverageStats.AtLeast for why 100 is asked of the counts.
-func (n *PathTree) AtLeast(pct float64) bool { return n.Coverage.AtLeast(pct) }
+// AtLeast reports whether this node is covered to the bar, which is not always what comparing the
+// ratio would say — see CoverageStats.AtLeast for why 100 is asked of the counts.
+func (n *PathTree) AtLeast(bar Threshold) bool { return n.Coverage.AtLeast(bar) }

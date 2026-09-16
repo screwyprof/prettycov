@@ -10,7 +10,7 @@ import (
 
 // A gate is --fail-under: the only thing that turns what was measured into a status, rather than
 // turning how the run went into one.
-type gate struct{ want *float64 }
+type gate struct{ want *prettycov.Threshold }
 
 // treeOf measures and says on stderr what the measuring found. The writers are here rather than in
 // Measure because saying is the only thing that needs them.
@@ -54,7 +54,7 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 // turns a CI check into a green no-op.
 func (g gate) refuse(reason string, s Streams) error {
 	if g.want != nil {
-		_, _ = fmt.Fprintf(s.Err, "%s, wanted at least %.2f%%\n", reason, *g.want)
+		_, _ = fmt.Fprintf(s.Err, "%s, wanted at least %.2f%%\n", reason, g.want.Float())
 
 		return exitError{code: ExitBelow}
 	}
@@ -114,7 +114,7 @@ func (g gate) grade(node *prettycov.PathTree, s Streams) error {
 		// Percentage renders the figure, so this and the report cannot disagree. The threshold is
 		// rounded instead: --fail-under=99.99999 reads back as 100.00%, which Percentage never
 		// prints, and 79.999% against --fail-under=80 rounds both sides to 80.00.
-		_, _ = fmt.Fprintf(s.Err, "total coverage %s%% is below %.2f%%\n", pct, *g.want)
+		_, _ = fmt.Fprintf(s.Err, "total coverage %s%% is below %.2f%%\n", pct, g.want.Float())
 
 		return exitError{code: ExitBelow}
 	}

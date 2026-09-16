@@ -347,7 +347,13 @@ func TestRowsAndMissesAccountForTheSameFiles(t *testing.T) {
 			// Every depth, because depth is what decides which nodes are visited, and the bar as
 			// well, because it is the other half of that decision.
 			for _, depth := range []prettycov.Depth{0, 1, 2, 3, prettycov.DepthAll} {
-				for _, bar := range []*float64{nil, new(100.0), new(90.0), new(50.0)} {
+				bars := []*prettycov.Threshold{
+					nil,
+					new(prettycov.MustThreshold(100)),
+					new(prettycov.MustThreshold(90)),
+					new(prettycov.MustThreshold(50)),
+				}
+				for _, bar := range bars {
 					opts := missOpts(depth)
 					opts.HideCovered = bar
 					drawn, missed := fileRowsWithMisses(tree, files, opts), missedFiles(tree, opts)
