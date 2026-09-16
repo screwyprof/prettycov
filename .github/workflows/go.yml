@@ -58,14 +58,19 @@ jobs:
       # about to fail on them. `-fail-level=any` makes this a gate in its own right; the step below
       # runs the same linter again as part of the whole suite.
       #
-      # Same-repo branches only. A fork's pull_request run gets a read-only GITHUB_TOKEN whatever
-      # this job asks for, so reviewdog's github-pr-check reporter 403s — and with -fail-level=any
-      # and no continue-on-error that failed the job before `make check` ever ran, showing an
-      # outside contributor a permissions error instead of a lint result. Skipping is the whole fix:
-      # the same linter runs inside `make check` on the next step, so nothing goes unchecked, it
-      # just lands in the log rather than on the diff.
+      # Never a gate, whoever opened the pull request. reviewdog's github-pr-check reporter needs a
+      # writable token, and GitHub hands a read-only one to any run it treats as untrusted — a fork,
+      # and Dependabot's own pull requests too, whatever `permissions:` above asks for. With
+      # -fail-level=any the 403 failed the job before `make check` ever ran, so the contributor saw
+      # a permissions error and no lint or test result at all.
+      #
+      # continue-on-error rather than another actor to exclude: the list of actors GitHub treats as
+      # untrusted is not ours to keep, and this step has nothing to gate with. `make check` below
+      # runs the same linter as a real gate, so a failure here costs annotations on the diff and
+      # nothing else. The same-repo condition stays only to skip a step known to be unable to work.
       - name: Lint annotations
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
         run: make lint-annotate
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,13 +88,17 @@ jobs:
 
       # The block `make check` prints is the one a pull request description wants, so put it where
       # it can be copied without opening the log.
+      #
+      # `always()` means this also runs when a step before `make check` failed, and then there is no
+      # check.out to read — so the cat is guarded rather than left to error and mark a second step
+      # red for the first one's failure.
       - name: Publish the gate block
         if: always()
         run: |
           {
             echo '### Gates'
             echo '```'
-            cat check.out
+            cat check.out 2>/dev/null || echo '(make check did not run)'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
