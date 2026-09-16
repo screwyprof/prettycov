@@ -1542,8 +1542,9 @@ func TestRunMisses(t *testing.T) {
 			t.Parallel()
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			// No --color: misses draws nothing a palette reaches, so only report takes the flag.
 			code := app.Run(slices.Concat(tc.args,
-				[]string{"--profile", writeProfile(t, shaped), "--color", "never"}), stdout, stderr)
+				[]string{"--profile", writeProfile(t, shaped)}), stdout, stderr)
 
 			assert.Equal(t, codeOK, code)
 			assert.Equal(t, tc.want, stdout.String())
@@ -1559,7 +1560,7 @@ func TestRunMissesStillGrades(t *testing.T) {
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run(
-		[]string{"misses", "--fail-under", "80", "--profile", writeProfile(t, profile), "--color", "never"},
+		[]string{"misses", "--fail-under", "80", "--profile", writeProfile(t, profile)},
 		stdout,
 		stderr,
 	)
@@ -1579,8 +1580,6 @@ func TestRunMissesSaysWhenThereAreNone(t *testing.T) {
 		"misses",
 		"--profile",
 		writeProfile(t, "mode: set\nm/a.go:1.1,2.2 3 1\n"),
-		"--color",
-		"never",
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
@@ -1638,7 +1637,8 @@ func TestRunNamesWhatEmptiedTheOutput(t *testing.T) {
 
 			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 
-			args := slices.Concat(tc.args, []string{"--profile", writeProfile(t, twoDeep), "--color", "never"})
+			// No --color: this table mixes misses and report, and only report takes it.
+			args := slices.Concat(tc.args, []string{"--profile", writeProfile(t, twoDeep)})
 
 			code := app.Run(args, stdout, stderr)
 
@@ -1661,7 +1661,7 @@ func TestRunMissesHonoursExclude(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	code := app.Run([]string{
 		"misses", "--depth", "max", "--exclude", `a\.go:9`,
-		"--profile", writeProfile(t, shaped), "--color", "never",
+		"--profile", writeProfile(t, shaped),
 	}, stdout, stderr)
 
 	assert.Equal(t, codeOK, code)
@@ -1761,6 +1761,33 @@ func TestRunRefusesABadPatternFromEveryCommand(t *testing.T) {
 			assert.Equal(t, codeFailed, code)
 			assert.Empty(t, stdout.String())
 			assert.Contains(t, stderr.String(), "error parsing regexp")
+		})
+	}
+}
+
+// --color belongs to report, which is the only command that draws anything a palette reaches.
+// misses prints file:line:col and DisplayMisses never reads Options.Color, so the flag was accepted
+// and inert — `misses --color=always` emitted byte-identical output to `--color=never`. That is the
+// same defect that took --color off total.
+func TestOnlyReportTakesColor(t *testing.T) {
+	t.Parallel()
+
+	path := writeProfile(t, profile)
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	require.Equal(t, codeOK, app.Run(
+		[]string{"report", "--color", "always", "--profile", path}, stdout, stderr), stderr.String())
+	assert.Contains(t, stdout.String(), "\x1b[", "report colours when told to")
+
+	for _, command := range []string{"misses", "total", "version"} {
+		t.Run(command, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+
+			assert.Equal(t, codeFailed,
+				app.Run([]string{command, "--color", "always", "--profile", path}, stdout, stderr))
+			assert.Contains(t, stderr.String(), "unknown flag --color")
 		})
 	}
 }

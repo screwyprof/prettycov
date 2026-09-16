@@ -184,6 +184,14 @@ const maxRootDepth = 64
 // so "pkg/logger" read off a report is what a reader types and the tree holds it under
 // "github.com/x/y". Literal spellings are tried first, above, so this can only add answers.
 //
+// The run is descended first and probed from its deepest node back up, because the whole run is
+// what the report drew as its top row — the same condition collapse stops on. Probing on the way
+// down let a key that matches a segment inside the run answer from above the row the report drew:
+// with "github.com/x/y/y" and "github.com/x/y/z" in the profile, `total y` reached the "y" of the
+// root before the "y" beside "z", so --fail-under graded the whole tree and passed where the
+// package it names failed. Shallower prefixes are still tried, after the full one, so this still
+// only adds answers.
+//
 // walk rather than Get, which is what calls this: probing through Get would recurse without bound.
 // The descent is bounded for the same reason — Children is exported, so a caller assembling a tree
 // by hand can make a cycle, and Get has to answer rather than hang.
@@ -194,21 +202,28 @@ func (n *PathTree) underRoot(key string) *PathTree {
 		return nil
 	}
 
+	// A module path spends three or four segments on the root; the deepest run measured across the
+	// reference checkouts is seven.
+	run := make([]*PathTree, 0, 8)
 	node := n
 
 	for range maxRootDepth {
 		if len(node.Children) != 1 || len(node.Files) != 0 {
-			return nil
+			break
 		}
 
 		for _, child := range node.Children {
 			node = child
 		}
 
-		// Walked from the node itself, never from a path rebuilt to reach it. Assembling one meant
-		// path.Join, which drops the empty component an absolute path begins with — so "/abs/x/p"
-		// was probed as "abs/x/p" and no absolute tree ever resolved — and path.Clean, which folds
-		// "..", so `total ..` climbed out of the run and graded an ancestor with exit 0.
+		run = append(run, node)
+	}
+
+	// Walked from the node itself, never from a path rebuilt to reach it. Assembling one meant
+	// path.Join, which drops the empty component an absolute path begins with — so "/abs/x/p"
+	// was probed as "abs/x/p" and no absolute tree ever resolved — and path.Clean, which folds
+	// "..", so `total ..` climbed out of the run and graded an ancestor with exit 0.
+	for _, node := range slices.Backward(run) {
 		if found := node.walk(key); found != nil {
 			return found
 		}

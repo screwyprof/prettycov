@@ -708,6 +708,22 @@ func TestPathTreeGetResolvesUnderAnAbsoluteRoot(t *testing.T) {
 	assert.Nil(t, tree.Get("nowhere"))
 }
 
+// A segment of the collapsed root that is also a package inside it resolves to the package, which
+// is the row the report drew. Probing on the way down the run answered from above that row: "y" is
+// the last segment of "github.com/x/y" and a package beside "z", and the root won — so
+// `total y --fail-under=80` graded the whole tree at 90 and passed where the package it names is 0.
+func TestPathTreeGetPrefersTheDeepestRootPrefix(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		file("github.com/x/y/y/a.go", 0, 1),
+		file("github.com/x/y/z/b.go", 1, 0),
+	})
+
+	assert.Same(t, tree.Get("github.com/x/y/y"), tree.Get("y"), "the row the report draws")
+	assert.Same(t, tree.Get("github.com/x/y/z"), tree.Get("z"), "and its sibling, as before")
+}
+
 // Get follows the collapsed root by descending single-child directories, and Children is exported,
 // so a tree assembled by hand can point back at itself. Bounded rather than trusted: the answer is
 // a miss, and the point is that there is one.

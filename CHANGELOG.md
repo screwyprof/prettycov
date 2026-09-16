@@ -36,6 +36,10 @@ tags.
   apply: `version --help` offered `--exclude`, and `total --help` offered `--color`, which changes
   no byte of a bare number. Each listing is now exactly what that command takes.
 
+  `--color` is `report`'s alone for the same reason. `misses` prints `file:line:col` and never reads
+  the palette, so the flag was accepted and inert there — `misses --color=always` emitted the same
+  bytes as `--color=never`.
+
 - `total PATH` resolves a path against the module root, so `total pkg/logger` works where only
   `total github.com/you/m/pkg/logger` did. A row is drawn with its own segment, so the path you read
   off a report is missing the root the report collapsed away; the spelling that is there is put back
@@ -74,8 +78,8 @@ tags.
   excluded away, or a root that matched nothing. This was assembled in the CLI, where the order was
   a thing to get right rather than a thing the API guaranteed.
 
-- Added: `PathTree.Uncovered`, `Percentage`, `AtLeast` and `UnderRoot`; `Depth.UnmarshalText`;
-  `Rename` with `Wanted`, `Half` and `NamesNoPackage`.
+- Added: `PathTree.Uncovered`, `Percentage` and `AtLeast`; `Depth.UnmarshalText`; `Rename` with
+  `Wanted`, `Half` and `NamesNoPackage`.
 
 ### Documentation
 

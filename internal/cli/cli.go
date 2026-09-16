@@ -106,15 +106,10 @@ func given(oldRoot, newRoot string) string {
 // drawn are the flags that shape a drawing rather than decide what is in it. Embedded by the two
 // commands that draw, so they do not exist for total at all.
 //
-// --color is one of them rather than a global terminal policy: total writes a bare number and
-// version a bare string, and --color=always changes neither byte. A flag listed where it does
-// nothing is a question the reader has to answer for themselves.
-//
 //nolint:lll // a struct tag is one unit.
 type drawn struct {
 	Depth       prettycov.Depth      `help:"Levels below the top row, like tree -L, or \"max\". Default ${depth}." default:"${depth}" placeholder:"LEVELS"`
 	HideCovered *prettycov.Threshold `help:"Leave out subtrees at this percentage or above; bare means 100."                          placeholder:"PCT"    type:"hidecovered"`
-	Color       colorMode            `help:"When to colour: auto, never or always."                                default:"auto"`
 }
 
 // Name and Description are what the program calls itself. Here rather than in the composition root
@@ -127,8 +122,10 @@ const (
 
 // options is how a row is drawn, for the two commands that draw one. The palette is resolved here
 // because where the output goes is a question argv is too early to ask.
-func (d drawn) options(out io.Writer) prettycov.Options {
-	return prettycov.Options{Depth: d.Depth, HideCovered: d.HideCovered, Color: d.Color.palette(out)}
+// Colour is left at the zero Palette, which is Plain. Only report draws anything a palette reaches,
+// so only report carries the flag and sets it.
+func (d drawn) options(_ io.Writer) prettycov.Options {
+	return prettycov.Options{Depth: d.Depth, HideCovered: d.HideCovered}
 }
 
 // CLI is the whole command line. Every command is named: there is no default, so `prettycov` alone
@@ -155,8 +152,9 @@ type reportCmd struct {
 	Measured `embed:""`
 	drawn    `embed:""`
 
-	Files  bool `help:"Draw the profile's files, not only its packages."`
-	Counts bool `help:"Show uncovered/total statements after each percentage."`
+	Files  bool      `help:"Draw the profile's files, not only its packages."`
+	Counts bool      `help:"Show uncovered/total statements after each percentage."`
+	Color  colorMode `help:"When to colour: auto, never or always."                 default:"auto"`
 }
 
 type missesCmd struct {
@@ -203,7 +201,7 @@ func (c *reportCmd) Run(s *Streams) error {
 	}
 
 	opts := c.options(s.Out)
-	opts.Files, opts.Counts = c.Files, c.Counts
+	opts.Files, opts.Counts, opts.Color = c.Files, c.Counts, c.Color.palette(s.Out)
 
 	// S2: inlined, because render had one caller and its three-argument shape was the interface
 	// that used to need it.
