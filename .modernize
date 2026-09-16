@@ -1,0 +1,12 @@
+# Modernization suggestions this project has considered and declined.
+# Format: <date> <category> <description>
+#
+# Read this before suggesting an upgrade: each line below is a decision with a reason, not an
+# oversight. Where a line names a condition for revisiting, check that condition rather than the
+# calendar.
+
+2026-09-16 go-1.27-upgrade Go 1.27 miscounts coverage statements (golang/go#80974): it splits a straight-line block at blank lines and writes the whole run's count into each piece, inflating every figure this tool exists to report. A coverage tool cannot ship on a toolchain that miscounts statements. Fixed by CL 819000, milestone Go 1.28, with no 1.27 backport — Go does not backport when a workaround exists, and pinning is the workaround. Revisit when Go 1.28 is released (Feb 2027), not before; the pin lives in flake.nix and go.mod.
+
+2026-09-16 tool-directives Tools stay on `go run pkg@version` rather than go.mod tool directives (Go 1.24+). govulncheck, gobco and gremlins are things you reach for, not dependencies: a tool directive puts each one's whole module graph into go.sum, which for a project with two real dependencies would bury them and widen what govulncheck itself has to scan. Versions are pinned in the Makefile instead.
+
+2026-09-16 os-root os.Root for the profile path is not needed. The path comes from the operator's own argv, so there is no privilege boundary to traverse — os.Root guards a service taking a path from an untrusted client, which this is not.
