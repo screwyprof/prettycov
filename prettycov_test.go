@@ -396,7 +396,7 @@ func TestProcessCleansPaths(t *testing.T) {
 			want:  "m/a",
 		},
 		{
-			name:    "trailing slash on -new",
+			name:    "trailing slash on --new",
 			files:   []prettycov.FileCoverage{file("zz/a/x.go", 1, 1), file("zz/b/y.go", 1, 1)},
 			newRoot: "dg/",
 			want:    "dg",

@@ -14,7 +14,7 @@ import (
 
 var errBadColor = errors.New(`want "auto", "never" or "always"`)
 
-// colorMode is what -color said. auto needs the destination to mean anything; never and always
+// colorMode is what --color said. auto needs the destination to mean anything; never and always
 // exist because a caller sometimes knows better than the heuristic, which is why every tool that
 // colours output offers the same three.
 type colorMode int

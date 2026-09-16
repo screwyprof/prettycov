@@ -127,7 +127,7 @@ func assertDepthOnlyAddsRows(t *testing.T, tree *prettycov.PathTree, withFiles b
 			}
 		}
 
-		assert.Equalf(t, shallow, kept, "-depth=%d against the rows -depth=%d draws at that level",
+		assert.Equalf(t, shallow, kept, "--depth=%d against the rows --depth=%d draws at that level",
 			cut, cut+1)
 	}
 }
@@ -144,7 +144,7 @@ func assertTopRowsSumToTheTotal(t *testing.T, tree *prettycov.PathTree, withFile
 		top = top.Plus(row.Coverage)
 	}
 
-	assert.Equalf(t, tree.Coverage, top, "the top rows against what -total prints, files=%v", withFiles)
+	assert.Equalf(t, tree.Coverage, top, "the top rows against what total prints, files=%v", withFiles)
 }
 
 // assertRenderIsDeterministic renders the same tree repeatedly. Map order is randomised per range

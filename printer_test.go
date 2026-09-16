@@ -884,7 +884,7 @@ func TestEmptyResultsAreNilNotEmptySlices(t *testing.T) {
 	bar := prettycov.MustThreshold(0)
 	hidden := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar}
 
-	assert.Nil(t, prettycov.Rows(tree, hidden), "-hide-covered=0 took every row")
+	assert.Nil(t, prettycov.Rows(tree, hidden), "--hide-covered=0 took every row")
 	assert.Nil(t, prettycov.Misses(tree, prettycov.Options{Depth: prettycov.DepthAll, Files: true}),
 		"nothing uncovered")
 
@@ -916,8 +916,8 @@ func TestDisplayTreeReportsHowManyRowsItDrew(t *testing.T) {
 		drawn, err := prettycov.DisplayTree(&buf, tree, opts)
 		require.NoError(t, err)
 
-		assert.Equal(t, len(prettycov.Rows(tree, opts)), drawn, "rows at -depth=%v", depth)
-		assert.Equal(t, strings.Count(buf.String(), "\n"), drawn, "lines at -depth=%v", depth)
+		assert.Equal(t, len(prettycov.Rows(tree, opts)), drawn, "rows at --depth=%v", depth)
+		assert.Equal(t, strings.Count(buf.String(), "\n"), drawn, "lines at --depth=%v", depth)
 		assert.Positive(t, drawn, "the fixture draws something at every depth")
 	}
 }

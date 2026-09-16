@@ -851,7 +851,6 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 			wantCode: codeBelow, want: "60.00\n",
 		},
 		{
-			// A suffix here would break every `$(shell prettycov total)` there is.
 			// A suffix here would break every `$(shell prettycov total)` there is, so the flag that
 			// would add one is not registered on this command at all.
 			name: "it does not take --counts", args: []string{"--counts"},

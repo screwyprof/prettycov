@@ -25,7 +25,7 @@ const (
 	codeFailed = 2
 )
 
-// 6 of 10 statements covered, so the report reads 60.00 and a -fail-under above that fails. Shared
+// 6 of 10 statements covered, so the report reads 60.00 and a --fail-under above that fails. Shared
 // with internal/app's tests, so it sits in the repo's testdata: go:embed cannot reach out of its own
 // directory, which is what kept two copies of this in step by hand.
 //
@@ -186,7 +186,7 @@ func TestBinaryPassesItsArguments(t *testing.T) {
 
 	require.Equal(t, codeOK, code, stderr)
 	assert.Contains(t, stdout, "60.00")
-	assert.NotContains(t, stdout, "a - ", "-depth=0 is the top row alone")
+	assert.NotContains(t, stdout, "a - ", "--depth=0 is the top row alone")
 }
 
 // buildBinary compiles the command into out. Always instrumented, so a child's run counts toward
