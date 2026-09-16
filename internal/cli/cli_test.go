@@ -689,11 +689,23 @@ func TestRunRefusesHalfARename(t *testing.T) {
 		// `given` does, and a prefix assertion holds just as well when it names the wrong one.
 		"old without new": {
 			args: []string{"report", "--old", "example.com/p"},
-			want: `--old and --new must be used together`,
+			want: `one alone does nothing: got --old="example.com/p"`,
 		},
 		"new without old": {
 			args: []string{"report", "--new", "p"},
-			want: `--old and --new must be used together`,
+			want: `one alone does nothing: got --new="p"`,
+		},
+		// Both flags given, one of them empty, which is what a Makefile writing --old=$(MODULE)
+		// spells when MODULE is unset. Kong's `and:"rename"` group passed these — it is satisfied
+		// once both flags appear, whatever they hold — and the report came back unrenamed, exit 0,
+		// with nothing on stderr. The rule is about the values, so it cannot live in a tag.
+		"old empty, new given": {
+			args: []string{"report", "--old", "", "--new", "."},
+			want: `one alone does nothing: got --new="."`,
+		},
+		"old given, new empty": {
+			args: []string{"report", "--old", "example.com/p", "--new", ""},
+			want: `one alone does nothing: got --old="example.com/p"`,
 		},
 	}
 
@@ -954,6 +966,40 @@ func TestRunTotalRefusesAPathTheTreeDoesNotHold(t *testing.T) {
 	assert.Equal(t, codeFailed, code)
 	assert.Empty(t, stdout.String(), "nothing a script could mistake for a percentage")
 	assert.Equal(t, "total: no such package or file in the profile: \"m/nope\"\n", stderr.String())
+}
+
+// An empty path is refused rather than read as the whole tree, which is what `total "$PKG"` spells
+// when PKG is unset or misspelled — and the whole tree passing a gate the package would have failed
+// is the one way this command can be silently wrong in CI.
+//
+// The bar is set below the tree's own coverage so that reading it as the whole tree would exit 0.
+// Asserting only the exit code would hold either way.
+func TestRunTotalRefusesAnEmptyPath(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run(
+		[]string{"total", "", "--fail-under", "1", "--profile", writeProfile(t, totalShaped)},
+		stdout,
+		stderr,
+	)
+
+	assert.Equal(t, codeFailed, code)
+	assert.Empty(t, stdout.String(), "nothing a script could mistake for a percentage")
+	assert.Contains(t, stderr.String(), "want a path, or total on its own for the whole tree")
+}
+
+// The argument being optional is what makes the case above possible to get wrong: `total` and
+// `total ""` are one string apart, and only a pointer tells them apart at all.
+func TestRunTotalWithNoPathIsTheWholeTree(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	code := app.Run([]string{"total", "--profile", writeProfile(t, totalShaped)}, stdout, stderr)
+
+	assert.Equal(t, codeOK, code)
+	assert.Empty(t, stderr.String())
+	assert.NotEmpty(t, stdout.String(), "the whole tree still has a percentage")
 }
 
 // A row is drawn with its own segment, so reading `pkg - 96.41` off a report and asking for "pkg"

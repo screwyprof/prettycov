@@ -199,6 +199,22 @@ func TestRenameNamesNoPackage(t *testing.T) {
 	}
 }
 
+// Half asks about the values, which is the whole point: a presence check is satisfied by
+// `--old=$(MODULE) --new=.` with MODULE unset, and that renames nothing.
+//
+// Neither side given is not half a rename — it is no rename, which is every run that does not ask
+// for one.
+func TestRenameHalfReadsBothValues(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, prettycov.Rename{From: "m"}.Half(), "a source with no target")
+	assert.True(t, prettycov.Rename{To: "x"}.Half(), "a target with no source")
+
+	assert.False(t, prettycov.Rename{}.Half(), "neither is no rename, not half of one")
+	assert.False(t, prettycov.Rename{From: "m", To: "x"}.Half())
+	assert.False(t, prettycov.Rename{From: "m", To: "/"}.Half(), "the filesystem root is a target")
+}
+
 // UnderRoot stops where the run does. A directory holding a file as well as a single subdirectory
 // ends it, because past there the path is a choice rather than the root.
 func TestUnderRootStopsWhereTheRunBranches(t *testing.T) {

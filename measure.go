@@ -26,6 +26,12 @@ func (r Rename) NamesNoPackage() bool {
 	return r.Wanted() && strings.TrimRight(r.From, "/") == ""
 }
 
+// Half reports one side of a rename given without the other, which Shorten does nothing at all for.
+//
+// A value rule, not a presence one: `--old=$(MODULE) --new=.` with MODULE unset supplies both flags
+// and still renames nothing, so asking whether each was typed cannot catch it.
+func (r Rename) Half() bool { return (r.From == "") != (r.To == "") }
+
 // A Request is what to measure: which profile, and the things that change what is in it. How the
 // answer is drawn — depth, files, counts, colour — is Options, and is not here, because those
 // change what is shown rather than what is counted.

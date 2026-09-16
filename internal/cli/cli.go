@@ -51,7 +51,11 @@ const DefaultProfile = "coverage.out"
 // fixed value that stays on a screen everywhere: hugo is 37 rows at depth 1, 152 at depth 2.
 const DefaultDepth = "1"
 
-var errRootNamesNoPkg = errors.New("--old names no package")
+var (
+	errRootNamesNoPkg = errors.New("--old names no package")
+	errHalfARename    = errors.New("--old and --new rename a root package together; one alone does nothing")
+	errEmptyTotalPath = errors.New("want a path, or total on its own for the whole tree")
+)
 
 // Measured are the flags that decide what is in the answer. Embedded in every command, because every
 // command measures; a command that only draws differently does not repeat them.
@@ -59,22 +63,42 @@ var errRootNamesNoPkg = errors.New("--old names no package")
 //nolint:lll // a struct tag is one unit; splitting it hides the declaration.
 type Measured struct {
 	Profile   string               `help:"Coverage profile to read."                                                            default:"${profile}" placeholder:"PATH"`
-	Old       string               `help:"Root package path to shorten."                                                                             placeholder:"PATH"   and:"rename"`
-	New       string               `help:"What to shorten it to; --new=. strips it."                                                                 placeholder:"PATH"   and:"rename"`
-	Exclude   []string             `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP"              sep:"none"`
+	Old       string               `help:"Root package path to shorten."                                                                             placeholder:"PATH"`
+	New       string               `help:"What to shorten it to; --new=. strips it."                                                                 placeholder:"PATH"`
+	Exclude   []string             `help:"Omit files whose path, or blocks whose file:line:col, match this regexp. Repeatable."                      placeholder:"REGEXP" sep:"none"`
 	FailUnder *prettycov.Threshold `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
 	Color     colorMode            `help:"When to colour: auto, never or always."                                               default:"auto"`
 }
 
-// Validate is kong's per-struct hook. A root of only separators names no package — `--old=$(MODULE)/`
-// with MODULE unset — which the `and:"rename"` tag cannot say, because it is about a value rather
-// than about the pair.
+// Validate is kong's per-struct hook, and the only place the rename is judged. Kong's `and:"rename"`
+// group was here and asked the wrong question: it is satisfied once both flags appear, whatever they
+// hold, so `--old=$(MODULE) --new=.` with MODULE unset passed it and then renamed nothing, silently
+// — the one failure the guard exists to prevent.
+//
+// Order is load-bearing. `--old=/` with no --new answers both, and naming the root is the more
+// useful sentence: supplying --new would not help.
 func (m *Measured) Validate() error {
-	if (prettycov.Rename{From: m.Old, To: m.New}).NamesNoPackage() {
+	rename := prettycov.Rename{From: m.Old, To: m.New}
+
+	if rename.NamesNoPackage() {
 		return fmt.Errorf("%w: got --old=%q", errRootNamesNoPkg, m.Old)
 	}
 
+	if rename.Half() {
+		return fmt.Errorf("%w: got %s", errHalfARename, given(m.Old, m.New))
+	}
+
 	return nil
+}
+
+// given names the half that was supplied, which is the flag the reader has to pair rather than the
+// one to fix. Exactly one is non-empty here: Half is what got us in.
+func given(oldRoot, newRoot string) string {
+	if oldRoot != "" {
+		return fmt.Sprintf("--old=%q", oldRoot)
+	}
+
+	return fmt.Sprintf("--new=%q", newRoot)
 }
 
 // drawn are the flags that shape a report rather than decide what is in it. Embedded by the two
@@ -153,9 +177,12 @@ type missesCmd struct {
 	drawn `embed:""`
 }
 
+// Node is a pointer so that no argument and an empty one are different things: `total` is the whole
+// tree, `total ""` is a mistake. A plain string spells both "".
+//
 //nolint:lll // a struct tag is one unit.
 type totalCmd struct {
-	Node string `arg:"" optional:"" help:"Package or file, spelled as the report prints it." placeholder:"PATH"`
+	Node *string `arg:"" optional:"" help:"Package or file, spelled as the report prints it." placeholder:"PATH"`
 }
 
 type versionCmd struct{}
@@ -242,7 +269,15 @@ func (c *missesCmd) Run(s *Streams, m *Measured) error {
 	return g.grade(tree, *s)
 }
 
+// Run refuses an empty path before reading anything. `total "$PKG"` with PKG unset would otherwise
+// grade the whole tree, and a tree passing a gate the package would have failed is the one way this
+// command can be silently wrong in CI.
 func (c *totalCmd) Run(s *Streams, m *Measured) error {
+	if c.Node != nil && *c.Node == "" {
+		//nolint:wrapcheck // a sentinel of this package's own.
+		return errEmptyTotalPath
+	}
+
 	req, err := m.request()
 	if err != nil {
 		return err
@@ -255,7 +290,12 @@ func (c *totalCmd) Run(s *Streams, m *Measured) error {
 		return err
 	}
 
-	return total(g, tree, c.Node, *s)
+	want := ""
+	if c.Node != nil {
+		want = *c.Node
+	}
+
+	return total(g, tree, want, *s)
 }
 
 func (c *versionCmd) Run(s *Streams, vars kong.Vars) error {
