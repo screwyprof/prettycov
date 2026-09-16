@@ -127,13 +127,16 @@ type CLI struct {
 	// instead, they bound only after it, and `--profile X total` silently read the default profile.
 	Measured `embed:""`
 
-	Version2 kong.VersionFlag `name:"version" short:"v" help:"Print the version and exit."`
+	// Two spellings of one request. The flag takes the field name and the command says its own in a
+	// tag: Go will not let both be Version, and naming one of them around that is a workaround
+	// wearing a name.
+	Version kong.VersionFlag `short:"v" help:"Print the version and exit."`
 
-	Report  reportCmd  `cmd:"" help:"Draw the packages and what they cover, one row each."`
-	Misses  missesCmd  `cmd:"" help:"Print where the uncovered statements are, as file:line:col."`
-	Total   totalCmd   `cmd:"" help:"Print only the coverage percentage, for a Makefile or a badge."`
-	Version versionCmd `cmd:"" help:"Print the version and exit."`
-	// Kong has --help but no help command; cobra generates one. Four lines to match.
+	Report       reportCmd  `cmd:"" help:"Draw the packages and what they cover, one row each."`
+	Misses       missesCmd  `cmd:"" help:"Print where the uncovered statements are, as file:line:col."`
+	Total        totalCmd   `cmd:"" help:"Print only the coverage percentage, for a Makefile or a badge."`
+	PrintVersion versionCmd `cmd:"" help:"Print the version and exit."                                    name:"version"`
+	// Kong has --help but no help command; cobra generates one.
 	Help helpCmd `cmd:"" help:"Print help for a command."`
 }
 
