@@ -28,7 +28,6 @@ COVERDATA := .covdata
 # which needs the tag to lint the file at all.
 GO_TAGS := integration
 GOVULNCHECK_VERSION := v1.8.0
-NILAWAY_VERSION := latest
 GOBCO_VERSION := v1.3.4
 GREMLINS_VERSION := v0.6.0
 
@@ -87,6 +86,15 @@ GOLANGCI_MISSING := golangci-lint not found. Enter the nix devShell, or install 
 
 require-golangci:
 	@command -v golangci-lint >/dev/null 2>&1 || { echo "$(GOLANGCI_MISSING)"; exit 1; }
+
+# nilaway is a module plugin, so it has to be compiled into a golangci-lint of our own — see
+# .custom-gcl.yml. A real file rule, so the two-minute build happens when that file changes and
+# never again. Formatting uses the stock binary: the plugin adds a linter, not a formatter.
+GCL := bin/golangci-lint-prettycov
+
+$(GCL): .custom-gcl.yml .golangci.yml | require-golangci
+	@echo -e "$(OK_COLOR)==> Building golangci-lint with nilaway$(NO_COLOR)"
+	@golangci-lint custom
 
 # golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
 # which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
@@ -170,18 +178,6 @@ vulns: ## report known vulnerabilities reachable from this module
 	@echo -e "$(OK_COLOR)==> Vulnerabilities$(NO_COLOR)"
 	@go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
-# Production code only. nilaway traces nil through a whole package, so a test that slices the empty
-# slice an assertion just built is a true observation about code that cannot ship — eight of the
-# eleven it found here were that. -include-pkgs keeps it off the dependencies for the same reason.
-#
-# Two of the three it finds in production are invariants it cannot see: an index guarded by a
-# variable it does not track, and kong.Trace, which is documented to return a nil error and a
-# non-nil context. Both are marked; a third was real and is fixed.
-nilaway: ## report potential nil panics in production code
-	@echo -e "$(OK_COLOR)==> Nil analysis$(NO_COLOR)"
-	@go run go.uber.org/nilaway/cmd/nilaway@$(NILAWAY_VERSION) \
-		-exclude-test-files -include-pkgs=github.com/screwyprof/prettycov ./...
-
 # The copy is $(GIT_LS), the list `fmt` already uses, so uncommitted work is measured. A worktree
 # would be shorter and would silently report on HEAD instead.
 cover-branches: ## report conditions never evaluated both ways
@@ -221,13 +217,13 @@ mutate: ## report mutants the tests failed to kill
 test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
 	@go run ./cmd/prettycov report --profile=$(COVERAGE) --old=$(LOCAL_PACKAGES) --new=prettycov --depth=2
 
-lint: require-golangci ## run linters for current changes
+lint: $(GCL) ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
-	golangci-lint run ./...
+	./$(GCL) run ./...
 
-lint-all: require-golangci ## run linters
+lint-all: $(GCL) ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
-	golangci-lint run ./... --new-from-rev=""
+	./$(GCL) run ./... --new-from-rev=""
 
 # check runs every gate and prints one line per figure, so a PR description quotes the tools rather
 # than being retyped from them. Six descriptions in this repo have claimed numbers the tree did not
@@ -258,9 +254,6 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
 	@echo; echo '$$ make vulns'
 	@$(MAKE) --no-print-directory vulns 2>&1 | grep -E 'No vulnerabilities|Vulnerability #'
-	@echo; echo '$$ make nilaway'
-	@$(MAKE) --no-print-directory nilaway 2>&1 \
-		| awk '/error:/ {n++} END {print n ? n " potential nil panics" : "no potential nil panics"}'
 	@echo; echo '$$ make mutate'
 	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
 	@echo; echo '$$ make cover-branches'

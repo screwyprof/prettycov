@@ -1,0 +1,11 @@
+# A golangci-lint built with nilaway compiled in, so nil analysis is part of `lint` rather than a
+# target of its own. `make lint` builds this on demand and uses it.
+version: v2.13.1
+name: golangci-lint-prettycov
+destination: ./bin
+plugins:
+  - module: go.uber.org/nilaway
+    # The plugin entrypoint, not the module root: the root has no golangci registration, and
+    # without this the binary compiles nilaway in and then reports "plugin not found".
+    import: go.uber.org/nilaway/cmd/gclplugin
+    version: latest

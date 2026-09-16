@@ -52,6 +52,7 @@ linters:
     - modernize
     - nakedret
     - nestif
+    - nilaway
     - nilerr
     - nilnesserr
     - nlreturn
@@ -79,6 +80,20 @@ linters:
     - wrapcheck
     - wsl_v5
   settings:
+    # nilaway is a module plugin, so it needs the binary .custom-gcl.yml builds. `make lint` builds
+    # it on demand; plain `golangci-lint` will refuse the config, which is the point — it says so
+    # rather than silently skipping the analysis.
+    #
+    # Production only: nilaway traces nil through a whole package, and a test that slices the empty
+    # slice an assertion just built is a true observation about code that cannot ship. Eight of the
+    # eleven it first reported here were that.
+    custom:
+      nilaway:
+        type: module
+        description: Detects potential nil panics.
+        settings:
+          include-pkgs: github.com/screwyprof/prettycov
+          exclude-test-files: "true"
     # The layering, enforced rather than reviewed. prettycov is the domain: it must not learn what a
     # command line is, and it must not depend on a front end. internal/cli is one front end; the
     # composition root is the only place that knows both, and cmd is the only thing that starts it.
