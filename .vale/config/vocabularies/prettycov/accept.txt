@@ -9,12 +9,14 @@ codecov
 config
 [Dd]iátaxis
 delegator
+Dependabot
 depguard
 devShell
 footgun
 gobco
 gofmt
 golangci
+gopls
 govulncheck
 gremlins
 Inozemtseva
@@ -39,6 +41,7 @@ stdout
 subpackages?
 subtrees?
 toolchain
+tparse
 txtar
 unexported
 unindexed
