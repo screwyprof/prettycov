@@ -184,3 +184,53 @@ func TestUnderRootPrefixesAPathTheRootWasCollapsedFrom(t *testing.T) {
 	_, ok = tree.UnderRoot("nowhere")
 	assert.False(t, ok)
 }
+
+// NamesNoPackage is Shorten's own rule, asked where a caller can reach it: Shorten trims every
+// trailing separator before matching, so a source that trims away renames nothing and says nothing.
+func TestRenameNamesNoPackage(t *testing.T) {
+	t.Parallel()
+
+	for _, from := range []string{"/", "//", "///"} {
+		assert.True(t, prettycov.Rename{From: from, To: "x"}.NamesNoPackage(), "%q", from)
+	}
+
+	for _, from := range []string{"", "m", "example.com/m", "m/"} {
+		assert.False(t, prettycov.Rename{From: from, To: "x"}.NamesNoPackage(), "%q", from)
+	}
+}
+
+// UnderRoot stops where the run does. A directory holding a file as well as a single subdirectory
+// ends it, because past there the path is a choice rather than the root.
+func TestUnderRootStopsWhereTheRunBranches(t *testing.T) {
+	t.Parallel()
+
+	// m holds one subdirectory and a file of its own, so the run ends at m.
+	profile := writeProfile(t, "mode: set\nm/own.go:1.1,2.2 1 1\nm/deep/a.go:1.1,2.2 1 1\n")
+
+	got, err := prettycov.Measure(prettycov.Request{Profile: profile})
+	require.NoError(t, err)
+
+	tree, ok := got.Tree()
+	require.True(t, ok)
+
+	full, ok := tree.UnderRoot("deep")
+	require.True(t, ok, "m is the root the report collapsed away")
+	assert.Equal(t, "m/deep", full)
+
+	_, ok = tree.UnderRoot("deep/a.go/nope")
+	assert.False(t, ok, "and the run does not continue past a directory holding files")
+}
+
+// Depth and Threshold read themselves, which is what lets a flag hold the parsed value.
+func TestParsedTypesReadText(t *testing.T) {
+	t.Parallel()
+
+	var d prettycov.Depth
+
+	require.NoError(t, d.UnmarshalText([]byte("max")))
+	assert.Equal(t, prettycov.DepthAll, d)
+	require.Error(t, d.UnmarshalText([]byte("abc")))
+
+	assert.Panics(t, func() { prettycov.MustThreshold(150) }, "a constant out of range is a broken build")
+	assert.NotPanics(t, func() { prettycov.MustThreshold(100) })
+}

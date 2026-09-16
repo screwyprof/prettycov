@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"slices"
-	"strings"
 
 	"github.com/alecthomas/kong"
 
@@ -53,8 +51,6 @@ const DefaultProfile = "coverage.out"
 // fixed value that stays on a screen everywhere: hugo is 37 rows at depth 1, 152 at depth 2.
 const DefaultDepth = "1"
 
-var errEmptyExclude = errors.New("want a pattern")
-
 var errRootNamesNoPkg = errors.New("--old names no package")
 
 // Measured are the flags that decide what is in the answer. Embedded in every command, because every
@@ -74,14 +70,7 @@ type Measured struct {
 // with MODULE unset — which the `and:"rename"` tag cannot say, because it is about a value rather
 // than about the pair.
 func (m *Measured) Validate() error {
-	// Kong's slice flag takes "" without complaint, where the flag package handed it to
-	// ParseExclude and got a refusal. The rule is the same either way: a pattern that matches
-	// everything is never what was meant.
-	if slices.Contains(m.Exclude, "") {
-		return fmt.Errorf("--exclude: %w", errEmptyExclude)
-	}
-
-	if m.Old != "" && strings.TrimRight(m.Old, "/") == "" {
+	if (prettycov.Rename{From: m.Old, To: m.New}).NamesNoPackage() {
 		return fmt.Errorf("%w: got --old=%q", errRootNamesNoPkg, m.Old)
 	}
 
@@ -95,6 +84,27 @@ func (m *Measured) Validate() error {
 type drawn struct {
 	Depth       prettycov.Depth      `help:"Levels below the top row, like tree -L, or \"max\"."             default:"${depth}" placeholder:"LEVELS"`
 	HideCovered *prettycov.Threshold `help:"Leave out subtrees at this percentage or above; bare means 100."                    placeholder:"PCT"    type:"hidecovered"`
+}
+
+// Name and Description are what the program calls itself. Here rather than in the composition root
+// because the description names a command, and a command is this package's.
+const (
+	Name        = "prettycov"
+	Description = "Given a coverage profile produced by 'go test', draw the packages and what they cover.\n\n" +
+		"\tgo test -covermode=atomic -coverprofile=coverage.out ./...\n\tprettycov report"
+)
+
+// Args settles what was typed. No command at all is someone finding out what this does, not a
+// mistake: kong would answer "expected one of ...", where the help says that and more.
+//
+// Here rather than in the composition root because it is a routing rule, and the reason for it is
+// the paragraph on CLI below.
+func Args(args []string) []string {
+	if len(args) == 0 {
+		return []string{"--help"}
+	}
+
+	return args
 }
 
 // CLI is the whole command line. Every command is named: there is no default, so `prettycov` alone
@@ -138,10 +148,6 @@ type totalCmd struct {
 	Node string `arg:"" optional:"" help:"Package or file, spelled as the report prints it." placeholder:"PATH"`
 }
 
-// A Version is the string the binary reports. It is bound by the composition root, which is what
-// knows how this build was stamped; nothing here reads a linker variable or the build info.
-type Version string
-
 type versionCmd struct{}
 
 type helpCmd struct {
@@ -164,32 +170,6 @@ func (c *helpCmd) Run(k *kong.Context) error {
 	return ctx.PrintUsage(false)
 }
 
-func (c *reportCmd) render(cfg config, tree *prettycov.PathTree, s Streams) error {
-	if shown := prettycov.DisplayTree(s.Out, tree, cfg.options(s.Out)); shown == 0 {
-		sayNothingShown(cfg, tree, s)
-	}
-
-	return gate{cfg.FailUnder}.grade(tree, s)
-}
-
-// render has a second message the tree has none of: only a list can stop short of what is behind
-// it. A tree carries its subtree's count on every row, so a shallow one is a summary rather than a
-// fragment, where a short list reads as a clean bill — pipe eight of thirty-four into `vim -q -`,
-// fix them, and the quickfix says there is nothing left.
-func (c *missesCmd) render(cfg config, tree *prettycov.PathTree, s Streams) error {
-	shown := prettycov.DisplayMisses(s.Out, tree, cfg.options(s.Out))
-
-	switch {
-	case shown == 0:
-		sayNothingShown(cfg, tree, s)
-	case shown < tree.Uncovered():
-		_, _ = fmt.Fprintf(s.Err, "%s lists %d of %s\n",
-			cfg.outputFilters(), shown, plural(tree.Uncovered(), "uncovered statement"))
-	}
-
-	return gate{cfg.FailUnder}.grade(tree, s)
-}
-
 // Streams is where a handler writes, bound by the composition root so nothing reaches os.Stdout
 // directly.
 type Streams struct {
@@ -203,13 +183,20 @@ func (c *reportCmd) Run(s *Streams, m *Measured) error {
 	}
 
 	cfg.Files, cfg.Counts = c.Files, c.Counts
+	g := gate{cfg.FailUnder}
 
-	tree, err := treeOf(cfg.Request, gate{cfg.FailUnder}, *s)
+	tree, err := treeOf(cfg.Request, g, *s)
 	if err != nil {
 		return err
 	}
 
-	return c.render(cfg, tree, *s)
+	// S2: inlined, because render had one caller and its three-argument shape was the interface
+	// that used to need it.
+	if shown := prettycov.DisplayTree(s.Out, tree, cfg.options(s.Out)); shown == 0 {
+		sayNothingShown(cfg, tree, *s)
+	}
+
+	return g.grade(tree, *s)
 }
 
 func (c *missesCmd) Run(s *Streams, m *Measured) error {
@@ -218,12 +205,27 @@ func (c *missesCmd) Run(s *Streams, m *Measured) error {
 		return err
 	}
 
-	tree, err := treeOf(cfg.Request, gate{cfg.FailUnder}, *s)
+	g := gate{cfg.FailUnder}
+
+	tree, err := treeOf(cfg.Request, g, *s)
 	if err != nil {
 		return err
 	}
 
-	return c.render(cfg, tree, *s)
+	shown := prettycov.DisplayMisses(s.Out, tree, cfg.options(s.Out))
+
+	// Two messages where the tree has one: only a list can stop short of what is behind it. A tree
+	// carries its subtree's count on every row, so a shallow one is a summary rather than a
+	// fragment, where a short list reads as a clean bill.
+	switch {
+	case shown == 0:
+		sayNothingShown(cfg, tree, *s)
+	case shown < tree.Uncovered():
+		_, _ = fmt.Fprintf(s.Err, "%s lists %d of %s\n",
+			cfg.outputFilters(), shown, plural(tree.Uncovered(), "uncovered statement"))
+	}
+
+	return g.grade(tree, *s)
 }
 
 func (c *totalCmd) Run(s *Streams, m *Measured) error {
@@ -232,16 +234,18 @@ func (c *totalCmd) Run(s *Streams, m *Measured) error {
 		return err
 	}
 
-	tree, err := treeOf(cfg.Request, gate{cfg.FailUnder}, *s)
+	g := gate{cfg.FailUnder}
+
+	tree, err := treeOf(cfg.Request, g, *s)
 	if err != nil {
 		return err
 	}
 
-	return total(gate{cfg.FailUnder}, tree, c.Node, *s)
+	return total(g, tree, c.Node, *s)
 }
 
-func (c *versionCmd) Run(s *Streams, v Version) error {
-	_, _ = fmt.Fprintln(s.Out, string(v))
+func (c *versionCmd) Run(s *Streams, vars kong.Vars) error {
+	_, _ = fmt.Fprintln(s.Out, vars["version"])
 
 	return nil
 }
@@ -323,11 +327,7 @@ func (d drawn) shape(cfg *config) {
 type OptionalPercentage struct{}
 
 func (OptionalPercentage) Decode(ctx *kong.DecodeContext, target reflect.Value) error {
-	bar, err := prettycov.NewThreshold(bareHideCovered)
-	if err != nil {
-		//nolint:wrapcheck // Threshold's error is already phrased for a flag.
-		return err
-	}
+	bar := prettycov.MustThreshold(bareHideCovered)
 
 	if ctx.Scan.Peek().Type == kong.FlagValueToken {
 		if err := bar.UnmarshalText([]byte(fmt.Sprint(ctx.Scan.Pop().Value))); err != nil {

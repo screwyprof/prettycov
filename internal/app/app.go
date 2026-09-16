@@ -28,22 +28,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// builds this, so a mistake in it cannot reach a user — and an error branch for it would be one
 	// no test could take.
 	parser := kong.Must(&root,
-		kong.Name("prettycov"),
-		kong.Description("Given a coverage profile produced by 'go test', draw the packages and what they cover.\n\n"+
-			"\tgo test -covermode=atomic -coverprofile=coverage.out ./...\n\tprettycov report"),
+		kong.Name(cli.Name),
+		kong.Description(cli.Description),
 		kong.Writers(stdout, stderr),
 		kong.Vars{"profile": cli.DefaultProfile, "depth": cli.DefaultDepth, "version": buildVersion()},
 		kong.Exit(func(code int) { done = code }),
 		kong.NamedMapper("hidecovered", cli.OptionalPercentage{}),
 	)
 
-	// No command at all is not a mistake, it is someone finding out what this does. Kong would
-	// answer "expected one of ..."; the help says that and more, through kong's own printer.
-	if len(args) == 0 {
-		args = []string{"--help"}
-	}
-
-	ctx, err := parser.Parse(args)
+	ctx, err := parser.Parse(cli.Args(args))
 
 	if done >= 0 {
 		return done
@@ -56,7 +49,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	return status(
-		ctx.Run(&cli.Streams{Out: stdout, Err: stderr}, &root.Measured, ctx, cli.Version(buildVersion())),
+		ctx.Run(&cli.Streams{Out: stdout, Err: stderr}, &root.Measured),
 		stderr,
 	)
 }

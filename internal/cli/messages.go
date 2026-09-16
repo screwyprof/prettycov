@@ -13,16 +13,6 @@ import (
 	"github.com/screwyprof/prettycov"
 )
 
-// reasonFor is how an Outcome without a tree reads. Here rather than beside the constant, because Measure
-// states the fact and only a command line has an opinion about the words.
-func reasonFor(o prettycov.Outcome) string {
-	if o == prettycov.NoStatements {
-		return "no statements to cover"
-	}
-
-	return "--exclude left nothing to report"
-}
-
 // sayNothingShown reports a printer that came up empty, which both drawing commands can be.
 //
 // It asks nothing about which printer that was. One drawing rows and one printing positions would

@@ -1,6 +1,10 @@
 package prettycov
 
-import "regexp"
+import (
+	"regexp"
+	"slices"
+	"strings"
+)
 
 // A Rename is a root package path and what to shorten it to. One value because the two are only
 // ever set, validated, reported and applied together: either alone does nothing.
@@ -11,6 +15,16 @@ type Rename struct {
 // Wanted reports whether a rename was asked for at all, which is what separates "not asked for"
 // from "asked for and did not happen".
 func (r Rename) Wanted() bool { return r.From != "" }
+
+// NamesNoPackage reports a source that cannot match anything: separators and nothing else, which is
+// what `--old=$(MODULE)/` spells with MODULE unset.
+//
+// Beside Shorten rather than in a caller, because it is Shorten's own rule: it trims every trailing
+// separator before matching, so a source that trims away renames nothing and says nothing. Asking
+// here means the two cannot disagree about what an empty root is.
+func (r Rename) NamesNoPackage() bool {
+	return r.Wanted() && strings.TrimRight(r.From, "/") == ""
+}
 
 // A Request is what to measure: which profile, and the things that change what is in it. How the
 // answer is drawn — depth, files, counts, colour — is Options, and is not here, because those
@@ -113,11 +127,5 @@ func rootMissed(r Rename, items []FileCoverage, renamed int) bool {
 // anyStatements reports whether the profile holds anything to cover. Statements rather than files:
 // cmd/cover emits blocks declaring none, so a profile can name files and still be empty.
 func anyStatements(files []FileCoverage) bool {
-	for _, f := range files {
-		if f.Coverage.Total() > 0 {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(files, func(f FileCoverage) bool { return f.Coverage.Total() > 0 })
 }

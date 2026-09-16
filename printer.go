@@ -275,7 +275,7 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 // is where the flag is for. At the default threshold it barely recurses at all — Coverage is rolled
 // up, so a node with no uncovered statement has no descendant with one.
 func (b *walker) allCovered(node *PathTree, level Depth) bool {
-	if !node.Coverage.AtLeast(b.hideAt) {
+	if !node.AtLeast(b.hideAt) {
 		return false
 	}
 

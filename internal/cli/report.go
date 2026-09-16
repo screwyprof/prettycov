@@ -32,21 +32,28 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 	// and this accounting is what shows it.
 	reportExclusions(res.Exclusions, s)
 
-	tree, ok := res.Tree()
-	if ok {
+	// One switch over every outcome, so exhaustive asks when a fifth is added. The if this replaced
+	// handed anything it did not recognise whichever sentence happened to be last.
+	switch res.Outcome() {
+	case prettycov.Measured:
+		tree, _ := res.Tree()
+
 		return tree, nil
-	}
 
 	// Refused, not merely said: a rename transforms the output, so one that did not happen leaves a
 	// report nobody asked for. --exclude is not held to this — a pattern is a filter, and "drop this
 	// if it is here" is a reasonable thing to write.
-	if res.Outcome() == prettycov.RootMissed {
+	case prettycov.RootMissed:
 		_, _ = fmt.Fprintf(s.Err, "--old %q matched nothing, so no label was shortened\n", req.Rename.From)
 
 		return nil, exitError{code: ExitFailed}
+	case prettycov.NoStatements:
+		return nil, g.refuse("no statements to cover", s)
+	case prettycov.ExcludedAway:
+		return nil, g.refuse("--exclude left nothing to report", s)
 	}
 
-	return nil, g.refuse(reasonFor(res.Outcome()), s)
+	return nil, exitError{code: ExitFailed}
 }
 
 // refuse grades an absence. Exit 1 under a gate, not 2: exit 2 reads as "prettycov could not run",

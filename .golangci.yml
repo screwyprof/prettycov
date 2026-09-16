@@ -13,6 +13,7 @@ linters:
     - bodyclose
     - copyloopvar
     - cyclop
+    - depguard
     - dogsled
     - dupword
     - dupl
@@ -78,6 +79,31 @@ linters:
     - wrapcheck
     - wsl_v5
   settings:
+    # The layering, enforced rather than reviewed. prettycov is the domain: it must not learn what a
+    # command line is, and it must not depend on a front end. internal/cli is one front end; the
+    # composition root is the only place that knows both, and cmd is the only thing that starts it.
+    #
+    # Tests are exempt: the end-to-end ones drive app.Run on purpose, which is the point of them.
+    depguard:
+      rules:
+        domain:
+          files:
+            - "**/*.go"
+            - "!**/internal/**"
+            - "!**/cmd/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/alecthomas/kong
+              desc: the domain does not know about the command line
+            - pkg: github.com/screwyprof/prettycov/internal
+              desc: the domain does not depend on a front end
+        handlers:
+          files:
+            - "**/internal/cli/*.go"
+            - "!$test"
+          deny:
+            - pkg: github.com/screwyprof/prettycov/internal/app
+              desc: the composition root wires the handlers, not the other way round
     goconst:
       min-len: 2
       min-occurrences: 2

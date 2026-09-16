@@ -140,11 +140,9 @@ func (n *PathTree) Get(key string) *PathTree {
 		return nil
 	}
 
-	// "./x" is x. That is how a package whose name strconv.ParseBool reads — t, f, true, false, 1,
-	// 0 and their spellings, all of them legal directory names — can be named at all: -total settles
-	// the value before this ever sees it, so -total=t is the bare flag and -total=./t is the
-	// package. Nothing else needs the prefix, and stripping it changes no other answer, since "./x"
-	// and "x" name one node.
+	// "./x" is x: the tree holds one node under either spelling, and "." is a directory of its own
+	// — where a file the profile gave no directory lands — so without the strip "./t" would resolve
+	// under it rather than at the top.
 	if rest, found := strings.CutPrefix(key, "./"); found && rest != "" {
 		key = rest
 	}
@@ -216,24 +214,19 @@ func (n *PathTree) walk(key string) *PathTree {
 // has missed, which is the only time the question means anything.
 //
 // The root is a run of single-child directories rather than one node, so this descends the run the
-// way collapse does, and joins the way the renderer joins — an empty first name is the filesystem
-// root, where the separator is the whole name, which is why the first segment is taken as it is and
-// the rest are joined.
+// way collapse does. The candidate is built with join, the renderer's, so an absolute tree is asked
+// about "/want" rather than "want" — which is the spelling Get resolves.
 //
 // Only ever names a path the tree holds: every candidate is checked with Get, so a caller can print
 // what this returns without checking again.
 func (n *PathTree) UnderRoot(want string) (string, bool) {
 	root := ""
 
-	for node := n; node != nil && len(node.Children) == 1 && len(node.Files) == 0; {
+	for node := n; len(node.Children) == 1 && len(node.Files) == 0; {
 		for name, child := range node.Children {
-			if root == "" {
-				root, node = name, child
-
-				continue
-			}
-
-			root, node = join(root, name), child
+			// path.Join, not join: it drops the empty first name, where join would read it as the
+			// filesystem root and prefix a separator this early.
+			root, node = path.Join(root, name), child
 		}
 
 		if full := join(root, want); n.Get(full) != nil {
@@ -246,9 +239,9 @@ func (n *PathTree) UnderRoot(want string) (string, bool) {
 
 // Uncovered is how many statements this node and everything beneath it leave uncovered.
 //
-// A method rather than a caller reading Coverage.Uncovered: a node knows its own counts, and every
-// reader that reached through the field had to know that a node keeps CoverageStats and what is in
-// them. Coverage stays exported for a caller assembling a tree of its own.
+// A method rather than a caller reading Coverage.Uncovered: a node knows its own counts. Coverage
+// stays exported for a caller assembling a tree of its own, but nothing in this module reaches
+// through it — there is one way to ask.
 func (n *PathTree) Uncovered() int { return n.Coverage.Uncovered }
 
 // Percentage is the share of this node's statements that are covered, and whether there were any to

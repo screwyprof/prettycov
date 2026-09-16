@@ -119,8 +119,8 @@ fmt: require-golangci ## format code
 $(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
-	@go test -race -count=1 -timeout=120s -cover -covermode atomic -coverpkg=./... -coverprofile=$@ ./...
-	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -race -count=1 -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/
+	@go test -race -count=1 -shuffle=on -timeout=120s -cover -covermode atomic -coverpkg=./... -coverprofile=$@ ./...
+	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -race -count=1 -shuffle=on -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/
 	@test -n "$$(ls -A $(COVERDATA) 2>/dev/null)" || \
 		{ echo "no counters in $(COVERDATA): did the -tags=$(GO_TAGS) pass run any tests?"; exit 1; }
 	@go tool covdata textfmt -i=$(COVERDATA) -o=$(COVERDATA)/binary.txt
