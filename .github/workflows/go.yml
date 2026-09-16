@@ -121,5 +121,12 @@ jobs:
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
+          # Named, not searched for. Left to search, the action reported "Found 2 coverage files"
+          # and uploaded testdata/delegator.coverage.out alongside the real one — a fixture, and a
+          # profile of a different repository, which is what this tool's own tests read. Its paths
+          # resolve to nothing here, so the damage was bounded, but a gate fed a fixture is not a
+          # gate. disable_search makes that a guarantee rather than a fix for the one file we found.
+          files: ./coverage.out
+          disable_search: true
           fail_ci_if_error: true
           verbose: false
