@@ -172,8 +172,8 @@ func (n *PathTree) onlyChild() (string, *PathTree, bool) {
 		return name, child, true
 	}
 
-	// Unreachable: the guard above leaves exactly one child. Required, since Go cannot see that.
-	return "", nil, false
+	// Required, since Go cannot see that the guard leaves exactly one child for the range to return.
+	panic("unreachable")
 }
 
 // maxRootDepth bounds how far the collapsed root is followed. The deepest run measured across the
