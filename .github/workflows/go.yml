@@ -82,15 +82,14 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Guarded like the step above: .DELETE_ON_ERROR removes coverage.out when the test pass fails,
-      # and without the guard this would rerun the whole suite to rebuild it and go red as well.
+      # Only when the gates passed: a failed `make check` leaves no coverage.out worth drawing, and
+      # a summary saying so is noise on top of the failure that already explains itself.
       - name: Coverage tree
-        if: always()
         run: |
           {
             echo '### Coverage'
             echo '```'
-            test -f coverage.out && make test-cover-tree || echo '(no coverage profile)'
+            make test-cover-tree
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 

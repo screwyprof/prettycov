@@ -41,7 +41,9 @@ GOVULNCHECK_VERSION := v1.8.0
 GOBCO_VERSION := v1.3.4
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
 GOLANGCI_VERSION := v2.13.2
-# renovate: datasource=go depName=github.com/errata-ai/vale/v3
+# vale-cli, not errata-ai: the module moved at v3.18.0 and the old path still carries the tags,
+# so `go run errata-ai/...@v3.21.0` resolves and then refuses — "module declares its path as".
+# renovate: datasource=go depName=github.com/vale-cli/vale/v3
 VALE_VERSION := v3.21.0
 # renovate: datasource=go depName=github.com/reviewdog/reviewdog
 REVIEWDOG_VERSION := v0.21.1
@@ -185,7 +187,7 @@ vulns: ## report known vulnerabilities reachable from this module
 	@go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 # See GOLANGCI above: same convention, same reason.
-VALE := go run github.com/errata-ai/vale/v3/cmd/vale@$(VALE_VERSION)
+VALE := go run github.com/vale-cli/vale/v3/cmd/vale@$(VALE_VERSION)
 
 # `-diff` rather than tidy-then-`git diff`: it reports what would change without writing, so the
 # gate cannot leave a dirty tree behind when it fails. Both files are checked in, so a stale one is
@@ -266,6 +268,17 @@ lint-all: ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
 	$(GOLANGCI) run ./... --new-from-rev=""
 
+# summarise runs a gate and prints only the line worth quoting — but keeps the whole output to print
+# when the gate fails, because a filter that hides a failure's reason is worse than no filter. It
+# hid two: govulncheck's advisory detail, and the Vale run that said "1 error" where the pattern
+# wanted "errors".
+#
+# $(1) is the target, $(2) the extended regexp for the line to keep on success.
+define summarise
+out=$$($(MAKE) --no-print-directory $(1) 2>&1) || { echo "$$out"; exit 1; }; \
+	echo "$$out" | grep -E '$(2)' || { echo "$$out"; exit 1; }
+endef
+
 # check runs every gate and prints one line per figure, so a PR description quotes the tools rather
 # than being retyped from them. Six descriptions in this repo have claimed numbers the tree did not
 # give, all of them hand-copied from these same targets.
@@ -296,16 +309,15 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@go run ./cmd/prettycov report --profile=$(COVERAGE) --old=$(LOCAL_PACKAGES) --new=prettycov \
 		--depth=2 --files --hide-covered --fail-under=$(COVERAGE_FLOOR)
 	@echo; echo '$$ make lint-all'
-	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
+	@$(call summarise,lint-all,^[0-9]+ issues\.)
 	@echo; echo '$$ make tidy'
-	@$(MAKE) --no-print-directory tidy 2>&1 | tail -1
+	@$(call summarise,tidy,.)
 	@echo; echo '$$ make vulns'
-	@out=$$($(MAKE) --no-print-directory vulns 2>&1) || { echo "$$out"; exit 1; }; \
-		echo "$$out" | grep -E 'No vulnerabilities|Vulnerability #'
+	@$(call summarise,vulns,No vulnerabilities|Vulnerability #)
 	@echo; echo '$$ make docs-lint'
-	@$(MAKE) --no-print-directory docs-lint 2>&1 | grep -E 'errors.*warnings|^ *✔'
+	@$(call summarise,docs-lint,[0-9]+ errors?)
 	@echo; echo '$$ make mutate'
-	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
+	@$(call summarise,mutate,^(Killed:|Test efficacy:))
 	@echo; echo '$$ make cover-branches'
 	@$(MAKE) --no-print-directory cover-branches 2>&1 | grep '^Condition coverage:' \
 		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"} \
