@@ -28,5 +28,9 @@ coverage.tmp
 # Checkouts surveyed while working on coverage behaviour; never part of the build.
 /_reference/
 
+# Nothing writes here since the custom linter binary went, but a clone that ran the old `make lint`
+# still holds one — and GIT_LS feeds cover-branches and mutate, which would tar 150MB into /tmp.
+/bin/
+
 # Vale downloads the Google style package here; `make docs-lint` runs `vale sync` first.
 /.vale/Google/

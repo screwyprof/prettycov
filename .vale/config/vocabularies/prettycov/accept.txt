@@ -9,7 +9,6 @@ codecov
 config
 [Dd]iátaxis
 delegator
-Dependabot
 depguard
 devShell
 footgun

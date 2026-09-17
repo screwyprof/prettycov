@@ -82,13 +82,15 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Guarded like the step above: .DELETE_ON_ERROR removes coverage.out when the test pass fails,
+      # and without the guard this would rerun the whole suite to rebuild it and go red as well.
       - name: Coverage tree
         if: always()
         run: |
           {
             echo '### Coverage'
             echo '```'
-            make test-cover-tree
+            test -f coverage.out && make test-cover-tree || echo '(no coverage profile)'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
