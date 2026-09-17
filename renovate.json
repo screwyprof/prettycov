@@ -25,6 +25,11 @@
       "addLabels": ["major"]
     },
     {
+      "description": "Actions are not automerged either, and this is the clearest case: checkout and setup-go run before make check and build the environment the gate evaluates in, so a bumped action does not merely get executed by the gate — it is the gate.",
+      "matchManagers": ["github-actions"],
+      "automerge": false
+    },
+    {
       "description": "flake.lock is not automerged, monthly refresh included: nothing in CI opens the flake, so a nixpkgs bump that renames or drops go_1_26 would land on a green make check that never looked. nix is also the only manager here that supports lockFileMaintenance at all — gomod does not — so this rule is the whole of that decision.",
       "matchManagers": ["nix"],
       "automerge": false
@@ -70,7 +75,7 @@
   },
 
   "vulnerabilityAlerts": {
-    "description": "A security fix gets its PR immediately rather than on Monday. It still waits for a human, like every other bump, so make check stays red on main until one merges it.",
+    "description": "A security fix gets its PR immediately rather than on Monday, but still waits for a human. Automerging here would be the one unreviewed path in this config: vulnerabilityAlerts drops minimumReleaseAge to null, so a release carrying the label an attacker most wants would merge at zero age.",
     "schedule": ["at any time"]
   }
 }
