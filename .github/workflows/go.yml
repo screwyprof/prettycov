@@ -8,21 +8,14 @@ on:
     branches: [main]
   pull_request:
 
-# This repo predates GitHub's 2023 switch to a read-only default, so GITHUB_TOKEN would otherwise
-# resolve to Contents/Actions/Deployments: write and be handed to every third-party action in the
-# job. Nothing here needs to write to the repo.
+# Set explicitly: this repo predates GitHub's read-only default, so the token would otherwise carry
+# Contents/Actions/Deployments: write into every action in the job.
 permissions:
   contents: read
 
 jobs:
-  # One job running one command, because two lists of gates drift and this pair had: CI ran build,
-  # lint and test while `make check` ran seven, so mutation testing, condition coverage,
-  # govulncheck and the prose gate were enforced on a developer's machine and nowhere else. The
-  # reverse happened too — a `go mod tidy` check lived here and not in the Makefile.
-  #
-  # Worse, the lint CI ran was not the lint the Makefile runs: the actions downloaded a
-  # golangci-lint of their own choosing, where the Makefile pins one. Running `make check` makes the
-  # linter here the linter a contributor ran before pushing, at the version this repo names.
+  # One job running one command, because two lists of gates drift: this ran three while `make check`
+  # ran seven, so four gates were enforced on a developer's machine and nowhere else.
   check:
     runs-on: ubuntu-latest
     permissions:
@@ -45,39 +38,17 @@ jobs:
           # is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27
           # backport, so this lifts when 1.28 ships and not before.
           #
-          # `.x`, and not go-version-file, which this was. go.mod's directive states a minimum —
-          # `go 1.26.0` — and setup-go installs exactly that, then sets GOTOOLCHAIN=local so nothing
-          # can upgrade it. CI therefore sat on the first 1.26 release and shipped GO-2026-4601
-          # (net/url, fixed in 1.26.1) through a green govulncheck, while every developer ran a
-          # patched toolchain and saw nothing. Single-sourcing the wrong field is not
-          # single-sourcing.
-          #
-          # The minor stays pinned, which is the property go.mod was being read for; only the patch
-          # floats, which is where security fixes land.
+          # `.x`, not go-version-file: setup-go reads go.mod's minimum as an exact patch and sets
+          # GOTOOLCHAIN=local, so CI sat on 1.26.0 and shipped GO-2026-4601 through a green
+          # govulncheck. The minor stays pinned; only the patch floats.
           go-version: '1.26.x'
           cache: true
           cache-dependency-path: go.sum
 
-      # Before the gate, so findings reach the diff as annotations even though `make check` is
-      # about to fail on them. `-fail-level=any` makes this a gate in its own right; the step below
-      # runs the same linter again as part of the whole suite.
-      #
-      # Never a gate, whoever opened the pull request. reviewdog's github-pr-check reporter needs a
-      # writable token, and GitHub hands a read-only one to any run it treats as untrusted — a fork
-      # being the case that reaches this repository — whatever `permissions:` above asks for. With
-      # -fail-level=any the 403 failed the job before `make check` ever ran, so the contributor saw
-      # a permissions error and no lint or test result at all.
-      #
-      # continue-on-error rather than another actor to exclude: the list of actors GitHub treats as
-      # untrusted is not ours to keep, and this step has nothing to gate with. `make check` below
-      # runs the same linter as a real gate, so a failure here costs annotations on the diff and
-      # nothing else. The same-repo condition stays only to skip a step known to be unable to work.
-      #
-      # Not for a bot either, and that one is about privilege rather than tokens. GitHub hands
-      # Dependabot's runs an empty secret context; Renovate is an ordinary app pushing in-repo
-      # branches, so its runs are fully trusted — which would put a freshly bumped, unreviewed
-      # golangci-lint in the same step as a writable token. A bump diff has no Go changes to
-      # annotate, so skipping costs nothing and `make check` still lints it.
+      # Annotations on the diff, which a log cannot give. Never a gate — `make check` below runs the
+      # same linter for real — so it is skipped where it cannot work and never fails the job:
+      # a fork's token is read-only and reviewdog 403s, and a Renovate run is fully trusted, which
+      # would hand a freshly bumped golangci-lint the token in this step's env.
       - name: Lint annotations
         if: >-
           github.event_name == 'pull_request'
@@ -88,9 +59,6 @@ jobs:
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Every gate, in one command, and the same command CONTRIBUTING tells a contributor to run.
-      # The tools it needs are fetched with `go run pkg@version` rather than installed, so nothing
-      # here has to be kept in step with the Makefile's versions either.
       # `shell: bash` is load-bearing: it means `bash -eo pipefail`, where the default for `run` on
       # Linux is `bash -e` with no pipefail. Without it the step exits with tee's status, which is
       # always 0, and `make check` cannot fail CI at all — the Makefile's own pipefail governs the
@@ -99,12 +67,8 @@ jobs:
         shell: bash
         run: make check | tee check.out
 
-      # The block `make check` prints is the one a pull request description wants, so put it where
-      # it can be copied without opening the log.
-      #
-      # `always()` means this also runs when a step before `make check` failed, and then there is no
-      # check.out to read — so the cat is guarded rather than left to error and mark a second step
-      # red for the first one's failure.
+      # Guarded cat: under always() this also runs when a step before `make check` failed, and then
+      # check.out was never written.
       - name: Publish the gate block
         if: always()
         run: |
@@ -115,8 +79,6 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Dogfooding: the tool's own report on its own profile, from the coverage.out `make check`
-      # already wrote.
       - name: Coverage tree
         if: always()
         run: |
@@ -127,18 +89,13 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Codecov is the one gate that cannot live in the Makefile: it compares against the base
-      # commit, which needs the service. codecov.yml's project target and COVERAGE_FLOOR in the
-      # Makefile are the same number, said in the two places that enforce it.
+      # The one gate that cannot live in the Makefile: it compares against the base commit.
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
-          # Named, not searched for. Left to search, the action reported "Found 2 coverage files"
-          # and uploaded testdata/delegator.coverage.out alongside the real one — a fixture, and a
-          # profile of a different repository, which is what this tool's own tests read. Its paths
-          # resolve to nothing here, so the damage was bounded, but a gate fed a fixture is not a
-          # gate. disable_search makes that a guarantee rather than a fix for the one file we found.
+          # Named, not searched for: left to search it also uploaded testdata/delegator.coverage.out,
+          # a fixture profile of a different repository that this tool's own tests read.
           files: ./coverage.out
           disable_search: true
           fail_ci_if_error: true
