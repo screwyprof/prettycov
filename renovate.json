@@ -6,7 +6,7 @@
   ],
   "timezone": "Europe/London",
   "schedule": ["before 6am on monday"],
-  "prConcurrentLimit": 3,
+  "prConcurrentLimit": 5,
 
   "constraints": {
     "go": "1.26"
@@ -19,18 +19,15 @@
 
   "packageRules": [
     {
-      "description": "Automerge everything that is not a major. The gate is make check, which CI runs as one job and branch protection requires; a bump that breaks anything cannot reach main, and a bump that breaks nothing does not need a human to look at it.",
-      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": true,
-      "automergeStrategy": "squash"
-    },
-    {
       "description": "A major is a changelog to read, not a number to bump.",
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "addLabels": ["major"]
+    },
+    {
+      "description": "Actions are not automerged either, and this is the clearest case: checkout and setup-go run before make check and build the environment the gate evaluates in, so a bumped action does not merely get executed by the gate — it is the gate.",
+      "matchManagers": ["github-actions"],
+      "automerge": false
     },
     {
       "description": "flake.lock is not automerged, monthly refresh included: nothing in CI opens the flake, so a nixpkgs bump that renames or drops go_1_26 would land on a green make check that never looked. nix is also the only manager here that supports lockFileMaintenance at all — gomod does not — so this rule is the whole of that decision.",
@@ -38,9 +35,10 @@
       "automerge": false
     },
     {
-      "description": "One pull request for the Go module set rather than five, since x/ tags together.",
+      "description": "One pull request for the Go module set rather than five, since x/ tags together. Not automerged: make check runs `go test`, which links and executes the bumped module, so the code being judged produces the green check.",
       "matchManagers": ["gomod"],
-      "groupName": "go modules"
+      "groupName": "go modules",
+      "automerge": false
     },
     {
       "description": "The Makefile's tool pins, grouped and not automerged: make check runs these tools to decide whether the bump that changed them is safe, so an automerged bump would validate itself.",
@@ -77,7 +75,7 @@
   },
 
   "vulnerabilityAlerts": {
-    "description": "A security fix does not wait for Monday.",
+    "description": "A security fix gets its PR immediately rather than on Monday, but still waits for a human. Automerging here would be the one unreviewed path in this config: vulnerabilityAlerts drops minimumReleaseAge to null, so a release carrying the label an attacker most wants would merge at zero age.",
     "schedule": ["at any time"]
   }
 }
