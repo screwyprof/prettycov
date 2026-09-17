@@ -204,7 +204,7 @@ func TestMissesShareTheLineBetweenTwoRegions(t *testing.T) {
 		File:     "m/o.go",
 		Coverage: prettycov.CoverageStats{Covered: 1, Uncovered: 4},
 		Blocks: []prettycov.Block{
-			uncovered(4, 7, 7, 2),   // 4.7,7.3  , ends on the line the next opens
+			uncovered(4, 7, 7, 2),   // 4.7,7.3: ends on the line the next opens
 			covered(7, 8, 7, 1),     // 7.8,7.14: the else-if condition, run
 			uncovered(7, 14, 10, 2), // 7.14,10.3
 		},
