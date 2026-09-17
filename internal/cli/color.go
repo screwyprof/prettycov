@@ -14,9 +14,8 @@ import (
 
 var errBadColor = errors.New(`want "auto", "never" or "always"`)
 
-// colorMode is what --color said. auto needs the destination to mean anything; never and always
-// exist because a caller sometimes knows better than the heuristic, which is why every tool that
-// colours output offers the same three.
+// colorMode is what --color said. auto needs the destination to mean anything; never and always are
+// for a caller that knows better than the heuristic.
 type colorMode int
 
 const (
@@ -32,9 +31,8 @@ const (
 // compiles and --color=never stops being a spelling kong knows.
 var _ encoding.TextUnmarshaler = (*colorMode)(nil)
 
-// UnmarshalText parses a mode, so a colorMode exists only because one of the three spellings was
-// given. Kong finds this through encoding.TextUnmarshaler, so the flag holds the parsed value and
-// there is no window in which an unchecked string is lying around.
+// UnmarshalText parses a mode, so a colorMode exists only because a valid spelling was given.
+// kong finds it by interface, leaving no window where an unchecked string is lying around.
 func (m *colorMode) UnmarshalText(text []byte) error {
 	switch string(text) {
 	case "never":
@@ -55,11 +53,10 @@ func (m *colorMode) UnmarshalText(text []byte) error {
 //nolint:gochecknoglobals // a seam, swapped by the tests in this package.
 var isTerminal = term.IsTerminal
 
-// palette settles the mode against w, which is what colorAuto was waiting for. Asked at the point
-// of writing, because that is where the destination is known — parsing argv is too early, and no
-// other flag needs to know where output goes.
+// palette settles the mode against w, which is what colorAuto was waiting for. At the point of
+// writing, since that is where the destination is known.
 //
-// NO_COLOR counts however it is set, including empty, per the convention at https://no-color.org.
+// NO_COLOR counts however it is set, including empty (https://no-color.org).
 func (m colorMode) palette(w io.Writer) prettycov.Palette {
 	switch m {
 	case colorAlways:

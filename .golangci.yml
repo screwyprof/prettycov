@@ -109,6 +109,15 @@ linters:
       min-occurrences: 2
     gocyclo:
       min-complexity: 10
+    # require-doc is the rule revive's `exported` would have been: the exclusions below suppress
+    # that preset wholesale, so nothing was checking that an exported symbol has a comment at all.
+    # max-len stays off; it wants 77 and this repo wraps at 120.
+    godoclint:
+      enable:
+        - require-doc
+        - require-pkg-doc
+        - require-stdlib-doclink
+        - no-unused-link
     govet:
       enable:
         - shadow

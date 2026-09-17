@@ -1,8 +1,5 @@
-// Package app is the composition root: it builds the parser, hands the command line its
-// dependencies, and turns what a handler returned into a status for the process.
-//
-// It knows nothing about what any command does. The router and the handlers are internal/cli; this
-// decides only what they are wired to and what their errors mean to an exit code.
+// Package app is the composition root: it builds the parser, wires the command line, and turns what
+// a handler returned into a process status. It knows nothing about what any command does.
 package app
 
 import (
@@ -14,18 +11,15 @@ import (
 	"github.com/screwyprof/prettycov/internal/cli"
 )
 
-// Run is the whole command apart from exiting: args excludes the program name, and the int is the
-// status to exit with. Nothing it calls exits — kong.Exit is handed a recorder, so --help and a bad
-// flag return here rather than calling os.Exit themselves.
+// Run is the whole command apart from exiting. Nothing it calls exits: kong.Exit is handed a
+// recorder, so --help and a bad flag return here.
 func Run(args []string, stdout, stderr io.Writer) int {
 	var root cli.CLI
 
 	// Recorded rather than obeyed: --help and --version print and then ask kong to exit.
 	done := -1
 
-	// Must, not New: the only thing that fails here is a malformed CLI struct, which every test run
-	// builds, so a mistake in it cannot reach a user. An error branch would be one no test could
-	// take.
+	// Must, not New: only a malformed CLI struct fails here, and every test run builds one.
 	parser := kong.Must(&root,
 		kong.Name(cli.Name),
 		kong.Description(cli.Description),

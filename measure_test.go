@@ -162,7 +162,7 @@ func TestRenameWantedReadsTheSource(t *testing.T) {
 
 // Measured is derived from the tree rather than stored beside it, so the two cannot disagree. The
 // zero Measurement is the case that proves it matters: it is what Measure returns with an error, and
-// while Measured was a stored field at zero it answered Tree with (nil, true) — a library caller
+// while Measured was a stored field at zero it answered Tree with (nil, true). A library caller
 // switching on that bool nil-dereferenced on any unreadable profile.
 func TestMeasurementOutcomeFollowsTheTree(t *testing.T) {
 	t.Parallel()
@@ -204,7 +204,7 @@ func TestRenameNamesNoPackage(t *testing.T) {
 // Half asks about the values, which is the whole point: a presence check is satisfied by
 // `--old=$(MODULE) --new=.` with MODULE unset, and that renames nothing.
 //
-// Neither side given is not half a rename — it is no rename, which is every run that does not ask
+// Neither side given is not half a rename. It is no rename, which is every run that does not ask
 // for one.
 func TestRenameHalfReadsBothValues(t *testing.T) {
 	t.Parallel()

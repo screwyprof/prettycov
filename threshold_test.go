@@ -11,7 +11,7 @@ import (
 )
 
 // A bar outside 0..100 cannot be built, so AtLeast has no such case to answer: the range is the
-// type's rather than a rule its callers are trusted to keep. NaN is the one worth naming — every
+// type's rather than a rule its callers are trusted to keep. NaN is the one worth naming. Every
 // comparison against it is false, so a gate would pass at any coverage and say nothing about it.
 func TestThresholdRefusesABarThatCannotMeanWhatItSays(t *testing.T) {
 	t.Parallel()

@@ -81,7 +81,7 @@ func ExampleDisplayTree() {
 	//  └ web - 66.67
 }
 
-// A rename shortens the root in every label, and the count says whether it matched anything — which
+// A rename shortens the root in every label, and the count says whether it matched anything, which
 // is the only way to tell "did not rename" from "was not asked to".
 func ExampleShorten() {
 	files, err := prettycov.ParseProfile(writeExampleProfile())
@@ -118,6 +118,34 @@ func ExampleExclude() {
 	// Output:
 	// 2 files kept
 	// _test_helper\.go$ took 4 statements in 1 files
+}
+
+// DisplayMisses prints the uncovered statements as file:line:col, the format `go vet` uses, so the
+// output pipes into an editor's quickfix list. Depth still applies, and the zero value prints
+// nothing. Options.Files does not: a miss is a file position whether or not files are drawn as
+// rows, so the two calls below print the same thing.
+func ExampleDisplayMisses() {
+	got, err := prettycov.Measure(prettycov.Request{Profile: writeExampleProfile()})
+	if err != nil {
+		panic(err)
+	}
+
+	tree, _ := got.Tree()
+
+	for _, opts := range []prettycov.Options{
+		{Depth: prettycov.DepthAll},
+		{Depth: prettycov.DepthAll, Files: true},
+	} {
+		if _, err := prettycov.DisplayMisses(os.Stdout, tree, opts); err != nil {
+			panic(err)
+		}
+	}
+
+	// Output:
+	// example.com/m/pkg/logger/logger.go:14:2: 2 uncovered
+	// example.com/m/web/mock_test_helper.go:30:2: 4 uncovered
+	// example.com/m/pkg/logger/logger.go:14:2: 2 uncovered
+	// example.com/m/web/mock_test_helper.go:30:2: 4 uncovered
 }
 
 // A path is spelled as the report draws it. Get resolves that spelling, including under the module

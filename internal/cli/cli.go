@@ -3,8 +3,8 @@
 //
 // The router and its handlers, in the shape an HTTP service uses. A command reads its flags, asks
 // the domain to measure, and turns what came back into output and a status; it decides no coverage
-// question of its own. Everything user-facing lives here — the domain returns facts and outcomes,
-// never words — which is why this is the one place a flag is named in a sentence.
+// question of its own. Everything user-facing lives here, since the domain returns facts and
+// outcomes and never words. This is the one place a flag is named in a sentence.
 //
 // The composition root is internal/app: it builds the parser and binds these handlers to their
 // dependencies. A depguard rule keeps that direction, so nothing here imports it.
@@ -28,8 +28,13 @@ import (
 type ExitCode int
 
 const (
+	// ExitOK is a run that did what was asked.
 	ExitOK ExitCode = iota
+	// ExitBelow is --fail-under not met: coverage under the bar, or nothing left to measure once
+	// --exclude and the profile are through. Either way a gate was set and the answer was no.
 	ExitBelow
+	// ExitFailed is prettycov not doing what was asked: a bad flag, an unreadable profile, a path
+	// the profile does not hold, a destination that would not take the output.
 	ExitFailed
 )
 
@@ -64,14 +69,8 @@ var (
 	errEmptyTotalPath = errors.New("want a path, or total on its own for the whole tree")
 )
 
-// Measured are the flags that decide what is in the answer. Embedded by the three commands that
-// read a profile, and by nothing else: version answers without one, so it offers none of these.
-//
-// Not at the root. Kong would make them global, which reads as convenience and is really a claim
-// that every command takes them — `version --help` then lists --exclude. They were at the root
-// because a per-command flag written before the command name used to be read as the default
-// command's positional argument, silently; with every command named there is no default to absorb
-// it, and kong answers "unknown flag" instead.
+// Measured are the flags that decide what is in the answer, embedded by the three commands that read
+// a profile. Not at the root: kong would make them global, so `version --help` would list --exclude.
 //
 //nolint:lll // a struct tag is one unit; splitting it hides the declaration.
 type Measured struct {
@@ -82,13 +81,12 @@ type Measured struct {
 	FailUnder *prettycov.Threshold `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
 }
 
-// Validate is kong's per-struct hook, and the only place the rename is judged. Kong's `and:"rename"`
-// group was here and asked the wrong question: it is satisfied once both flags appear, whatever they
-// hold, so `--old=$(MODULE) --new=.` with MODULE unset passed it and then renamed nothing, silently
-// — the one failure the guard exists to prevent.
+// Validate is the only place the rename is judged. Kong's `and:"rename"` asked the wrong question:
+// satisfied once both flags appear, whatever they hold, so `--old=$(MODULE) --new=.` with MODULE
+// unset passed and renamed nothing.
 //
-// Order is load-bearing. `--old=/` with no --new answers both, and naming the root is the more
-// useful sentence: supplying --new would not help.
+// Order matters: `--old=/` with no --new answers both, and naming the root is the more useful
+// sentence.
 func (m *Measured) Validate() error {
 	rename := prettycov.Rename{From: m.Old, To: m.New}
 
@@ -103,8 +101,8 @@ func (m *Measured) Validate() error {
 	return nil
 }
 
-// given names the half that was supplied, which is the flag the reader has to pair rather than the
-// one to fix. Exactly one is non-empty here: Half is what got us in.
+// given names the half that was supplied, which is the flag to pair rather than the one to fix.
+// Exactly one is non-empty: Half is what got us here.
 func given(oldRoot, newRoot string) string {
 	if oldRoot != "" {
 		return fmt.Sprintf("--old=%q", oldRoot)
@@ -122,35 +120,29 @@ type drawn struct {
 	HideCovered *prettycov.Threshold `help:"Leave out subtrees at this percentage or above; bare means 100."                          placeholder:"PCT"    type:"hidecovered"`
 }
 
-// Name and Description are what the program calls itself. Here rather than in the composition root
-// because the description names a command, and a command is this package's.
+// What the program calls itself. Here rather than the composition root: the description names a
+// command, and commands are this package's.
 const (
 	Name        = "prettycov"
 	Description = "Given a coverage profile produced by 'go test', draw the packages and what they cover.\n\n" +
 		"\tgo test -covermode=atomic -coverprofile=coverage.out ./...\n\tprettycov report"
 )
 
-// options is how a row is drawn, for the two commands that draw one.
-//
-// Colour is not among them. It is left at the zero Palette, which is Plain, because only report
-// draws anything a palette reaches — so report carries the flag and resolves it against the
-// destination itself, which is a question argv is too early to ask.
+// options is how a row is drawn. Colour is not among them: only report draws anything a palette
+// reaches, so it carries the flag and resolves it against the destination, a question argv is too
+// early to ask.
 func (d drawn) options() prettycov.Options {
 	return prettycov.Options{Depth: d.Depth, HideCovered: d.HideCovered}
 }
 
-// CLI is the whole command line. Every command is named: there is no default, so `prettycov` alone
-// prints help rather than drawing.
-//
-// That is what makes the four peers. An implicit command has to be reachable without naming it,
-// which means its flags live at the root — where the help does not list them and a bare word is
-// ambiguous between a command and a file. Naming it costs one word and deletes all of that.
+// CLI is the whole command line. Every command is named, so `prettycov` alone prints help. An
+// implicit one would need its flags at the root, where help does not list them and a bare word is
+// ambiguous between a command and a file.
 //
 //nolint:lll // a struct tag is one unit.
 type CLI struct {
-	// Two spellings of one request. The flag takes the field name and the command says its own in a
-	// tag: Go will not let both be Version, and naming one of them around that is a workaround
-	// wearing a name.
+	// Two spellings of one request: Go will not let both fields be Version, so the command names
+	// itself in a tag.
 	Version kong.VersionFlag `short:"v" help:"Print the version and exit."`
 
 	Report       reportCmd  `cmd:"" help:"Draw the packages and what they cover, one row each."`
@@ -183,15 +175,14 @@ type totalCmd struct {
 
 type versionCmd struct{}
 
-// Streams is where a handler writes, bound by the composition root so nothing reaches os.Stdout
+// Streams is where a handler writes, bound by the composition root so nothing reaches [os.Stdout]
 // directly.
 type Streams struct {
 	Out, Err io.Writer
 }
 
 // measure is every command's first move: settle the flags, then read the profile through them. The
-// gate comes back with the tree because the same bar grades what was measured and refuses what was
-// not — treeOf already needs it to tell "empty report" from "empty report under --fail-under".
+// gate comes back too, since the same bar grades what was measured and refuses what was not.
 func (m *Measured) measure(s Streams) (*prettycov.PathTree, gate, error) {
 	req, err := m.request()
 	if err != nil {
@@ -214,8 +205,6 @@ func (c *reportCmd) Run(s *Streams) error {
 	opts := c.options()
 	opts.Files, opts.Counts, opts.Color = c.Files, c.Counts, c.Color.palette(s.Out)
 
-	// S2: inlined, because render had one caller and its three-argument shape was the interface
-	// that used to need it.
 	shown, err := prettycov.DisplayTree(s.Out, tree, opts)
 	if err != nil {
 		return cannotWrite(err, *s)
@@ -239,9 +228,8 @@ func (c *missesCmd) Run(s *Streams) error {
 		return cannotWrite(err, *s)
 	}
 
-	// Two messages where the tree has one: only a list can stop short of what is behind it. A tree
-	// carries its subtree's count on every row, so a shallow one is a summary rather than a
-	// fragment, where a short list reads as a clean bill.
+	// Two messages where the tree has one: a shallow tree carries its subtree's count on every row
+	// and reads as a summary, where a short list reads as a clean bill.
 	switch {
 	case shown == 0:
 		c.sayNothingShown(tree, *s)
@@ -253,9 +241,8 @@ func (c *missesCmd) Run(s *Streams) error {
 	return g.grade(tree, *s)
 }
 
-// Run refuses an empty path before reading anything. `total "$PKG"` with PKG unset would otherwise
-// grade the whole tree, and a tree passing a gate the package would have failed is the one way this
-// command can be silently wrong in CI.
+// Run refuses an empty path before reading anything: `total "$PKG"` with PKG unset would otherwise
+// grade the whole tree and pass a gate the package would have failed.
 func (c *totalCmd) Run(s *Streams) error {
 	want := ""
 	if c.Node != nil {
@@ -279,8 +266,8 @@ func (c *versionCmd) Run(s *Streams, vars kong.Vars) error {
 	return nil
 }
 
-// request is what the domain measures. The only thing settled here is the patterns: everything else
-// is already the parsed type, because every flag reads itself at the boundary.
+// request is what the domain measures. Only the patterns are settled here; every other flag is
+// already its parsed type, read at the boundary.
 func (m *Measured) request() (prettycov.Request, error) {
 	req := prettycov.Request{Profile: m.Profile, Rename: prettycov.Rename{From: m.Old, To: m.New}}
 
@@ -297,13 +284,13 @@ func (m *Measured) request() (prettycov.Request, error) {
 }
 
 // OptionalPercentage is --hide-covered, the one flag whose value may be left off. Kong has no
-// NoOptDefVal, so it is a mapper: Decode takes a value only when "=" supplied one, which is the
-// same shape kong's own boolMapper uses. `--hide-covered 90` is not the bare form with a number
-// after it, it is the bare form and a stray argument — as it is under cobra's NoOptDefVal too.
+// NoOptDefVal, so Decode takes a value only when "=" supplied one, the shape kong's own boolMapper
+// uses. `--hide-covered 90` is the bare form and a stray argument, as under cobra too.
 //
-// Named rather than registered for *float64, which --fail-under also is and which has no bare form.
+// Named rather than registered for *float64, which --fail-under also is and has no bare form.
 type OptionalPercentage struct{}
 
+// Decode reads the flag's value, or supplies 100 when "=" gave none.
 func (OptionalPercentage) Decode(ctx *kong.DecodeContext, target reflect.Value) error {
 	// 100 is what --hide-covered means with nothing after it: hide what is fully covered, where
 	// absence means "nothing to do here".

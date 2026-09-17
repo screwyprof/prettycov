@@ -53,7 +53,7 @@ func TestRunExitCodes(t *testing.T) {
 	}{
 		{
 			// No command is someone finding out what this does. kong would answer "expected one of",
-			// and the help says that and more — so args is replaced and kong exits through the
+			// and the help says that and more, so args is replaced and kong exits through the
 			// recorder, which is the only way `done` is ever set.
 			name: "no arguments print the help and succeed",
 			args: nil, wantCode: codeOK, wantOut: "Usage: prettycov <command>",
@@ -76,7 +76,7 @@ func TestRunExitCodes(t *testing.T) {
 			args: []string{"report"}, profile: true, wantCode: codeOK, wantOut: "50.00",
 		},
 		{
-			// status of an error carrying its own code — the handler already printed, so app must
+			// status of an error carrying its own code. The handler already printed, so app must
 			// return the code and add nothing. Exit 1, not 2: coverage was measured and was low.
 			name:    "a gate the coverage misses is exit 1",
 			args:    []string{"report", "--fail-under", "99"},
@@ -114,12 +114,12 @@ func TestRunExitCodes(t *testing.T) {
 
 // The version is the linker's when it was given one and the build's otherwise, and either way it is
 // one line on stdout. Pinned because `go install prettycov@v1.2.3` passes no ldflags, so the
-// fallback is the path most installed copies take — under `go test` that is "(devel)", which the
+// fallback is the path most installed copies take. Under `go test` that is "(devel)", which the
 // toolchain writes for a main module with no version.
 //
 // Trimmed before the assertion, and that is the whole point of it: asserting the buffer is
-// non-empty passes on a lone newline, so negating buildVersion's `version != ""` — which makes it
-// return the empty linker variable — printed nothing and survived as a mutant.
+// non-empty passes on a lone newline, so negating buildVersion's `version != ""`, which makes it
+// return the empty linker variable, printed nothing and survived as a mutant.
 func TestRunVersionIsPrinted(t *testing.T) {
 	t.Parallel()
 

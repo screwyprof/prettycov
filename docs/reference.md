@@ -6,9 +6,9 @@ built, and why the output is shaped the way it is.
 ## Reading the report
 
 
-**Directories that hold nothing but one another are drawn as a single row.** `github.com` holds only
+Directories that hold nothing but one another are drawn as a single row. `github.com` holds only
 `screwyprof`, which holds only `delegator`: three directories, one path through them, no choice to
-make at any step. Drawn one per level, the default report would be this —
+make at any step. Drawn one per level, the default report would be this:
 
 ```
  github.com - 91.54
@@ -17,7 +17,7 @@ make at any step. Drawn one per level, the default report would be this —
      └ …
 ```
 
-— three rows carrying the same number, and `--depth=1` would stop before reaching a package. What
+Three rows carrying the same number, and `--depth=1` would stop before reaching a package. What
 you get instead:
 
 ```shell
@@ -29,17 +29,17 @@ you get instead:
 ```
 
 The first block is an illustration; every block with a `❯` on this page is output from a real run.
-That collapsed chain is what the rest of this page calls the *root* — what `--old` renames, and what
+That collapsed chain is what the rest of this page calls the *root*: what `--old` renames, and what
 `total` puts back in front of a path you copied off a row.
 
-**The profile's files are the tree's leaves**, so every row is the sum of what is drawn beneath it —
+The profile's files are the tree's leaves, so every row is the sum of what is drawn beneath it.
 `scraper`'s 150 statements are `config/config.go`'s 1, `service.go`'s 65, `store`'s 51 and
 `subscriber.go`'s 33. That is what makes a report with `--counts` addable. Without `--files` those
 leaves simply are not drawn, so a package holding both files and subpackages shows a total larger
 than its visible children; `du` behaves the same way, and `du -a` is its `--files`. A file costs a
 `--depth` level exactly as a subpackage does, being one of a directory's entries.
 
-**A package whose whole content is one file is one row**, named for both: `tzkt/client.go` rather
+A package whose whole content is one file is one row, named for both: `tzkt/client.go` rather
 than `tzkt` above an identical `client.go`. That row is the package's, so it costs the one level
 the package did and not a second for the file. A row's label is a property of the node, so raising
 `--depth` adds rows below rather than renaming the ones already drawn.
@@ -67,7 +67,8 @@ left is what there is still work in. On delegator at `--depth=max` that is 18 ro
 ```
 
 It pays where a remaining gap is hardest to find and does nothing where gaps are everywhere: across
-two repositories at `--depth=max --files`, gin has 42 of 54 rows fully covered and dive has 1 of 100.
+two repositories at `--depth=max --files`, gin has 42 of 54 rows fully covered and dive has 1 of
+100.
 
 `--hide-covered=90` moves the bar. A subtree goes when every row *drawn* beneath it is at the bar or
 above, which makes it a conjunction with `--depth` and `--files`: a row those already cut cannot be
@@ -84,7 +85,7 @@ the reason its parent stays, and a collapsed run costs one level here because it
    └ handler - 87.23
 ```
 
-Raising the depth brings a branch back the moment there is something under it worth reading —
+Raising the depth brings a branch back the moment there is something under it worth reading,
 `logger` returns at `--depth=3`, because the `logger.go` at 86.67 that justifies it is only a row
 there:
 
@@ -112,7 +113,7 @@ not a number in range is refused rather than guessed at. Leave the flag off to t
 threshold needs `=`, because a bare `--hide-covered` already means 100 and `--hide-covered 90` is
 that plus a stray argument.
 
-Like `--depth` and `--files`, it shapes the report and never the measurement — `total` and
+Like `--depth` and `--files`, it shapes the report and never the measurement. `total` and
 `--fail-under` read the same with it as without. That is what separates it from `--exclude`, which
 takes files out before anything is totalled.
 
@@ -127,18 +128,18 @@ COVERAGE := $(shell prettycov total)                                           #
 ```
 
 It changes how the report is printed, not what gets measured, so every flag that changes the
-measurement still applies — `--exclude` moves it just as it moves the tree, and `--fail-under` still
+measurement still applies. `--exclude` moves it just as it moves the tree, and `--fail-under` still
 grades it. Flags that only decorate the tree, like `--counts`, go with the glyphs. Filter accounting
 goes to stderr, so `$(shell prettycov total)` stays clean.
 
 Two decimals, rendered by the same code as the tree, so a summary line and the report it summarises
-cannot round differently. (The figure is the whole profile's total, which is the tree's root — with
+cannot round differently. (The figure is the whole profile's total, which is the tree's root. With
 a profile spanning two top-level paths it is the union of both, and so appears in no single row.)
 
-The printed figure is rounded while `--fail-under` compares the exact ratio, so do not build a second
-gate by comparing this number to a threshold. It goes wrong both ways: 79.999% prints as `80.00` on
-a run `--fail-under=80` fails, and 99.9996% prints as `99.99` on one `--fail-under=99.995` passes. Use
-`--fail-under`.
+The printed figure is rounded while `--fail-under` compares the exact ratio, so do not build a
+second gate by comparing this number to a threshold. It goes wrong both ways: 79.999% prints as
+`80.00` on a run `--fail-under=80` fails, and 99.9996% prints as `99.99` on one
+`--fail-under=99.995` passes. Use `--fail-under`.
 
 One deliberate difference from `go tool cover`: **`100.00` is never rounded up to.** 73999 of 74000
 statements reads as `99.99` here, where `go tool cover -func` rounds at one decimal and reports
@@ -146,12 +147,12 @@ statements reads as `99.99` here, where `go tool cover -func` rounds at one deci
 test, so it is only printed when every statement is covered. Everything else rounds to nearest.
 
 A profile with nothing to cover has no total, so it exits 2 with a message rather than printing
-`n/a` or `0.00` into your variable — unless `--fail-under` was given, in which case that reports the
+`n/a` or `0.00` into your variable, unless `--fail-under` was given, in which case that reports the
 shortfall and exits 1 instead.
 
 ### One package's number, or one file's
 
-`total` on its own reports the whole tree. Given a path it reports that node — the number the
+`total` on its own reports the whole tree. Given a path it reports that node, the number the
 report already draws, which nothing else could hand back:
 
 ```shell
@@ -174,7 +175,7 @@ report already draws, which nothing else could hand back:
 
 The path is spelled as the report prints it. A row is drawn with its own segment only, so what you
 read off one is `pkg/logger` where the profile holds
-`github.com/screwyprof/delegator/pkg/logger` — and both work: the module root the report collapsed
+`github.com/screwyprof/delegator/pkg/logger`, and both work: the module root the report collapsed
 away is put back for you when the bare path is not there itself. A row that
 `--files` merges into one label (`main.go` for a file the profile gave no directory) answers to that
 label as well as to its full path. `total ""` is refused rather than read as the whole tree, so an
@@ -183,12 +184,12 @@ unset `total "$PKG"` fails instead of quietly gating the repository. That is the
 row, then ask for its number. A path the profile does not hold is exit 2 rather than `0.00`, which a
 script would read as a real and terrible figure.
 
-Being a positional argument, it takes any path a profile can hold — including a package named `t`,
+Being a positional argument, it takes any path a profile can hold, including a package named `t`,
 `true` or `1`, which as a flag value would have had to be told apart from a boolean first.
 
-Because it is one argument with one value, "two packages at once" is not expressible — which is the
-point, since the output is a single number. It composes with `--fail-under`, and the number graded is
-the number printed:
+Because it is one argument with one value, "two packages at once" is not expressible, which is the
+point, since the output is a single number. It composes with `--fail-under`, and the number graded
+is the number printed:
 
 ```shell
 ❯ prettycov total scraper/store --fail-under=85
@@ -197,13 +198,14 @@ total coverage 74.51% is below 85.00%      # exit 1
 ```
 
 That gates one package without building a second profile. `--depth`, `--files`, `--counts` and
-`--hide-covered` are not `total`'s to take: there is no report being drawn, only a number being read.
+`--hide-covered` are not `total`'s to take: there is no report being drawn, only a number being
+read.
 
 ## Where the uncovered statements are
 
 
 A percentage says how much is untested; `misses` says where. One line per run of statements the
-tests never reached, as `file:line:col: N uncovered` — the shape `go vet` prints and an editor's
+tests never reached, as `file:line:col: N uncovered`, the shape `go vet` prints and an editor's
 error format parses, so it pipes straight into `vim -q -` or `reviewdog`:
 
 ```shell
@@ -247,26 +249,26 @@ standards](https://www.gnu.org/prep/standards/html_node/Errors.html) give for a 
 column, and it is the one `go vet`, `gcc` and `golangci-lint` all emit.
 
 The count is not decoration. Without a message after the position, that error format cannot match
-and falls back to `file:line:message`, reading the column as the text — so `a.go:62:2` opens line 62
+and falls back to `file:line:message`, reading the column as the text, so `a.go:62:2` opens line 62
 at column 1 and the column is lost. Vim's default
 [`errorformat`](https://vimhelp.org/quickfix.txt.html#errorformat) tries `%f:%l:%c:%m` before
 `%f:%l:%m`, and Emacs' `gnu` rule in
-[`compile.el`](https://github.com/emacs-mirror/emacs/blob/master/lisp/progmodes/compile.el) wants the
-same trailing colon, so both need it. It is also the number a position cannot carry: one untaken
+[`compile.el`](https://github.com/emacs-mirror/emacs/blob/master/lisp/progmodes/compile.el) wants
+the same trailing colon, so both need it. It is also the number a position cannot carry: one untaken
 branch and a whole untested function look alike until you see it.
 
-The column is a byte offset, counting a tab as one —
+The column is a byte offset, counting a tab as one.
 [`go/token.Position.Column`](https://pkg.go.dev/go/token#Position) is documented that way, `go vet`
-[prints it unchanged](https://cs.opensource.google/go/x/tools/+/master:internal/analysis/driverutil/print.go),
-and golangci-lint
-[indexes the line by byte](https://github.com/golangci/golangci-lint/blob/main/pkg/printers/text.go)
-to place its own `^`. prettycov passes through what `cmd/cover` recorded, so it agrees with those.
-The GNU text says to count display width instead, with tab stops every 8, which is what Emacs
-assumes:
+[prints it
+unchanged](https://cs.opensource.google/go/x/tools/+/master:internal/analysis/driverutil/print.go),
+and golangci-lint [indexes the line by
+byte](https://github.com/golangci/golangci-lint/blob/main/pkg/printers/text.go) to place its own
+`^`. prettycov passes through what `cmd/cover` recorded, so it agrees with those. The GNU text says
+to count display width instead, with tab stops every 8, which is what Emacs assumes:
 [`compilation-error-screen-columns`](https://www.gnu.org/software/emacs/manual/html_node/emacs/Compilation-Mode.html)
-defaults to `t`. On gofmt'd source — tab-indented, so nearly every line — that puts the cursor inside
-the leading tabs. Setting it to `nil` reads the column as Go writes it, and fixes `go vet` and
-golangci-lint output in the same stroke.
+defaults to `t`. On gofmt'd source, which is tab-indented, that puts the cursor inside the leading
+tabs. Setting it to `nil` reads the column as Go writes it, and fixes `go vet` and golangci-lint
+output in the same stroke.
 
 Editors that hyperlink terminal output rather than parse an error format are looser: VS Code's
 [`terminalLinkParsing.ts`](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/terminalContrib/links/browser/terminalLinkParsing.ts)
@@ -276,23 +278,23 @@ It replaces the report rather than decorating it: the tree is the summary, these
 The path comes from the profile, which names Go packages rather than files on disk, so `--new=.`
 strips the module prefix and leaves something an editor can open.
 
-Blocks that abut fold into one entry — `cmd/cover` emits one per branch, so a function nothing covers
+Blocks that abut fold into one entry. `cmd/cover` emits one per branch, so a function nothing covers
 arrives as a dozen of them. That halves the list on a badly covered profile and changes almost
 nothing on a good one, where misses are scattered single statements. A covered block between two
 uncovered ones stops the fold, or the entry would claim a statement the tests do reach.
 
 `--depth` and `--hide-covered` narrow it as they narrow the tree under `--files`, being the same
 filtering with that one option set for you: a file is an entry of the package holding it, so it sits
-one level below that package — the default `--depth=1` gives 8 of the 32 entries a full
-listing has, and `--depth=max` gives all of them. `--hide-covered=90` leaves out the ones in subtrees already at the
-bar. Against the *default* tree the two part company, since asking for files is also what merges a
-package holding one into a single row: `misses --depth=2` reaches a file that `report --depth=2` alone
-stops one row above.
+one level below that package. The default `--depth=1` gives 8 of the 32 entries a full listing has,
+and `--depth=max` gives all of them. `--hide-covered=90` leaves out the ones in subtrees already at
+the bar. Against the *default* tree the two part company, since asking for files is also what merges
+a package holding one into a single row: `misses --depth=2` reaches a file that `report --depth=2`
+alone stops one row above.
 
-That level is worth counting before reaching for `--depth`. `--new=.` above leaves packages at the top
-level and their files one below, which the default draws; without a rename the module path is a top
-row of its own and everything moves down one, so `prettycov misses` alone lists only the files in
-your module root.
+That level is worth counting before reaching for `--depth`. `--new=.` above leaves packages at the
+top level and their files one below, which the default draws; without a rename the module path is a
+top row of its own and everything moves down one, so `prettycov misses` alone lists only the files
+in your module root.
 
 You are told when that happens, because a short list and a whole one look alike:
 
@@ -304,7 +306,7 @@ pkg/httpkit/httpkit.go:62:2: 1 uncovered
 ```
 
 A tree carries its subtree's count on every row, so a shallow one is a summary and says so. A list
-has no such row, and eight positions read the same whether they are all of them or a quarter —
+has no such row, and eight positions read the same whether they are all of them or a quarter,
 which matters most where it is piped, since a quickfix list that stops early looks like one you have
 finished. The count is on stderr, so the pipe is unaffected. An empty list names the filters the
 same way, rather than guessing which of them did it: `nothing to show at --depth=1; 34 uncovered
@@ -313,13 +315,13 @@ statements left`.
 `misses` has no `--files`: it adds files to the *tree's* output, and a list of positions is made of
 them either way. Passing it is exit 2, like any other flag a command does not take.
 
-`--exclude` removes them outright, since it acts on the profile before any of this — and it takes the
+`--exclude` removes them outright, since it acts on the profile before any of this, and it takes the
 same `file:line:col` spelling, so a position you judge unreachable pastes back as a pattern. It
 matches the paths the profile holds, so paste the position as printed when you are not renaming, and
 the profile's own path when you are.
 
-**Anchor it with `$`.** Patterns are unanchored, so the column is a prefix like the line is:
-`a\.go:9:2` also matches `a\.go:9:24`, which is an ordinary second block on the same line — `if err
+Anchor it with `$`. Patterns are unanchored, so the column is a prefix like the line is:
+`a\.go:9:2` also matches `a\.go:9:24`, which is an ordinary second block on the same line. `if err
 != nil {` at column 2 and a closure at column 24. Pasting the position bare drops both, and the
 denominator moves with them:
 
@@ -335,19 +337,19 @@ denominator moves with them:
 ```
 
 Four of the five statements left the denominator on the first pattern, and 100.00 is not a coverage
-figure — it is what remains after a pattern took more than was meant. Anchoring is what makes the
+figure. It is what remains after a pattern took more than was meant. Anchoring is what makes the
 round trip exact.
 
 What it matches is the block that opens there, not the whole region. A position is the *first* block
 of a fold while the count beside it is the region's, so excluding one that reads `2 uncovered` takes
-one statement out and leaves the next block listed at its own position — repeat until the region is
-gone, or aim a pattern at the file. `--exclude` works in blocks, which is what makes a coordinate mean
-one thing.
+one statement out and leaves the next block listed at its own position. Repeat until the region is
+gone, or aim a pattern at the file. `--exclude` works in blocks, which is what makes a coordinate
+mean one thing.
 
 ## Stop counting code you never meant to test
 
 
-`--exclude` drops files whose path matches a regexp, before anything is totalled — generated code,
+`--exclude` drops files whose path matches a regexp, before anything is totalled: generated code,
 mocks, a migrator you never intended to cover. Patterns are unanchored and match the full path, so a
 short one reaches the whole tree. The flag is repeatable, and each pattern reports what it took out,
 including nothing, which is how you spot a typo:
@@ -374,20 +376,20 @@ statement stops being counted without dropping the file it lives in:
  └ web - 93.94  8/132 uncovered
 ```
 
-The position is the block's start, which `cmd/cover` opens just after the brace — `if !ok {` on line
-32 owns the `return` on line 33 — so read it from the profile rather than off the source. The column
-is optional, and only tells two blocks opening on one line apart.
+The position is the block's start, which `cmd/cover` opens just after the brace, so `if !ok {` on
+line 32 owns the `return` on line 33. Read it from the profile rather than off the source. The
+column is optional, and only tells two blocks opening on one line apart.
 
 Patterns are unanchored here as everywhere, so a bare line number is a prefix: `a\.go:3` reaches
-lines 3, 30, and 300. Anchor it when you mean one line — `a\.go:3$`, or `a\.go:3:2$` to pin the
+lines 3, 30, and 300. Anchor it when you mean one line: `a\.go:3$`, or `a\.go:3:2$` to pin the
 column too.
 
 The accounting goes to stderr, so the report itself stays pipeable. It filters the report, not the
 profile on disk: `go tool cover -html` and anything else reading the file still sees everything in
 it, and changing your mind costs a re-render rather than a re-run.
 
-Excluding here gives the same total as narrowing `-coverpkg` — one package's coverage never enters
-another's ratio — and leaves `-coverpkg` a single pattern, rather than a `go list | grep -v` package
+Excluding here gives the same total as narrowing `-coverpkg`, since one package's coverage never
+enters another's ratio, and it leaves `-coverpkg` a single pattern rather than a `go list | grep -v`
 list that can drift from the build it feeds:
 
 ```make
@@ -403,14 +405,15 @@ coverage:
 
 Percentages are graded red, yellow and green using only the base ANSI colours, so your own terminal
 theme decides the shades. Colour is on when writing to a terminal and off when piped, honouring
-[`NO_COLOR`](https://no-color.org) and `TERM=dumb`. Override with `--color=always` or `--color=never`.
+[`NO_COLOR`](https://no-color.org) and `TERM=dumb`. Override with `--color=always` or
+`--color=never`.
 
 ## What a percentage does not tell you
 
 Coverage is a weak predictor of whether a suite catches bugs once suite size is controlled for
-([Inozemtseva & Holmes, ICSE 2014](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf));
-what predicts it is how much the tests assert, which no profile can see. Treat `--fail-under` as a
-floor, not a goal.
+([Inozemtseva & Holmes, ICSE
+2014](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf)); what predicts it is how
+much the tests assert, which no profile can see. Treat `--fail-under` as a floor, not a goal.
 
 ## How it works
 
@@ -420,5 +423,5 @@ everything below it. It then draws the top row plus `--depth` levels beneath it,
 directories that each hold nothing but the next one into a single row, and drawing the file leaves
 only when `--files` asks for them.
 
-It reads the profile and nothing else — no source tree, no `go.mod`, no git — so it works on a CI
-artefact, a colleague's file, or a repository you do not have checked out.
+It reads the profile and nothing else. There is no source tree to find and no `go.mod` to parse, so
+it works on a CI artefact, a colleague's file, or a repository you do not have checked out.

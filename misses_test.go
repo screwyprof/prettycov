@@ -37,7 +37,7 @@ func covered(line, col, endLine, statements int) prettycov.Block {
 
 // uncovered builds one unrun block the way cmd/cover writes it: a start position, an end line, and
 // the statements between them. Distinct from exclude_test.go's block, which takes a covered count
-// and no end — that one predates Misses needing to know where a block stops.
+// and no end, that one predates Misses needing to know where a block stops.
 func uncovered(line, col, endLine, statements int) prettycov.Block {
 	return prettycov.Block{
 		Line: line, Col: col, EndLine: endLine,
@@ -46,7 +46,7 @@ func uncovered(line, col, endLine, statements int) prettycov.Block {
 }
 
 // Blocks that abut fold into one region, and the fold is decided by where the last one ended rather
-// than where it began — a block running 44 to 51 reaches one opening on 52.
+// than where it began. A block running 44 to 51 reaches one opening on 52.
 func TestMissesMergesAbuttingBlocks(t *testing.T) {
 	t.Parallel()
 
@@ -67,7 +67,7 @@ func TestMissesMergesAbuttingBlocks(t *testing.T) {
 }
 
 // A covered block is not a miss either, and it does not join the regions on either side of it. The
-// blocks abut, so only the covered one between them keeps this two regions — a gap would have done
+// blocks abut, so only the covered one between them keeps this two regions. A gap would have done
 // it on its own and tested nothing.
 //
 // delegator's pgxstore/store.go is this shape: 44.35,46.3 unrun, 47.2,47.16 run, 47.16,49.3 unrun.
@@ -94,8 +94,8 @@ func TestMissesLeavesCoveredBlocksOut(t *testing.T) {
 	}, got, "the covered block between them is not a bridge")
 }
 
-// Block is exported and EndLine is new, so a caller assembling its own FileCoverage — the
-// documented way to use Exclude — leaves it zero. A region ending before it starts is the one field
+// Block is exported and EndLine is new, so a caller assembling its own FileCoverage, the
+// documented way to use Exclude leaves it zero. A region ending before it starts is the one field
 // a range consumer reads, and GitHub rejects an annotation with end_line below start_line outright.
 // Folding died for such a caller too: nothing starts at or before line 1.
 func TestMissesFloorTheEndAtTheBlocksOwnLine(t *testing.T) {
@@ -118,8 +118,8 @@ func TestMissesFloorTheEndAtTheBlocksOwnLine(t *testing.T) {
 }
 
 // A block cmd/cover declares with no statements is neither covered nor unrun, so it does not
-// separate the regions on either side of it. It emits one per case expression of a type switch —
-// delegator has nine, at subscriber.go:76-83 — and they land exactly where an untested switch's
+// separate the regions on either side of it. It emits one per case expression of a type switch.
+// delegator has nine, at subscriber.go:76-83, and they land exactly where an untested switch's
 // misses abut, so reading them as covered takes that switch's regions apart.
 func TestMissesFoldAcrossABlockWithNoStatements(t *testing.T) {
 	t.Parallel()
@@ -144,7 +144,7 @@ func TestMissesFoldAcrossABlockWithNoStatements(t *testing.T) {
 
 // cover bounds no line number, so a profile can name one that leaves no room to add to. Asking
 // whether the next block starts at or before the end, rather than whether the end plus one reaches
-// it, is the same test without the wrap — which turned every later block into a region nested
+// it, is the same test without the wrap, which turned every later block into a region nested
 // inside the first.
 func TestMissesFoldPastTheLargestLineNumber(t *testing.T) {
 	t.Parallel()
@@ -167,7 +167,7 @@ func TestMissesFoldPastTheLargestLineNumber(t *testing.T) {
 }
 
 // A covered block inside an open region does not close it. The region came from a single block
-// spanning its whole range, so it already holds that covered statement — closing here would leave
+// spanning its whole range, so it already holds that covered statement. Closing here would leave
 // the next block to open a second region nested in the first, and Misses only sorts, so nothing
 // downstream unpicks that. Nesting is the fault; sharing the line between two regions is not, and
 // TestMissesShareTheLineBetweenTwoRegions has the case cmd/cover actually emits.
@@ -204,8 +204,8 @@ func TestMissesShareTheLineBetweenTwoRegions(t *testing.T) {
 		File:     "m/o.go",
 		Coverage: prettycov.CoverageStats{Covered: 1, Uncovered: 4},
 		Blocks: []prettycov.Block{
-			uncovered(4, 7, 7, 2),   // 4.7,7.3   — ends on the line the next opens
-			covered(7, 8, 7, 1),     // 7.8,7.14  — the else-if condition, run
+			uncovered(4, 7, 7, 2),   // 4.7,7.3: ends on the line the next opens
+			covered(7, 8, 7, 1),     // 7.8,7.14: the else-if condition, run
 			uncovered(7, 14, 10, 2), // 7.14,10.3
 		},
 	}})
@@ -257,7 +257,7 @@ func TestMissesFollowTheDepth(t *testing.T) {
 		return missPaths(prettycov.Misses(tree, missOpts(d)))
 	}
 
-	// A file is an entry of the package holding it, so it sits one level below that package — the
+	// A file is an entry of the package holding it, so it sits one level below that package. The
 	// same level --files gives it, since that is the mode this always runs in.
 	assert.Empty(t, paths(0), "the top row alone, and a file is a level below one")
 	assert.Equal(t, []string{"m/own.go"}, paths(1))
@@ -267,7 +267,7 @@ func TestMissesFollowTheDepth(t *testing.T) {
 	assert.Equal(t, []string{"m/deep/a.go", "m/deep/deeper/b.go", "m/own.go"}, paths(prettycov.DepthAll))
 }
 
-// --hide-covered leaves out subtrees already at the bar, so it leaves out their misses too — which is
+// --hide-covered leaves out subtrees already at the bar, so it leaves out their misses too, which is
 // the point of it: do not show me work in what is already done.
 func TestMissesFollowHideCovered(t *testing.T) {
 	t.Parallel()
@@ -298,7 +298,7 @@ func TestMissesFollowHideCovered(t *testing.T) {
 // A file already at the bar has no misses worth listing, even when the package holding it is below
 // the bar and so is visited. delegator's logger/ is 96.88 over a logger.go at 86.67 and a
 // middleware.go at 98.77: at --hide-covered=90 the tree draws logger.go alone, and the misses have to
-// agree — listing middleware.go's one uncovered statement contradicts the report beside it.
+// agree: listing middleware.go's one uncovered statement contradicts the report beside it.
 //
 // The bar is asked of each file, not only of the package holding it.
 func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
@@ -329,7 +329,7 @@ func TestMissesSkipFilesAlreadyAtTheBar(t *testing.T) {
 	assert.Equal(t, []string{"m/logger/logger.go"}, missPaths(prettycov.Misses(tree, opts)))
 }
 
-// A package holding one file merges into a single row, and that row is the file — so the node the
+// A package holding one file merges into a single row, and that row is the file, so the node the
 // traversal hands over has the blocks on it rather than in a Files map below it. Emitting only what
 // a node's Files hold lost those: delegator's `store/pgxstore/store.go` is drawn at 75.47 and its
 // misses went unlisted, which contradicts the row beside them.
@@ -415,7 +415,7 @@ func TestMissesKeepAZeroWidthJoiner(t *testing.T) {
 
 // `file:line:col: message`, as go vet prints it. The message is not decoration: without one an
 // editor's error format cannot match and falls back to file:line:message, reading the column as the
-// text — `a.go:9:2` opens line 9 at column 1 and the column is lost.
+// text: `a.go:9:2` opens line 9 at column 1 and the column is lost.
 // displayMisses is DisplayMisses where the destination cannot fail, which is every test writing to
 // a bytes.Buffer. The error is the writer's, and a buffer has none.
 func displayMisses(t *testing.T, w io.Writer, tree *prettycov.PathTree, opts prettycov.Options) int {

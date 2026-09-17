@@ -18,7 +18,8 @@ const DepthAll Depth = math.MaxUint
 const depthMax = "max"
 
 var (
-	// ErrBadDepth is a depth that is neither a number of levels nor "max".
+	// ErrBadDepth is a depth that will not parse. A negative one lands here rather than in the
+	// range error below: ParseUint reads "-1" as bad syntax, not as out of range.
 	ErrBadDepth = errors.New(`want a number of levels, or "` + depthMax + `"`)
 	// ErrDepthTooLarge is a number too large to be a depth. Separate from ErrBadDepth because it
 	// says what to type: a number that big was reaching for the whole tree.
@@ -59,12 +60,12 @@ func ParseDepth(s string) (Depth, error) {
 
 // Kong finds UnmarshalText by reflection, so nothing refers to it by name and a rename compiles:
 // --depth=max would quietly fall back to kong's uint64 parser and be refused. The assertion makes
-// that a build failure — as it does for Threshold and colorMode, which are found the same way.
+// that a build failure, as it does for Threshold and colorMode, which are found the same way.
 var _ encoding.TextUnmarshaler = (*Depth)(nil)
 
 // UnmarshalText parses a depth, so a Depth exists only because ParseDepth accepted it. Flag and
-// config libraries find this through encoding.TextUnmarshaler, which is what lets a caller hold the
-// parsed type rather than a string it has to remember to parse later.
+// config libraries find this through [encoding.TextUnmarshaler], which is what lets a caller hold
+// the parsed type rather than a string it has to remember to parse later.
 func (d *Depth) UnmarshalText(text []byte) error {
 	parsed, err := ParseDepth(string(text))
 	if err != nil {

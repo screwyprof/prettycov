@@ -3,12 +3,11 @@
 //	go test -covermode=atomic -coverprofile=coverage.out ./...
 //	prettycov report
 //
-// Exits 0, 1 when --fail-under was not met, and 2 when it could not do what was asked — distinct,
-// so a CI step can tell a coverage drop from a broken invocation. `prettycov --help` lists the
-// commands; README.md is the tour and docs/reference.md the detail.
+// Exits 0, 1 when --fail-under was not met, and 2 when it could not do what was asked, so a CI step
+// can tell a coverage drop from a broken invocation.
 //
-// Nothing but the exit lives here: internal/app builds the parser and internal/cli holds the
-// commands, so both are testable without a process.
+// Nothing but the exit lives here: internal/app builds the parser, internal/cli holds the commands,
+// and both are testable without a process.
 package main
 
 import (

@@ -1,13 +1,12 @@
 # Prettycov
 [![codecov](https://codecov.io/gh/screwyprof/prettycov/graph/badge.svg)](https://codecov.io/gh/screwyprof/prettycov) [![Go](https://github.com/screwyprof/prettycov/actions/workflows/go.yml/badge.svg)](https://github.com/screwyprof/prettycov/actions/workflows/go.yml) [![Vulnerabilities](https://github.com/screwyprof/prettycov/actions/workflows/vulns.yml/badge.svg)](https://github.com/screwyprof/prettycov/actions/workflows/vulns.yml) [![Release](https://img.shields.io/github/v/release/screwyprof/prettycov)](https://github.com/screwyprof/prettycov/releases/latest) [![Go Reference](https://pkg.go.dev/badge/github.com/screwyprof/prettycov.svg)](https://pkg.go.dev/github.com/screwyprof/prettycov) [![License](https://img.shields.io/github/license/screwyprof/prettycov)](LICENSE)
 
-**Go coverage as a tree, with a total on every row.**
+Go coverage as a tree, with a total on every row.
 
-`go tool cover -func` gives you one line per function and a single number at the bottom. What it
-cannot give you is a total per package, or across packages at all
-([golang/go#66506](https://github.com/golang/go/issues/66506)) — so "how covered is `scraper`?" has
-no answer, and on a real repository the per-function output is hundreds of lines you have to add up
-yourself.
+`go tool cover -func` gives you one line per function and a single number at the bottom. It gives no
+total per package, and none across packages at all
+([golang/go#66506](https://github.com/golang/go/issues/66506)), so "how covered is `scraper`?" has
+no answer, and on a real repository you get hundreds of lines to add up yourself.
 
 prettycov reads the profile `go test` already wrote and answers that:
 
@@ -25,8 +24,8 @@ number down.
 
 ## Status
 
-Pre-1.0. Flags, output format and the Go API may all change between minor versions — if you gate CI
-on it, pin a version. What changed and what broke is in [CHANGELOG.md](CHANGELOG.md).
+Pre-1.0. Flags, output format and the Go API may all change between minor versions, so pin a version
+if you gate CI on it. [CHANGELOG.md](CHANGELOG.md) records what changed and what broke.
 
 ## Installation
 ```shell
@@ -35,10 +34,11 @@ go install github.com/screwyprof/prettycov/cmd/prettycov@latest
 
 ## What it is for
 
-**Deciding what to test next.** In the tree below, `handler` is 87.23% covered and
-`pgxdb/pgxdb.go` is 75.00% — but `handler` has six untested statements to `pgxdb`'s four. The lower
-percentage is just the smaller file. `--counts` prints the statement counts alongside, so you can
-rank by how much is left:
+### Deciding what to test next
+
+In the tree below, `handler` is 87.23% covered and `pgxdb/pgxdb.go` is 75.00%, but `handler` has six
+untested statements to `pgxdb`'s four. The lower percentage is just the smaller file. `--counts`
+prints the statement counts alongside, so you can rank by how much is left:
 
 ```shell
 ❯ prettycov report --counts --files --depth=2
@@ -61,10 +61,12 @@ rank by how much is left:
    └ tezos - 100.00  0/30 uncovered
 ```
 
-Every row is a sum, so the counts add up: `scraper`'s 18 are `service.go`'s 5 and `store`'s 13.
+The counts add up the same way: `scraper`'s 18 are `service.go`'s 5 and `store`'s 13.
 
-**A number for CI or a badge.** `total` prints the figure and nothing else, so a Makefile can read
-it — and `--fail-under` gates on it, for the whole profile or for one package:
+### A number for CI or a badge
+
+`total` prints the figure and nothing else, so a Makefile can read it. `--fail-under` gates on it,
+for the whole profile or for one package:
 
 ```make
 COVERAGE := $(shell prettycov total)                 # 91.54
@@ -76,8 +78,10 @@ COVERAGE := $(shell prettycov total)                 # 91.54
 total coverage 74.51% is below 85.00%      # exit 1
 ```
 
-**A list your editor can open.** `misses` prints where the untested statements are, in the format
-`go vet` uses, so it pipes into `vim -q -` or reviewdog:
+### A list your editor can open
+
+`misses` prints where the untested statements are, in the format `go vet` uses, so it pipes into
+`vim -q -` or reviewdog:
 
 ```shell
 ❯ prettycov misses --depth=max --old=github.com/screwyprof/delegator --new=.
@@ -89,8 +93,10 @@ pkg/logger/logger.go:44:26: 1 uncovered
 
 The count matters: one untaken branch and a whole untested function look alike without it.
 
-**Leaving out what you never meant to test.** `--exclude` drops generated code, mocks, or a migrator
-before anything is totalled, and says what each pattern took, so a typo cannot pass for a clean run:
+### Leaving out what you never meant to test
+
+`--exclude` drops generated code or a migrator before anything is totalled, and says what each
+pattern took, so a typo cannot pass for a clean run:
 
 ```shell
 ❯ prettycov report --exclude='/store/' --exclude='\.pb\.go$'
@@ -102,8 +108,8 @@ before anything is totalled, and says what each pattern took, so a typo cannot p
  └ web - 93.41
 ```
 
-It reads the profile and nothing else — no source tree, no `go.mod`, no git — so it works on a CI
-artefact, a colleague's file, or a repository you do not have checked out.
+It reads the profile and nothing else. There is no source tree to find and no `go.mod` to parse, so
+it works on a CI artefact or on a repository you have not checked out.
 
 ## Commands
 
@@ -119,13 +125,12 @@ Flags belong to the command that reads them, so each listing is exactly what app
 written after the command name.
 
 Exit codes are `0`, `1` when `--fail-under` was not met, and `2` when prettycov could not do what
-was asked — distinct, so a CI step can tell a bad invocation from a failed gate.
+was asked. They are distinct so a CI step can tell a bad invocation from a failed gate.
 
 ## Contributing
 
-Go and make, nothing else — every tool the build needs is fetched at a pinned version when it is
-not already on your PATH. [CONTRIBUTING.md](CONTRIBUTING.md) has the gates and what a change is
-expected to carry.
+Go and make. Every tool the build needs is fetched at its pinned version by `go run`, never from
+your PATH. [CONTRIBUTING.md](CONTRIBUTING.md) has the gates and what a change is expected to carry.
 
 ## More
 
@@ -136,4 +141,4 @@ it removed.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

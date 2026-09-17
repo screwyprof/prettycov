@@ -19,14 +19,14 @@ import (
 //
 // That distinction has already cost us once: sorting rows by their label stopped being a total
 // order the moment a merged row could take a sibling's name, and every hand-written case missed it
-// because the shape it needs — a file with no directory of its own, named for a directory beside
-// it — is one no `go test` run produces. Three hundred made-up profiles find it in seconds.
+// because the shape it needs, a file with no directory of its own named for a directory beside
+// it, is one no `go test` run produces. Three hundred made-up profiles find it in seconds.
 //
 // The seed is fixed, so this is a generated corpus rather than a search: from this commit on the
 // three hundred profiles are as settled as the hand-written table, and no rerun will turn up a
 // shape the seed does not already produce. "Shapes nobody thought of" is true once, at the moment
-// they are written. That buys the same thing pinning a golden does — a failure is the code
-// changing, never the test — and costs the same thing.
+// they are written. That buys the same thing pinning a golden does. A failure is the code
+// changing, never the test, and costs the same thing.
 //
 // A failing subtest logs the profile that broke it. It is named for its run, not for a seed of its
 // own: reproducing means running the loop, since each profile is drawn from the one before.
@@ -72,9 +72,9 @@ func TestTreePropertiesHoldForAnyProfile(t *testing.T) {
 }
 
 // assertRowsAreInOrder checks that each row's label sorts at or after the one above it at the same
-// level under the same parent. Every other property here is order-independent by construction —
+// level under the same parent. Every other property here is order-independent by construction.
 // coverage is looked up per path, sums are commutative, and a wrong order that is stable is still
-// deterministic — so sorting rows by the name they started as instead of the label they end up
+// deterministic, so sorting rows by the name they started as instead of the label they end up
 // with passes all of them, which is precisely the bug printer.go's sort comment is about.
 //
 // Ties are allowed: a file and a directory of one name have the same label, and the name each
@@ -98,7 +98,7 @@ func assertRowsAreInOrder(t *testing.T, tree *prettycov.PathTree, withFiles bool
 }
 
 // assertDepthOnlyAddsRows checks that raising --depth adds rows below and leaves every row already
-// drawn exactly as it was — same label, same glyphs, same numbers. Stated in prose on the merge
+// drawn exactly as it was: same label, same glyphs, same numbers. Stated in prose on the merge
 // tests, and the reason a one-file package merges at every depth rather than only where its file
 // would have been drawn: a row's label is a property of its node, not of where the cut falls.
 //
@@ -134,7 +134,7 @@ func assertDepthOnlyAddsRows(t *testing.T, tree *prettycov.PathTree, withFiles b
 
 // assertTopRowsSumToTheTotal checks the report against the one number most people read. total
 // prints the tree's own coverage without drawing anything, so nothing else in the report is in a
-// position to disagree with it — except the rows at the top, which are every statement there is.
+// position to disagree with it, except the rows at the top, which are every statement there is.
 func assertTopRowsSumToTheTotal(t *testing.T, tree *prettycov.PathTree, withFiles bool) {
 	t.Helper()
 
@@ -148,7 +148,7 @@ func assertTopRowsSumToTheTotal(t *testing.T, tree *prettycov.PathTree, withFile
 }
 
 // assertRenderIsDeterministic renders the same tree repeatedly. Map order is randomised per range
-// statement, so a sort that is not a total order comes out differently between runs — and this
+// statement, so a sort that is not a total order comes out differently between runs, and this
 // output gets diffed. TestDisplayTreeIsDeterministic pins the two shapes that have gone wrong;
 // this asks the same of shapes nobody has thought about.
 func assertRenderIsDeterministic(t *testing.T, tree *prettycov.PathTree, withFiles bool) {
@@ -169,7 +169,7 @@ func assertRenderIsDeterministic(t *testing.T, tree *prettycov.PathTree, withFil
 // in 23%. Real profiles reach the last two through a merge of two runs or an --old/--new rewrite.
 //
 // Duplicates are left in. x/tools merges a repeated filename before we see it, so only a caller
-// assembling its own slice gets one — which is the case PathTree.add accumulates for.
+// assembling its own slice gets one, which is the case PathTree.add accumulates for.
 func randomProfile(rnd *rand.Rand) []prettycov.FileCoverage {
 	names := []string{"a", "b", "a.go", "b.go"}
 
@@ -235,7 +235,7 @@ func TestPercentagePropertiesHoldForAnyCounts(t *testing.T) {
 		// The cap is the one place the text is deliberately not the nearest two decimals: 73999 of
 		// 74000 statements is 99.9986%, and rounding to nearest would print the 100.00 that stops
 		// someone writing another test. Checked as the exact string it must be, rather than by
-		// widening the band below — a band wide enough for the round down is also wide enough for a
+		// widening the band below. A band wide enough for the round down is also wide enough for a
 		// genuine hundredth of error at 99.99.
 		if stats.Uncovered > 0 && strconv.FormatFloat(pct.Float(), 'f', 2, 64) == "100.00" {
 			assert.Equalf(t, "99.99", text, "%v%% with %d statements uncovered",
@@ -259,7 +259,7 @@ func TestPercentagePropertiesHoldForAnyCounts(t *testing.T) {
 //
 // That region is the last hundredth below 100%, where the cap lives. Independent draws put values
 // there only by accident: over the seeded three hundred they rendered 100.00 forty times and 99.99
-// ten times, and every one of those ten was the cap firing — so the band checking every other
+// ten times, and every one of those ten was the cap firing, so the band checking every other
 // value was never asked about one anywhere near it.
 func drawStats(rnd *rand.Rand) prettycov.CoverageStats {
 	if rnd.IntN(2) == 0 {
@@ -268,7 +268,7 @@ func drawStats(rnd *rand.Rand) prettycov.CoverageStats {
 
 	// A handful of statements out of tens of thousands lands densely either side of the cap:
 	// 1 of 74000 uncovered rounds to 100.00 and is capped to 99.99, while 1 of 10000 is a genuine
-	// 99.99 and 2 of 11000 a genuine 99.98 — the values a too-eager cap would swallow.
+	// 99.99 and 2 of 11000 a genuine 99.98. The values a too-eager cap would swallow.
 	return prettycov.CoverageStats{Covered: rnd.IntN(90000) + 10000, Uncovered: rnd.IntN(6)}
 }
 

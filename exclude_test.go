@@ -197,7 +197,7 @@ func TestExcludeTakesBlocksByCoordinate(t *testing.T) {
 	assert.Equal(t, 1, dropped[0].Statements)
 }
 
-// Matching is unanchored against "path:line:col", so the column is optional — it is there to tell
+// Matching is unanchored against "path:line:col", so the column is optional. It is there to tell
 // apart two blocks opening on one line.
 func TestExcludeCoordinateMatchesWithOrWithoutAColumn(t *testing.T) {
 	t.Parallel()
@@ -213,7 +213,7 @@ func TestExcludeCoordinateMatchesWithOrWithoutAColumn(t *testing.T) {
 	}
 }
 
-// cmd/cover's blocks touch — 31.2,32.9 ends where 32.9,34.3 begins — and only starts are matched,
+// cmd/cover's blocks touch, 31.2,32.9 ends where 32.9,34.3 begins, and only starts are matched,
 // so naming line 32 cannot take the covered block that merely reaches it.
 func TestExcludeCoordinateTakesOnlyTheBlockThatStartsThere(t *testing.T) {
 	t.Parallel()
@@ -321,7 +321,7 @@ func TestExcludeKeepsPathsAndCoordinatesApart(t *testing.T) {
 }
 
 // x/tools parses the filename as a greedy .+, so a profile no `go test` run writes can carry a
-// colon in a path. Then a coordinate pattern takes the file whole — and the report says so.
+// colon in a path. Then a coordinate pattern takes the file whole, and the report says so.
 func TestExcludeTakesAColonBearingPathAsAFile(t *testing.T) {
 	t.Parallel()
 
@@ -382,7 +382,7 @@ func TestExcludeCreditsABlockInsideAFileTakenWhole(t *testing.T) {
 	assert.Equal(t, 1, dropped[0].OverlappedBlocks, "but the coordinate did match")
 	assert.Equal(t, 1, dropped[1].Files)
 
-	// Unanchored, so it matches the coordinates as well as the path — a path is a prefix of every
+	// Unanchored, so it matches the coordinates as well as the path. A path is a prefix of every
 	// one of them. It still may not be credited twice for the same match.
 	_, unanchored := prettycov.Exclude(items, patterns(t, `m/a\.go`, `a\.go:32`))
 
@@ -391,7 +391,7 @@ func TestExcludeCreditsABlockInsideAFileTakenWhole(t *testing.T) {
 	assert.Equal(t, 1, unanchored[1].OverlappedBlocks)
 }
 
-// Unanchored, the line is a prefix. Anchored, it is the line — which needs the position matched
+// Unanchored, the line is a prefix. Anchored, it is the line, which needs the position matched
 // without its column too, or "$" could never follow a line number.
 func TestExcludeAnchorsOnTheLine(t *testing.T) {
 	t.Parallel()
@@ -429,7 +429,7 @@ func TestExcludeDropsAFileLeftWithNoStatements(t *testing.T) {
 
 // A column is a prefix as a line is, so a position pasted out of misses takes every block whose
 // column starts with those digits: a.go:9:2 also matches a.go:9:24, which is an ordinary second
-// block on one line — `if err != nil {` at column 2 and a closure at column 24.
+// block on one line: `if err != nil {` at column 2 and a closure at column 24.
 //
 // The round trip misses advertises is therefore exact only when anchored. Pinned because the cost
 // is silent and upward: the statements go out of the denominator, so coverage rises.

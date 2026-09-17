@@ -16,8 +16,8 @@ import (
 
 // A rendered report is a claim about arithmetic: each row covers the rows drawn beneath it plus
 // whatever it holds that they do not show. oracle_test.go checks the tree's totals, and every bug
-// this file was written for left those totals right and lost a row — a subtree hidden by the wrong
-// guard, a node folded into its child's label — so a parent went on counting statements that
+// this file was written for left those totals right and lost a row: a subtree hidden by the wrong
+// guard, or a node folded into its child's label, so a parent went on counting statements that
 // appeared beside nothing.
 //
 // Reading the rows back as a flat table is what makes that visible: a table has no indentation to
@@ -52,7 +52,7 @@ func TestRowsReconcileAgainstTheProfile(t *testing.T) {
 }
 
 // assertRowsMatchTheProfile checks each row against totals derived from the parsed files rather
-// than from the tree, and checks that what is printed carries that row's own numbers — so a row
+// than from the tree, and checks that what is printed carries that row's own numbers, so a row
 // cannot be right while the line describing it is wrong.
 func assertRowsMatchTheProfile(
 	t *testing.T, tree *prettycov.PathTree, totals map[string][]prettycov.CoverageStats, opts prettycov.Options,
@@ -107,8 +107,8 @@ func assertRowsHoldEveryStatement(
 
 	// Summed per path rather than per row, because a name that is both a file and a directory is
 	// drawn twice and the files charged to it are charged to the path, not to one of the two.
-	// Per path also lets one row of a pair borrow from the other — swap them and the sum still
-	// balances — so each row is checked to hold back at least nothing, which borrowing is not.
+	// Per path also lets one row of a pair borrow from the other. Swap them and the sum still
+	// balances, so each row is checked to hold back at least nothing, which borrowing is not.
 	drawn := make(map[string]bool, len(infos))
 	held := map[string]int{}
 
@@ -131,7 +131,7 @@ func assertRowsHoldEveryStatement(
 	// Arithmetic alone is too weak: a row that quietly keeps back a file no deeper row shows still
 	// balances, which is exactly what a folded-away node looks like. So say which rows must exist.
 	// At full depth that is every file when --files is on, and every directory holding one when it
-	// is off — anything less and a statement is drawn beside a row that does not name it.
+	// is off. Anything less and a statement is drawn beside a row that does not name it.
 	for _, f := range files {
 		want := path.Dir(f.File)
 		if withFiles {
@@ -152,7 +152,7 @@ type row struct {
 
 // rowInfos reconstructs the path each row stands for. A collapsed run's label already carries its
 // slashes, so joining the labels down the stack rebuilds the path the profile used. Row.Level says
-// how deep to join from — read rather than measured off the box-drawing prefix, which would make
+// how deep to join from, read rather than measured off the box-drawing prefix, which would make
 // every level here depend on the glyphs staying two runes wide.
 func rowInfos(rows []prettycov.Row) []row {
 	stack := []string{}
@@ -222,7 +222,7 @@ func dirsOf(file string) []string {
 }
 
 // keptBack is what each row has to account for by itself: the files no row below it shows. Walking
-// up from the file and stopping at the first drawn path finds the deepest row covering it — its own
+// up from the file and stopping at the first drawn path finds the deepest row covering it, and its own
 // row where it has one, the single row standing for a name it shares with a directory, or the
 // closest drawn directory above. Walking beats scanning the rows for the deepest match, which is
 // quadratic in the size of the profile.
@@ -254,8 +254,8 @@ func keptBack(files []prettycov.FileCoverage, drawn map[string]bool, withFiles b
 }
 
 // crosscheckProfiles is every profile in testdata, plus the shapes it has none of. The first three
-// are impossible from one `go test` run — no filesystem lets a file and a directory share a name —
-// but a merge of two profiles or an --old/--new rewrite produces them, and each one hid a lost row.
+// are impossible from one `go test` run, since no filesystem lets a file and a directory share a
+// name, but a merge of two profiles or an --old/--new rewrite produces them, and each one hid a lost row.
 func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 	t.Helper()
 
@@ -288,15 +288,15 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 			file("/home/ci/repo/main.go", 2, 0),
 		},
 		// Two files under the directory, so it does not merge into one of them and the file and
-		// the directory are drawn at the same path — the shape the per-path reconciliation exists
-		// for, and the only one where a row could borrow its sibling's number.
+		// the directory are drawn at the same path. This is the shape the per-path reconciliation
+		// exists for, and the only one where a row could borrow its sibling's number.
 		"a file and a directory of one name, both drawn": {
 			file("m/a.go", 5, 0),
 			file("m/a.go/b.go", 0, 4),
 			file("m/a.go/c.go", 0, 3),
 		},
 		// The "." holding a bare file merges to that file's name, which a sibling directory can
-		// already have — two rows of one map tied on the label, where every other tie is between
+		// already have: two rows of one map tied on the label, where every other tie is between
 		// the two maps.
 		"a bare file taking a sibling's name": {
 			file("a.go", 3, 0),
@@ -328,7 +328,7 @@ func crosscheckProfiles(t *testing.T) map[string][]prettycov.FileCoverage {
 // The two printers are two readings of one traversal, so they have to agree about which files they
 // account for. Both times this went wrong they disagreed silently: a file above --hide-covered's bar
 // had its misses listed while the tree left the row out, and a package merged into its single file
-// was drawn while its misses were lost — the row is the file there, and a file has no Files to read.
+// was drawn while its misses were lost. The row is the file there, and a file has no Files to read.
 //
 // With --files every file the report accounts for is a row of its own, which makes the claim exact:
 // the rows that name a file holding unrun statements are precisely the files the misses name.

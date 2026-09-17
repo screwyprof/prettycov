@@ -5,41 +5,32 @@ import (
 	"strings"
 )
 
+// CoverageStats is a count of statements, split by whether the tests reached them. Statements, not
+// lines: one line can hold several, and cmd/cover counts what it compiled.
 type CoverageStats struct {
 	Covered   int
 	Uncovered int
 }
 
-// Total is the statements a node holds, covered or not. Named rather than added up at each use,
-// because it is the denominator of the percentage beside it and the two must be the same number:
-// --counts prints the fraction the percentage stands for, so a second expression for it could drift
-// from the one Percentage divides by.
+// Total is the statements a node holds, covered or not. Named, because --counts prints the fraction
+// the percentage stands for and a second expression could divide by a different number.
 //
-// No overflow check: this is the raw sum, and Percentage is what refuses one that has wrapped.
+// No overflow check: this is the raw sum, and Percentage refuses one that has wrapped.
 func (c CoverageStats) Total() int { return c.Covered + c.Uncovered }
 
-// Plus is these statements and another's. Both sides move together, or the percentage is drawn from
-// counts that were never summed the same way.
-//
-// Returns rather than mutates, so CoverageStats has no pointer method and a caller cannot hold one
-// that changes under it. Two ints: the copy costs nothing.
+// Plus is these statements and another's. Returns rather than mutates, so a caller cannot hold one
+// that changes under it.
 func (c CoverageStats) Plus(other CoverageStats) CoverageStats {
 	return CoverageStats{Covered: c.Covered + other.Covered, Uncovered: c.Uncovered + other.Uncovered}
 }
 
-// Percentage reports the share of statements covered. The bool is false when there are none to
-// cover, which is not 0% — there is nothing to report.
-//
-// Derived rather than stored: a stored percentage can disagree with the counts beside it, which is
-// exactly how the roll-up used to go wrong.
+// Percentage reports the share of statements covered. False is not 0%; there is nothing to report.
+// Derived rather than stored, or it could disagree with the counts beside it.
 func (c CoverageStats) Percentage() (Percentage, bool) {
 	total := c.Total()
 
-	// Both counts are statement totals, so they are non-negative and covered is at most total.
-	// Breaking either means the sum overflowed, which a profile can arrange by declaring blocks
-	// of billions of statements. Report nothing rather than a number: one such profile printed
-	// "-461168601842738790400.00", and another 100.00, its uncovered statements having wrapped
-	// past zero and taken the shortfall with them.
+	// Breaking either invariant means the sum overflowed, which a profile can arrange with blocks of
+	// billions of statements. One printed "-461168601842738790400.00", another 100.00.
 	if total <= 0 || c.Covered < 0 || c.Covered > total {
 		return Percentage{}, false
 	}
@@ -50,27 +41,19 @@ func (c CoverageStats) Percentage() (Percentage, bool) {
 	}, true
 }
 
-// AtLeast reports whether this much of the node is covered, which is not always what comparing the
-// ratio would say.
+// AtLeast reports whether this much is covered, which is not always what comparing the ratio says:
+// at 100 the question is whether an uncovered statement is left, since 2^56-1 covered beside one
+// uncovered divides to exactly 100.0 in float64.
 //
-// At 100 the question is whether an uncovered statement is left, not whether the ratio reaches 100:
-// 2^56-1 covered beside one uncovered divides to exactly 100.0 in float64, the miss falling below
-// the mantissa. Percentage renders that 99.99 for the same reason, so asking here keeps the two
-// answers together instead of leaving a caller to rediscover the difference.
-//
-// Nothing to cover is not "at least anything": a package with no statements has no share to compare,
-// and treating it as complete would fold two questions into one flag.
-//
-// Nothing above 100 can be asked: a Threshold is parsed, so the range is the type's and not a rule
-// a caller is trusted to keep.
+// Nothing to cover is not "at least anything". Nothing above 100 can be asked, since Threshold is
+// parsed.
 func (c CoverageStats) AtLeast(bar Threshold) bool {
 	share, ok := c.Percentage()
 	if !ok {
 		return false
 	}
 
-	// Exactly 100, not "at or above": above it is the case above, and asking the counts there would
-	// answer "complete" to a threshold nothing can meet.
+	// Exactly 100, since nothing above it can be asked.
 	if bar.value == 100 {
 		return share.complete
 	}
@@ -78,25 +61,20 @@ func (c CoverageStats) AtLeast(bar Threshold) bool {
 	return share.Float() >= bar.value
 }
 
-// Percentage is a share of statements covered. Build one with CoverageStats.Percentage, which
-// reports whether there was anything to cover; a Percentage that came from there always has a
-// number to show, so no caller carries that question further.
-//
-// The zero value is not one of those and means nothing — it renders 0.00, which is a real and
-// terrible coverage figure rather than a visible mistake. Do not declare a Percentage and use it.
+// Percentage is a share of statements covered. Build one with CoverageStats.Percentage. Do not
+// declare one and use it: the zero value renders 0.00, a real and terrible figure rather than a
+// visible mistake.
 type Percentage struct {
 	value float64
-	// complete is carried rather than derived from value, because whether every statement is
-	// covered is a fact about the counts and 99.9986% rounds to 100.00 either way.
+	// complete is a fact about the counts, not about value: 99.9986% rounds to 100.00 either way.
 	complete bool
 }
 
 // Float is the unrounded percentage, for comparing against a threshold.
 func (p Percentage) Float() float64 { return p.value }
 
-// String renders the ratio to two decimals, and never reads 100.00 for code that is not fully
-// covered. Rounding to nearest would print 100.00 for 73999 of 74000 statements, and 100% is what
-// a badge shows and what stops someone writing another test.
+// String renders two decimals, and never 100.00 for code that is not fully covered. Rounding would
+// print it for 73999 of 74000, and 100% is what stops someone writing another test.
 func (p Percentage) String() string {
 	text := strconv.FormatFloat(p.value, 'f', 2, 64)
 	if text == "100.00" && !p.complete {
@@ -106,67 +84,50 @@ func (p Percentage) String() string {
 	return text
 }
 
+// FileCoverage is one file of a profile: its path as the profile spells it, and what the tests
+// reached in it. ParseProfile returns these; a caller can also build them to use Exclude or Process
+// on coverage from somewhere else.
 type FileCoverage struct {
 	File     string
 	Coverage CoverageStats
-	// Blocks is where the file's statements are, in the order the profile listed them. Optional:
-	// a FileCoverage assembled by a caller may leave it empty. Coverage is the sum and stays the
-	// authority. Exclude matches patterns against these, and Process carries them onto the tree's
-	// file leaves, which is what lets Misses say where rather than only how much.
+	// Blocks is where the file's statements are, in profile order. Optional, since Coverage is the sum
+	// and stays the authority. Exclude matches against these, and Process carries them onto the
+	// tree's leaves, which is what lets Misses say where rather than only how much.
 	Blocks []Block
 }
 
-// Block is one of a file's basic blocks: where it starts, where it ends, and the statements it
-// holds. Exactly one side of Coverage is non-zero — a block is run or not run, never partly.
+// Block is one of a file's basic blocks. Exactly one side of Coverage is non-zero, since a block is
+// run or not run and never partly. The position is where cmd/cover opens it, so `if !ok {` on line 32
+// owns the `return` on line 33.
 //
-// The position is where cmd/cover opens the block, which is not where a reader would point:
-// `if !ok {` on line 32 owns the `return` on line 33.
-//
-// Line and Col are the block's identity. --exclude matches against them and nothing else, so a
-// pattern like `a\.go:3` means "the block that opens on line 3" however far the block runs.
-// EndLine is how far it runs, which is what Misses folds on — see merge for why the end rather than
-// the opening, and what it is worth.
+// Line and Col are its identity, and all --exclude matches against. EndLine is what Misses folds on.
 type Block struct {
 	Line, Col int
 	EndLine   int
 	Coverage  CoverageStats
 }
 
-// at names the block the way a compiler names a position, and again without the column. --exclude
-// matches a pattern against both, so "a.go:3$" anchors on line 3 rather than never matching: the
-// column is what a reader leaves off, and a pattern ending at the line has nowhere to stop without
-// this.
-//
-// Neither spelling depends on the pattern, so callers build them once per block and ask every
-// pattern about the pair.
-//
-// Sliced rather than built twice: position is the single spelling and the line-only form is a
-// prefix of it, so cutting at the last colon shares the backing array. Building both meant running
-// Itoa on the line a second time and copying the file name into a second string — 300,000 extra
-// allocations on a profile of that many blocks.
+// at names the block as a compiler names a position, and again without the column, so "a.go:3$"
+// anchors on the line a reader would leave the column off. Neither depends on the pattern, so a
+// caller builds them once per block. Sliced, not built twice: 300,000 fewer allocations.
 func (b Block) at(file string) (withCol, toLine string) {
 	withCol = position(file, b.Line, b.Col)
 
 	return withCol, withCol[:strings.LastIndexByte(withCol, ':')]
 }
 
-// position names a place in a file the way a compiler does. One spelling, because --exclude matches
-// its patterns against what this returns and the misses command prints it: a position a reader judges
-// unreachable is pasted back as a pattern, and two definitions of the format would let that stop
-// working with nothing to catch it.
+// position names a place in a file as a compiler does. One spelling, because --exclude matches
+// against it and the misses command prints it, so a position pastes back as a pattern.
 func position(file string, line, col int) string {
 	return file + ":" + strconv.Itoa(line) + ":" + strconv.Itoa(col)
 }
 
-// Process turns per-file coverage into a tree in which every node reports its own statements plus
-// those of everything beneath it. The files argument is not modified.
+// Process turns per-file coverage into a tree where every node reports its own statements plus
+// everything beneath it. The files argument is not modified.
 //
-// The profile's files are the leaves, so a directory's total is exactly the sum of what hangs
-// below it and a report can be checked by adding it up. Whether the file rows are drawn is
-// Options.Files; whether they exist is not a rendering question.
-//
-// Renaming a root is Shorten's, not this. It used to happen here, where a caller could not see
-// whether it had done anything: a root naming no package rewrote nothing and said nothing.
+// The profile's files are the leaves, so a report can be checked by adding it up. Whether file rows
+// are drawn is Options.Files. Renaming a root is Shorten's, so a caller can see whether it did
+// anything.
 func Process(files []FileCoverage) *PathTree {
 	tree, nodes := &PathTree{}, &arena{}
 	for _, f := range files {
@@ -178,14 +139,9 @@ func Process(files []FileCoverage) *PathTree {
 	return tree
 }
 
-// rollUp gives every node the statements of everything beneath it, counted exactly once, and
-// reports the node's own new total. Only the profile's files arrive carrying statements, so a
-// directory's total is entirely this sum: counting its own as well is what made a node's totals
-// grow by a factor of its child count.
-//
-// In place, because Process builds the tree and the tree never leaves it before this runs. The
-// copy this used to return doubled a node count that the profile's files, now leaves of their own,
-// had already multiplied several times over.
+// rollUp gives every node the statements beneath it, counted once. Only files arrive carrying
+// statements, so a directory's total is entirely this sum. Counting its own as well grew a node's
+// totals by a factor of its child count. In place: Process owns the tree until this returns.
 func rollUp(node *PathTree) CoverageStats {
 	for _, file := range node.Files {
 		node.Coverage = node.Coverage.Plus(rollUp(file))
@@ -198,29 +154,16 @@ func rollUp(node *PathTree) CoverageStats {
 	return node.Coverage
 }
 
-// Shorten rewrites the leading oldRoot of each path to newRoot, and reports how many it renamed.
-// The files argument is never modified.
+// Shorten rewrites the leading oldRoot of each path to newRoot and reports how many it renamed. The
+// files argument is never modified; with no rename asked for, the same slice comes back uncopied.
 //
-// Either root empty means no rename was asked for, and then the files are returned as they are —
-// the same slice, not a copy, so writing to it writes to the caller's. A rename returns a new one.
+// The count is why this is its own step: a root naming no package rewrites nothing, which otherwise
+// looks exactly like asking for no rename.
 //
-// The count is the point of it being its own step. A root that names no package in the profile —
-// a typo, a module path that moved — matches nothing and rewrites nothing, which looks exactly
-// like asking for no rename at all. Only the code doing the matching can tell those apart, and
-// the CLI says so.
-//
-// The prefix has to be leading, and it has to end on a separator: replacing the first match
-// anywhere rewrote "github.com/rapid/api" to "github.com/rcored/api" for --old=api, and a bare
-// prefix rewrote the unrelated "github.com/foobar" to "xbar" for --old=github.com/foo. An empty
-// oldRoot matches at position 0, so --new alone prepended itself to every path instead of replacing
-// anything. The separator is implied, so trailing slashes on oldRoot are trimmed rather than left
-// to fail every match. Every one of them, not the last: `--old=$(MODULE)/` with MODULE already
-// ending in one spells "example.com/m//", and trimming a single separator left "example.com/m/"
-// to be matched against a path that has one separator there, so a root that is in the profile
-// matched nothing and the CLI reported it as a root that is not.
-//
-// Only trailing. A leading separator is part of the root — "/home/x" is where an absolute path
-// begins, and trimming it would rewrite oldRoot to something the profile does not contain.
+// The prefix must be leading and end on a separator. Matching anywhere rewrote
+// "github.com/rapid/api" for --old=api, and a bare prefix rewrote "github.com/foobar" to "xbar".
+// All trailing separators are trimmed, not one: `--old=$(MODULE)/` can spell "example.com/m//".
+// Only trailing: a leading one is part of an absolute root.
 func Shorten(files []FileCoverage, oldRoot, newRoot string) ([]FileCoverage, int) {
 	oldRoot = strings.TrimRight(oldRoot, "/")
 	if oldRoot == "" || newRoot == "" {
@@ -242,15 +185,9 @@ func Shorten(files []FileCoverage, oldRoot, newRoot string) ([]FileCoverage, int
 	return shortened, renamed
 }
 
-// HasRoot reports whether any file sits under root, by the rule Shorten renames by.
-//
-// Shorten answers the same question with a count, but only as a by-product of building the renamed
-// slice: asking it costs a copy of every FileCoverage, thrown away for a number that is only ever
-// compared against zero. This stops at the first file that matches and allocates nothing.
-//
-// Exported for that one caller, rather than spelled out again where it is needed, so the rule for
-// what a root names lives beside the code that acts on it. Two copies would be two chances to
-// disagree, and the one that reports would be the one that starts lying.
+// HasRoot reports whether any file sits under root, by the rule Shorten renames by. Shorten answers
+// the same question, but only by building the renamed slice; this stops at the first match and
+// allocates nothing. Exported so the rule lives in one place rather than being restated.
 func HasRoot(files []FileCoverage, root string) bool {
 	root = strings.TrimRight(root, "/")
 	if root == "" {

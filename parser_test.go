@@ -48,7 +48,7 @@ func TestParseProfileRejectsMalformedInput(t *testing.T) {
 }
 
 // cover quotes the offending line back with %v, so the profile's own text lands in an error the
-// caller prints — the report's rows are not the only way to the terminal. The message is scrubbed
+// caller prints. The report's rows are not the only way to the terminal. The message is scrubbed
 // but still unwraps, so matching on it keeps working.
 func TestParseProfileScrubsControlCharactersFromTheError(t *testing.T) {
 	t.Parallel()
@@ -137,7 +137,7 @@ func TestParseProfileMergesRepeatedBlocks(t *testing.T) {
 
 // A package with no statements must still produce a comparable result. Storing a derived ratio
 // put a NaN in the struct, and NaN does not equal itself, so two identical parses compared
-// unequal — breaking any caller that compares stats, not just the display.
+// unequal, breaking any caller that compares stats, not just the display.
 func TestCoverageStatsAreComparable(t *testing.T) {
 	t.Parallel()
 
