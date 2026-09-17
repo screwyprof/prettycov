@@ -41,7 +41,7 @@ GOVULNCHECK_VERSION := v1.8.0
 GOBCO_VERSION := v1.3.4
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
 GOLANGCI_VERSION := v2.13.2
-# vale-cli, not errata-ai: module moved at v3.18.0, old path still serves the tags and then refuses.
+# vale-cli, not errata-ai: module moved at v3.20.0, old path still serves the tags and then refuses.
 # renovate: datasource=go depName=github.com/vale-cli/vale/v3
 VALE_VERSION := v3.21.0
 # renovate: datasource=go depName=github.com/reviewdog/reviewdog
