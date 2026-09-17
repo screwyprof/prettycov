@@ -87,14 +87,15 @@ jobs:
           {
             echo '### Coverage'
             echo '```'
-            make test-cover-tree
+            make test-cover-tree || echo '(report failed)'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The one gate that cannot live in the Makefile: it compares against the base commit.
-      # codecov/* are required checks: a skipped upload leaves them pending forever.
+      # Uploads whenever a profile exists, so a gate failing after the tests still reports to the
+      # required codecov/* checks instead of leaving them pending.
       - name: Upload coverage to Codecov
-        if: always() && hashFiles('coverage.out') != ''
+        if: '!cancelled() && hashFiles(''coverage.out'') != '''''
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos

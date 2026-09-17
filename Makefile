@@ -310,7 +310,7 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@echo; echo '$$ make vulns'
 	@$(call summarise,vulns,No vulnerabilities|Vulnerability #)
 	@echo; echo '$$ make docs-lint'
-	@$(call summarise,docs-lint,[0-9]+ errors?)
+	@$(call summarise,docs-lint,^ *✔)
 	@echo; echo '$$ make mutate'
 	@$(call summarise,mutate,^(Killed:|Test efficacy:))
 	@echo; echo '$$ make cover-branches'
