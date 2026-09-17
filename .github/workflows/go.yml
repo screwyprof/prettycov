@@ -94,7 +94,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The one gate that cannot live in the Makefile: it compares against the base commit.
+      #
+      # Uploads whenever a profile exists, not only when every gate passed. codecov/patch and
+      # codecov/project are required checks, so a skipped upload leaves them pending forever and a
+      # failed run reads as "waiting" rather than "failed" — which is what a Vale failure did, with
+      # the tests green and coverage.out sitting right there. A run whose prose gate failed still
+      # measured its coverage honestly. When the tests are what failed, .DELETE_ON_ERROR removes
+      # the profile, nothing uploads, and there is no coverage to judge anyway.
       - name: Upload coverage to Codecov
+        if: always() && hashFiles('coverage.out') != ''
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
