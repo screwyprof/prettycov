@@ -10,7 +10,7 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
-## [Unreleased]
+## [0.15.0] — 2026-09-17
 
 ### Go API
 
@@ -25,6 +25,32 @@ tags.
 
   `Failure` counts from one, leaving its zero unnamed: the value beside an error names nothing
   rather than reading as `NoStatements`.
+
+- `Failure` prints itself, so a caller told it can report one and carry on gets a sentence rather
+  than `2`. The words are this package's own, since naming the flag that caused it is a front end's
+  job and the library has no command line to name.
+
+### Build
+
+- **Breaking for nix users:** the flake is a devShell and nothing else. `nix build` and `nix run`
+  against it no longer produce a binary; `go install github.com/screwyprof/prettycov/cmd/prettycov@latest`
+  is the way in. The package carried a `vendorHash` that nothing derives from `go.sum`, so no gate
+  could tell a stale one from a correct one until a build failed on another machine.
+
+### Documentation
+
+- Every comment and user-facing document went through one pass for whether a reader needs it, and a
+  second against what the program actually does. Every output block in the README and the reference
+  is re-run output, and the claims around them were driven through the binary. That found a handful
+  that were not true: the package doc said `Misses` and `DisplayMisses` ignore `Options.Files`, which
+  is right but narrower than it read, since `Depth` still applies and the zero value prints nothing;
+  `--exclude`'s overlap accounting names the earlier pattern, not the later one; and a report that
+  failed to write does come back with a non-zero count beside its error, because the count is of
+  rows decided rather than bytes that landed.
+
+- The reference now records the blind spot a statement count has. An empty switch arm is a block
+  declaring no statements, so an arm no test ever reached moves neither side of the figure, and
+  `misses` has no position to list. A line-based service reads the same block as an uncovered line.
 
 ## [0.14.0] — 2026-09-16
 
