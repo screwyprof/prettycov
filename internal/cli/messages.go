@@ -1,11 +1,8 @@
 package cli
 
-// Everything prettycov says about a run that is not the report itself: what a pattern took, what a
-// root did not match, why a printer came up empty, which path was probably meant.
-//
-// All of it on stderr, so the report stays pipeable, and none of it deciding an exit code — that is
-// the gate's. The facts arrive from the domain; this file decides only the words, which is why it
-// is the one place a flag is named in a sentence.
+// Everything prettycov says about a run that is not the report itself. All on stderr, so the report
+// stays pipeable, and none of it deciding an exit code. The domain supplies the facts; this file
+// decides only the words, and is the one place a flag is named in a sentence.
 
 import (
 	"fmt"
@@ -13,15 +10,12 @@ import (
 	"github.com/screwyprof/prettycov"
 )
 
-// sayNothingShown reports a printer that came up empty, which both drawing commands can be.
+// sayNothingShown reports a printer that came up empty, without asking which one — the filters
+// emptied it either way.
 //
-// It asks nothing about which printer that was. One drawing rows and one printing positions would
-// need a message each, and a third would need a third — every one of them a second place holding an
-// opinion about what the filters do. The filters emptied it; naming them is the answer either way.
-//
-// The two causes are opposite news, and the tree's count separates them. Saying "nothing left to
-// cover" for the second is a false all-clear — `misses --hide-covered=0` over a fully drawn tree
-// reported completion on 34 statements, exit 0.
+// The two causes are opposite news and the tree's count separates them: "nothing left to cover" for
+// the second is a false all-clear, and `misses --hide-covered=0` reported completion on 34
+// uncovered statements with exit 0.
 func (d drawn) sayNothingShown(tree *prettycov.PathTree, s Streams) {
 	if tree.Uncovered() == 0 {
 		_, _ = fmt.Fprintln(s.Err, "nothing left to cover")
@@ -33,12 +27,9 @@ func (d drawn) sayNothingShown(tree *prettycov.PathTree, s Streams) {
 		d.filters(), plural(tree.Uncovered(), "uncovered statement"))
 }
 
-// filters names the flags that could have emptied the output, as typed. The one place a
-// filter added later has to be named.
-//
-// Not --files: a list of positions is made of files whatever it says, and a tree keeps the top row
-// --depth always draws. Not --exclude: it acts on the profile, and a report it emptied is refused
-// further up with its own message.
+// filters names the flags that could have emptied the output, as typed — the one place a filter
+// added later has to be named. Not --files, which cannot empty either output, and not --exclude,
+// which acts on the profile and is refused further up with its own message.
 func (d drawn) filters() string {
 	filters := "--depth=" + d.Depth.String()
 
@@ -50,17 +41,13 @@ func (d drawn) filters() string {
 }
 
 // reportExclusions says what each pattern took. Not behind a verbose flag: exclusion moves the
-// denominator.
-//
-// A pattern that matched nothing is said, not refused — unlike --old, which transforms the output,
-// so one that did nothing leaves a report nobody asked for.
+// denominator. A pattern that matched nothing is said, not refused — unlike --old.
 func reportExclusions(excluded []prettycov.Exclusion, s Streams) {
 	for _, ex := range excluded {
 		took := ex.Files > 0 || ex.Blocks > 0
 
 		// Distinct from matching nothing: the pattern works, an earlier one got there first. Saying
-		// "matched nothing" sends someone to delete a pattern that is holding the line for the day
-		// such a file lands outside the earlier one's reach.
+		// "matched nothing" invites deleting one that is holding the line.
 		if !took && ex.Overlapped() > 0 {
 			_, _ = fmt.Fprintf(s.Err, "--exclude %q took nothing out, %s already excluded\n",
 				ex.Pattern, units(ex.OverlappedFiles, ex.OverlappedBlocks))
@@ -74,10 +61,8 @@ func reportExclusions(excluded []prettycov.Exclusion, s Streams) {
 			continue
 		}
 
-		// Charged and overlapping at once: say both. Reporting only what it took reads as a pattern
-		// barely earning its keep, and deleting it gives back everything an earlier pattern happens
-		// to be covering for it — which is the same trap the message above exists to avoid, sprung
-		// on a pattern that did take something.
+		// Charged and overlapping at once: say both, or it reads as barely earning its keep — the
+		// same trap as above, sprung on a pattern that did take something.
 		overlap := ""
 		if ex.Overlapped() > 0 {
 			overlap = ", and " + units(ex.OverlappedFiles, ex.OverlappedBlocks) + " already excluded"
@@ -88,9 +73,8 @@ func reportExclusions(excluded []prettycov.Exclusion, s Streams) {
 	}
 }
 
-// units names a count of files and a count of blocks. A pattern can reach both at once — one that
-// takes whole files and blocks out of others is unlikely but legal — so both are said when both
-// happened rather than reporting whichever came first.
+// units names a count of files and a count of blocks. A pattern can reach both at once, so both are
+// said rather than whichever came first.
 func units(files, blocks int) string {
 	switch {
 	case blocks == 0:
@@ -103,7 +87,7 @@ func units(files, blocks int) string {
 }
 
 // plural counts n things. "1 statements in 1 files" is the common case for a pattern aimed at one
-// generated file, so it is worth the three lines.
+// generated file.
 func plural(n int, thing string) string {
 	if n == 1 {
 		return "1 " + thing

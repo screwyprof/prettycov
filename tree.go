@@ -93,24 +93,17 @@ func (a *arena) child(nodes *map[string]*PathTree, name string) *PathTree {
 	return created
 }
 
-// arena hands out nodes a chunk at a time, so a tree of a hundred thousand of them costs a few
-// hundred allocations rather than one each.
-//
-// Indexed rather than appended, so a full chunk can only be replaced and never grown. Growing is
-// not unsafe — the tree holds pointers into the old array, which stays alive and correct — it is
-// waste: append copies every node into the new array, nothing reads the copies, and the originals
-// keep the old array anyway. Measured at 36.9MB against 22.7MB on a 30,000-file profile, before
-// Blocks was added to the node.
+// arena hands out nodes a chunk at a time, so a hundred thousand of them cost a few hundred
+// allocations rather than one each. Indexed, not appended: append would copy every node into a new
+// array that nothing reads, since the tree already points into the old one. 36.9MB against 22.7MB.
 type arena struct {
 	chunk []PathTree
 	used  int
 }
 
-// chunkNodes is 28KB at PathTree's current size, which Blocks took from 32 bytes to 56. That is
-// also the floor: the first node allocates a whole chunk, so a one-file profile pays the 28KB where
-// it used to pay one node. Measured across 64..32768, time is flat for a large profile and bytes
-// scale with the chunk for a small one, so this trades a fixed chunk against an allocation per
-// node.
+// chunkNodes is 28KB at PathTree's size, and also the floor: a one-file profile pays a whole chunk.
+// Measured across 64..32768 — time is flat for a large profile, bytes scale with the chunk for a
+// small one.
 const chunkNodes = 512
 
 func (a *arena) next() *PathTree {
@@ -127,27 +120,19 @@ func (a *arena) next() *PathTree {
 // Get returns the node at key, or nil if the tree has no such path — including when there is no
 // tree, so that a miss can be chained: Get("a").Get("b") is nil where it used to panic.
 //
-// The last segment may name a file, and a file wins: a path ending in one is what a reader types
-// off a row, and only a file can be there. A directory of the same name in the same parent cannot
-// also exist — no filesystem holds two entries under one name — so a profile that claims both was
-// not written by cmd/cover, and the tree draws both either way.
-//
-// Files are still a map of their own rather than more Children, so that a name belonging to both
-// stays two nodes. That map is a field rather than a method, so nothing can make it nil-safe the
-// way this is: a caller reading one still has to check what Get handed back.
+// A file wins the last segment: a path ending in one is what a reader types off a row, and only a
+// file can be there. Files stays a separate map so a name belonging to both keeps two nodes — and
+// being a field, it is not nil-safe the way this is.
 func (n *PathTree) Get(key string) *PathTree {
-	// The empty key names nothing, and has to say so here rather than be left to walk. An absolute
-	// profile splits to a leading empty component, so the filesystem root is held as Children[""] —
-	// which is exactly the entry walk("") reads, handing back the whole tree for a key naming no
-	// path. Here rather than in any one branch below: this is the single point all three resolution
-	// paths pass through, so one guard covers walk, the "." retry and underRoot alike.
+	// The empty key names nothing. An absolute profile holds the filesystem root as Children[""],
+	// which is what walk("") reads — the whole tree, for a key naming no path. Here, because this is
+	// the one point all three resolution paths pass through.
 	if n == nil || key == "" {
 		return nil
 	}
 
-	// "./x" is x: the tree holds one node under either spelling, and "." is a directory of its own
-	// — where a file the profile gave no directory lands — so without the strip "./t" would resolve
-	// under it rather than at the top.
+	// "./x" is x. "." is a real directory here — where a bare file lands — so without the strip
+	// "./t" would resolve under it.
 	if rest, found := strings.CutPrefix(key, "./"); found && rest != "" {
 		key = rest
 	}
@@ -156,20 +141,16 @@ func (n *PathTree) Get(key string) *PathTree {
 		return node
 	}
 
-	// A key read off a row may be spelled as the report draws it rather than as the tree holds it.
-	// The two below undo a renderer substitution each; underRoot, last, is not one of those — it
-	// accepts a path relative to the collapsed root, which is a convenience for the one prefix
-	// nobody wants to retype rather than the inverse of anything.
+	// A key read off a row is spelled as the report draws it. The two fallbacks below undo a renderer
+	// substitution each; underRoot, last, accepts a path relative to the collapsed root.
 	//
-	// The filesystem root has no name of its own — an absolute path splits to a leading empty
-	// component — and draws as "/".
+	// The filesystem root has no name of its own and draws as "/".
 	if key == "/" {
 		return n.Children[""]
 	}
 
-	// A file the profile gave no directory lands under ".", which path.Dir returns for a bare name.
-	// That row draws as "." on its own, and merged with its file as just the file — path.Clean
-	// drops the component — so "main.go" is a label with no matching path.
+	// A bare file lands under ".", and merges with it into a row drawn as just the file, so
+	// "main.go" is a label with no matching path.
 	if dot := n.Children["."]; dot != nil {
 		if node := dot.walk(key); node != nil {
 			return node
@@ -179,13 +160,9 @@ func (n *PathTree) Get(key string) *PathTree {
 	return n.underRoot(key, maxRootDepth)
 }
 
-// onlyChild is the one directory below this node when that is all there is: no files of its own,
-// and exactly one child. It is the step a run of pass-through directories is made of.
-//
-// One definition because two callers must agree on it. collapse folds such a run into a single row,
-// and Get puts that run back in front of a path read off the row — so a second copy of this
-// predicate would let `total <label>` grade a node the report never drew, which is the class of bug
-// the renderers already share prepare to avoid.
+// onlyChild is the single directory below this node when that is all there is. One definition
+// because collapse folds such a run into a row and Get puts it back in front of a path read off
+// that row — a second copy would let `total <label>` grade a node the report never drew.
 func (n *PathTree) onlyChild() (string, *PathTree, bool) {
 	if len(n.Files) != 0 || len(n.Children) != 1 {
 		return "", nil, false
@@ -195,36 +172,23 @@ func (n *PathTree) onlyChild() (string, *PathTree, bool) {
 		return name, child, true
 	}
 
+	// Unreachable: the guard above leaves exactly one child. Required, since Go cannot see that.
 	return "", nil, false
 }
 
-// maxRootDepth bounds how far the collapsed root is followed. A module path is three or four
-// segments and the deepest run measured across the reference checkouts is seven, so this stops a
-// cycle without reaching any real tree.
+// maxRootDepth bounds how far the collapsed root is followed. The deepest run measured across the
+// reference checkouts is seven, so this stops a cycle without reaching any real tree.
 const maxRootDepth = 64
 
-// underRoot resolves key under the run of single-child directories the report collapses into its
-// top row, and is Get's last fallback.
+// underRoot resolves key under the run of single-child directories the report collapsed into its
+// top row: "pkg/logger" read off a report, where the tree holds "github.com/x/y/pkg/logger".
+// Literal spellings are tried first, so this only adds answers.
 //
-// The third renderer substitution, undone here with the other two: a row carries its own segment,
-// so "pkg/logger" read off a report is what a reader types and the tree holds it under
-// "github.com/x/y". Literal spellings are tried first, above, so this can only add answers.
-//
-// The run is descended first and probed from its deepest node back up, because the whole run is
-// what the report drew as its top row — the same condition collapse stops on. Probing on the way
-// down let a key that matches a segment inside the run answer from above the row the report drew:
-// with "github.com/x/y/y" and "github.com/x/y/z" in the profile, `total y` reached the "y" of the
-// root before the "y" beside "z", so --fail-under graded the whole tree and passed where the
-// package it names failed. Shallower prefixes are still tried, after the full one, so this still
-// only adds answers.
-//
-// walk rather than Get, which is what calls this: probing through Get would recurse without bound.
-// The descent is bounded for the same reason — Children is exported, so a caller assembling a tree
-// by hand can make a cycle, and Get has to answer rather than hang.
+// Descended first and probed from the deepest node back up, since the whole run is the one row the
+// report drew. Probing downwards let `total y` match the "y" inside "github.com/x/y" before the
+// package "y" beside it, grading the whole tree and passing where that package failed.
 func (n *PathTree) underRoot(key string, depth int) *PathTree {
-	// No empty-key guard here: Get is the only caller and refuses one before this is reached, and
-	// the recursion below passes key through unchanged. A second copy would be a condition nothing
-	// can make true — which is how the first one read once Get grew its own.
+	// No empty-key guard: Get is the only caller, refuses one, and the recursion passes key through.
 	if depth == 0 {
 		return nil
 	}
@@ -234,29 +198,18 @@ func (n *PathTree) underRoot(key string, depth int) *PathTree {
 		return nil
 	}
 
-	// Deepest first: the whole collapsed run is what the report drew as its top row, so a shorter
-	// prefix of it must not answer instead. Recursing gives that order, and the descent path, for
-	// free — collecting the run into a slice to walk it backwards said the same thing with a slice.
+	// Deepest first, so a shorter prefix of the run cannot answer instead.
 	if found := child.underRoot(key, depth-1); found != nil {
 		return found
 	}
 
-	// walk rather than Get, which is what calls this: probing through Get would recurse without
-	// bound. depth is bounded for the same reason — Children is exported, so a caller assembling a
-	// tree by hand can make a cycle, and Get has to answer rather than hang.
+	// walk, not Get, which is what calls this: probing through Get would recurse without bound.
 	return child.walk(key)
 }
 
-// walk resolves key against this node, directories all the way but for the last segment, where a
-// file wins.
-//
-// Cut rather than Split, which allocates a slice to walk once, and rather than the SplitSeq this
-// replaced, which cannot say where the last segment is. Not a speedup: SplitSeq allocated nothing
-// either, and probing Files on the last segment costs what the new answer is worth — BenchmarkGet
-// puts it at 3% over the three shapes, on a call made once per invocation.
-//
-// Comparing against a precomputed last segment instead would be wrong: "a/x/a" would probe Files at
-// the first "a" and hand back a file two levels early.
+// walk resolves key against this node: directories all the way but the last segment, where a file
+// wins. Cut rather than SplitSeq, which cannot say where the last segment is — and comparing against
+// a precomputed one would probe Files at the first "a" of "a/x/a".
 func (n *PathTree) walk(key string) *PathTree {
 	node := n
 
@@ -278,14 +231,11 @@ func (n *PathTree) walk(key string) *PathTree {
 	}
 }
 
-// stats is this node's rolled-up counts, and the whole of what the three accessors below read.
+// stats is this node's rolled-up counts, and all the accessors below read.
 //
-// Answers for a nil node, because Get promises a miss can be chained and these are what a caller
-// reaches for next: tree.Get("pkg").Uncovered() is the obvious line to write, and it panicked. A
-// nil node answers as a node holding nothing does — no statements, so no percentage, and not at
-// any bar, which is the safe direction: a mistyped path fails a gate rather than passing it.
-//
-// One guard rather than one per accessor, so a fourth cannot be added without it.
+// Answers for a nil node, since Get promises a miss can be chained: a nil node holds nothing, so no
+// percentage and not at any bar — a mistyped path fails a gate rather than passing it. One guard
+// rather than one per accessor, so a fourth cannot be added without it.
 func (n *PathTree) stats() CoverageStats {
 	if n == nil {
 		return CoverageStats{}
@@ -294,11 +244,8 @@ func (n *PathTree) stats() CoverageStats {
 	return n.Coverage
 }
 
-// Uncovered is how many statements this node and everything beneath it leave uncovered.
-//
-// A method rather than a caller reading Coverage.Uncovered: a node knows its own counts. Coverage
-// stays exported for a caller assembling a tree of its own, but nothing in this module reaches
-// through it — there is one way to ask.
+// Uncovered is how many statements this node and everything beneath it leave uncovered. Coverage
+// stays exported for a caller building its own tree, but nothing here reaches through it.
 func (n *PathTree) Uncovered() int { return n.stats().Uncovered }
 
 // Percentage is the share of this node's statements that are covered, and whether there were any to
