@@ -607,7 +607,9 @@ printed.
 
 - `-fail-under=N` exits 1 when total coverage is below N, which is what turns this from something
   you look at into something you put in CI. Exit 1 stays distinct from exit 2, so a step can tell
+<!-- vale Google.Quotes = NO -->
   "coverage dropped" from "prettycov could not run".
+<!-- vale Google.Quotes = YES -->
 - `-color=auto|never|always`, grading percentages red, yellow and green at 50 and 80. Base ANSI
   only, so your terminal theme decides the shades. Off when piped, honouring `NO_COLOR` and
   `TERM=dumb`.

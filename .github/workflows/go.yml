@@ -82,20 +82,20 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Guarded like the step above: .DELETE_ON_ERROR removes coverage.out when the test pass fails,
-      # and without the guard this would rerun the whole suite to rebuild it and go red as well.
       - name: Coverage tree
-        if: always()
         run: |
           {
             echo '### Coverage'
             echo '```'
-            test -f coverage.out && make test-cover-tree || echo '(no coverage profile)'
+            make test-cover-tree || echo '(report failed)'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The one gate that cannot live in the Makefile: it compares against the base commit.
+      # Uploads whenever a profile exists, so a gate failing after the tests still reports to the
+      # required codecov/* checks instead of leaving them pending.
       - name: Upload coverage to Codecov
+        if: '!cancelled() && hashFiles(''coverage.out'') != '''''
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
