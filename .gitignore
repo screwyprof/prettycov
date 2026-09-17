@@ -28,8 +28,5 @@ coverage.tmp
 # Checkouts surveyed while working on coverage behaviour; never part of the build.
 /_reference/
 
-# golangci-lint built with the nilaway plugin; see .custom-gcl.yml.
-/bin/
-
 # Vale downloads the Google style package here; `make docs-lint` runs `vale sync` first.
 /.vale/Google/

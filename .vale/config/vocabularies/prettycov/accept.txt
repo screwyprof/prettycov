@@ -24,7 +24,6 @@ ints
 [Kk]ubernetes
 kong
 Makefile
-nilaway
 nixpkgs
 openable
 pflag

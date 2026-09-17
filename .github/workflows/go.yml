@@ -20,14 +20,9 @@ jobs:
   # govulncheck and the prose gate were enforced on a developer's machine and nowhere else. The
   # reverse happened too — a `go mod tidy` check lived here and not in the Makefile.
   #
-  # Worse, the lint CI ran was not the lint the Makefile runs. `make lint-all` uses a golangci-lint
-  # with nilaway compiled in as a module plugin; the actions downloaded the stock binary, which
-  # cannot load that config at all:
-  #
-  #   Error: build linters: plugin(nilaway): plugin "nilaway" not found
-  #
-  # `make check` builds the custom binary itself, so the linter here is the linter a contributor
-  # ran before pushing.
+  # Worse, the lint CI ran was not the lint the Makefile runs: the actions downloaded a
+  # golangci-lint of their own choosing, where the Makefile pins one. Running `make check` makes the
+  # linter here the linter a contributor ran before pushing, at the version this repo names.
   check:
     runs-on: ubuntu-latest
     permissions:

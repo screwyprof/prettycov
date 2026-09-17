@@ -44,7 +44,7 @@ to paste into a pull request:
 | target | what it asks |
 | --- | --- |
 | `make test` | tests, with `-race` and `-shuffle=on` on both passes |
-| `make lint-all` | 74 linters, including nilaway compiled in as a plugin |
+| `make lint-all` | 69 linters, the count `golangci-lint linters` reports for this config |
 | `make lint` | the same, narrowed to your diff — what CI annotates on the pull request |
 | `make vulns` | govulncheck, reachability-aware |
 | `make docs-lint` | Vale over the Markdown, against Google's style guide |

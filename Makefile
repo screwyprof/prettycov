@@ -102,17 +102,6 @@ build: ## build application
 # whatever version was installed there instead, which is a pin that lies.
 GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
-# nilaway is a module plugin, so it has to be compiled into a golangci-lint of our own — see
-# .custom-gcl.yml. A real file rule, so the build happens when that file changes and never again —
-# 13s from a cold GOCACHE, 6s warm, which is the link step alone.
-#
-# Formatting uses the stock binary: the plugin adds a linter, not a formatter.
-GCL := bin/golangci-lint-prettycov
-
-$(GCL): .custom-gcl.yml .golangci.yml
-	@echo -e "$(OK_COLOR)==> Building golangci-lint with nilaway$(NO_COLOR)"
-	@$(GOLANGCI) custom
-
 # golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
 # which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
 # standalone pair never applied at all, so a 128-column line survived `make fmt` unchanged.
@@ -258,25 +247,24 @@ mutate: ## report mutants the tests failed to kill
 test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
 	@go run ./cmd/prettycov report --profile=$(COVERAGE) --old=$(LOCAL_PACKAGES) --new=prettycov --depth=2
 
-lint: $(GCL) ## run linters for current changes
+lint: ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
-	./$(GCL) run ./...
+	$(GOLANGCI) run ./...
 
 # CI only, and the same findings `lint` reports: reviewdog renders them as annotations on the pull
-# request diff, which a log cannot. It reads golangci-lint's own format from stdin, so this works
-# with the nilaway-carrying binary the GCL rule builds — reviewdog's own golangci-lint action
-# downloads the stock one, which cannot load this config at all and exits 3.
+# request diff, which a log cannot. Piped rather than using reviewdog's own golangci-lint action,
+# which downloads a version of its own choosing — the pin has to be the one that runs.
 #
 # Output aimed at a machine: no banner, no colour, no stats, or the errorformat has lines it cannot
 # parse. Scoped to the diff, as `lint` is, because that is what an annotation can point at.
-lint-annotate: $(GCL)
-	@./$(GCL) run ./... --output.text.print-issued-lines=false --output.text.colors=false --show-stats=false \
+lint-annotate:
+	@$(GOLANGCI) run ./... --output.text.print-issued-lines=false --output.text.colors=false --show-stats=false \
 		| go run github.com/reviewdog/reviewdog/cmd/reviewdog@$(REVIEWDOG_VERSION) \
 			-f=golangci-lint -name=golangci-lint -reporter=github-pr-check -fail-level=any
 
-lint-all: $(GCL) ## run linters
+lint-all: ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
-	./$(GCL) run ./... --new-from-rev=""
+	$(GOLANGCI) run ./... --new-from-rev=""
 
 # check runs every gate and prints one line per figure, so a PR description quotes the tools rather
 # than being retyped from them. Six descriptions in this repo have claimed numbers the tree did not

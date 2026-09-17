@@ -143,7 +143,6 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 			// end of one block and the start of the next on one line — 4.7,7.3 and 7.14,10.3 give
 			// regions 4-7 and 7-10. Refusing to close there would fold them into 4-10 across the
 			// covered condition between, which is the fault. Neither contains the other.
-			//nolint:nilaway // open is an index this loop set, or -1; the guard is the bound.
 			if open >= 0 && block.Line >= out[open].EndLine {
 				open = -1
 			}
