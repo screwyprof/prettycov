@@ -53,7 +53,8 @@ type Row struct {
 // is the one that decides how a Row looks.
 func Rows(tree *PathTree, opts Options) []Row {
 	// Nil, not empty, when there is nothing to draw: exported behaviour, and what Misses and Exclude
-	// return beside it.
+	// return beside it. #32 made it an empty slice and justified that as restoring prior behaviour,
+	// which was the opposite.
 	var rows []Row
 
 	for d := range prepare(tree, opts, shape{files: opts.Files}) {
