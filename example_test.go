@@ -49,7 +49,7 @@ func ExampleMeasure() {
 
 	tree, ok := got.Tree()
 	if !ok {
-		panic("no tree: " + fmt.Sprint(got.Outcome()))
+		panic("no tree: " + fmt.Sprint(got.Failure()))
 	}
 
 	pct, _ := tree.Percentage()

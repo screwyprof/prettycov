@@ -18,9 +18,9 @@
 // the whole profile instead of against what the patterns left, and the tree is built last. See its
 // example.
 //
-// The error means the profile could not be read. Everything else comes back as an [Outcome], so a
+// The error means the profile could not be read. Everything else comes back as a [Failure], so a
 // caller can report it and carry on. [Measurement.Tree] returns the tree and whether there is one;
-// when there is not, the [Outcome] says why.
+// when there is not, [Measurement.Failure] says why.
 //
 // [ParseProfile], [Exclude], [Shorten] and [Process] are exported separately, for a caller who
 // wants one of them or a different order.
