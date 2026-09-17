@@ -198,9 +198,11 @@ tidy: ## check go.mod and go.sum are what the imports say
 # Google's developer documentation style guide, as Vale packages it, with this repo's deviations
 # recorded in .vale.ini. `vale sync` fetches the package into .vale/, which is gitignored, so the
 # first run on a clean checkout downloads it.
+# Vale exits 0 on warnings, so the ✔ is the assertion, not the status.
 docs-lint: .vale/Google ## check the Markdown against the prose style guide
 	@echo -e "$(OK_COLOR)==> Linting docs$(NO_COLOR)"
-	@$(VALE) $(MARKDOWN)
+	@out=$$($(VALE) $(MARKDOWN) 2>&1); st=$$?; echo "$$out"; \
+		[ $$st -eq 0 ] && echo "$$out" | grep -q '✔'
 
 # A file rule, so the package is fetched once rather than on every gate run — `make check` then
 # works offline, which an unconditional `vale sync` denied it.
