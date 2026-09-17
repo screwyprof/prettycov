@@ -15,6 +15,8 @@
   "minimumReleaseAge": "3 days",
   "internalChecksFilter": "strict",
 
+  "postUpdateOptions": ["gomodTidy"],
+
   "packageRules": [
     {
       "description": "Automerge everything that is not a major. The gate is make check, which CI runs as one job and branch protection requires; a bump that breaks anything cannot reach main, and a bump that breaks nothing does not need a human to look at it.",
@@ -30,7 +32,7 @@
       "addLabels": ["major"]
     },
     {
-      "description": "flake.lock is not automerged: nothing in CI opens the flake, so a nixpkgs bump that renames or drops go_1_26 would land on a green make check that never looked. A human reads this one.",
+      "description": "flake.lock is not automerged, monthly refresh included: nothing in CI opens the flake, so a nixpkgs bump that renames or drops go_1_26 would land on a green make check that never looked. nix is also the only manager here that supports lockFileMaintenance at all — gomod does not — so this rule is the whole of that decision.",
       "matchManagers": ["nix"],
       "automerge": false
     },
@@ -40,9 +42,10 @@
       "groupName": "go modules"
     },
     {
-      "description": "The Makefile's tool pins, grouped: they are one toolchain and make check is one gate over all of them.",
+      "description": "The Makefile's tool pins, grouped and not automerged: make check runs these tools to decide whether the bump that changed them is safe, so an automerged bump would validate itself.",
       "matchManagers": ["custom.regex"],
-      "groupName": "go tools"
+      "groupName": "go tools",
+      "automerge": false
     },
     {
       "description": "Go itself is pinned to 1.26 deliberately — golang/go#80974 makes 1.27 miscount statements, which is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27 backport, so this lifts when 1.28 ships and not before. One name, because `go` is what both the gomod and github-actions managers emit — flake.nix's pin is a nixpkgs attribute no manager reads, so unblocking means editing it, go.mod and the workflow by hand. The constraints block above stops an ordinary bump raising the directive past this.",
@@ -53,11 +56,11 @@
 
   "customManagers": [
     {
-      "description": "Tool versions that live outside go.mod: the Makefile's *_VERSION pins, fetched with `go run pkg@version`, and .custom-gcl.yml's two, which decide what binary `make lint` builds. Both files are matched, because golangci-lint is pinned in both and only the .custom-gcl.yml one governs the lint gate — bumping the Makefile alone would leave the gate on the old version with make check green.",
+      "description": "The Makefile's *_VERSION pins. Every tool is fetched with `go run pkg@version`, so the version lives beside the command that uses it rather than in go.mod — which is why no bot read them until this.",
       "customType": "regex",
-      "managerFilePatterns": ["/^Makefile$/", "/^\\.custom-gcl\\.yml$/"],
+      "managerFilePatterns": ["/^Makefile$/"],
       "matchStrings": [
-        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+?)\\s+depName=(?<depName>[^\\s]+?)\\s*\\n\\s*(?:[A-Z_]+_VERSION\\s*:?=|version:)\\s*(?<currentValue>\\S+)"
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+?)\\s+depName=(?<depName>[^\\s]+?)\\s*\\n\\s*[A-Z_]+_VERSION\\s*:?=\\s*(?<currentValue>\\S+)"
       ]
     }
   ],
@@ -69,7 +72,6 @@
 
   "lockFileMaintenance": {
     "enabled": true,
-    "automerge": true,
     "schedule": ["before 6am on the first day of the month"]
   },
 
