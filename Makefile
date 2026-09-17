@@ -1,10 +1,8 @@
-# The binary name.
 BINARY ?= prettycov
 
-## DO NOT EDIT BELLOW THIS LINE
 # Asked of git rather than found on disk, so the lists are the repository's files and not whatever
 # else the working tree holds. A `find` walks ignored directories too, and anything checked out
-# below the root — a scratch clone, a downloaded dataset — lands in the prerequisites: names with
+# below the root (a scratch clone, a downloaded dataset) lands in the prerequisites: names with
 # spaces then split into targets make has no rule for, and it stops before running anything.
 #
 # -co keeps files that are merely untracked, so a new one still triggers a rebuild. quotePath=false
@@ -33,7 +31,7 @@ COVERDATA := .covdata
 # which needs the tag to lint the file at all.
 GO_TAGS := integration
 # Every tool is fetched by `go run pkg@version` at the version named here, so this block is the
-# whole toolchain. The `# renovate:` lines let the bot read a Makefile it would otherwise ignore —
+# whole toolchain. The `# renovate:` lines let the bot read a Makefile it would otherwise ignore.
 # datasource=go makes it resolve each module against the proxy, the same place `go run` will.
 # renovate: datasource=go depName=golang.org/x/vuln
 GOVULNCHECK_VERSION := v1.8.0
@@ -73,7 +71,7 @@ endif
 
 # bash, not sh: `echo -e` below prints a literal "-e" under dash, which is /bin/sh on the Ubuntu
 # runners. -e -o pipefail applies to every recipe line, so a failing command anywhere in a pipe
-# fails the target — without it `go tool cover ... | column` reported success when cover errored.
+# fails the target. Without it `go tool cover ... | column` reported success when cover errored.
 SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 
@@ -92,8 +90,8 @@ MAKE_COLOR=\033[36m%-20s\033[0m
 all: build lint test ## build application, run linters and tests
 
 # No -race here: it is a test tool, not a build flag. It also needs cgo, which silently undid the
-# static linking below — the binary came out dynamically linked against the host glibc — and cost
-# a second of race-runtime startup on a program whose work takes a millisecond.
+# static linking below (the binary came out dynamically linked against the host glibc) and cost a
+# second of race-runtime startup on a program whose work takes a millisecond.
 build: ## build application
 	@echo -e "$(OK_COLOR)==> Building application$(NO_COLOR)"
 	go build -tags netgo -ldflags "$(LDFLAGS)" -o $(PWD)/$(BINARY) $(PWD)/cmd/...
@@ -104,12 +102,12 @@ build: ## build application
 GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
 # golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
-# which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
+# which is gofumpt and gci (the same two this used to shell out to) plus golines, which the
 # standalone pair never applied at all, so a 128-column line survived `make fmt` unchanged.
 #
 # The file list, not ./..., because `fmt` walks the tree to expand it and `lint` does not: run
 # loads packages, and the go tool skips directories starting with _ or . on the way. So a checkout
-# left under the root cost this target a minute per commit while lint stayed instant — 74469 files
+# left under the root cost this target a minute per commit while lint stayed instant: 74,469 files
 # walked to format 25.
 fmt: ## format code
 	@echo -e "$(OK_COLOR)==> Formatting$(NO_COLOR)"
@@ -129,7 +127,7 @@ fmt: ## format code
 # file at all.
 #
 # The counter check is for tag drift. "integration" lives here, in the build tag and in
-# .golangci.yml, and nothing makes the three agree — without it a mismatch runs no tests, leaves
+# .golangci.yml, and nothing makes the three agree. Without it a mismatch runs no tests, leaves
 # the directory empty, and fails inside covdata naming neither the tag nor the tests.
 #
 # Appending merges, because readers of this format sum blocks they see twice.
@@ -168,19 +166,8 @@ test-cover-total: $(COVERAGE) ## show total coverage
 	@echo -e "$(OK_COLOR)==> Total coverage:$(NO_COLOR)"
 	@go run ./cmd/prettycov total --profile=$(COVERAGE)
 
-# Go measures statements, not branches: `return a && b` is one statement, covered the moment it
-# runs, whichever way it evaluates. gobco instruments the conditions themselves and says which
-# were never true or never false. Pinned and run with `go run pkg@version`, which leaves go.mod
-# and go.sum untouched, so this stays a tool you reach for rather than a dependency.
-#
-# Run against a copy holding only what git tracks. gobco copies the whole module root into its
-# own temporary tree, with filepath.Walk and no exclusions (main.go:153), so anything sitting
-# beside the source comes too: a gitignored _reference/ of cloned repositories made that 2.6GB,
-# which filled /tmp and killed the run on ENOSPC. Same shape as the one that made `make fmt` walk
-# 74,469 files — a tool reading the filesystem where the Go package graph was meant.
-#
 # Reachability-aware, so unlike a generic dependency scan it reports only what this binary can
-# actually reach — no triage queue of advisories in code that never runs.
+# actually reach, leaving no triage queue of advisories in code that never runs.
 vulns: ## report known vulnerabilities reachable from this module
 	@echo -e "$(OK_COLOR)==> Vulnerabilities$(NO_COLOR)"
 	@go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
@@ -204,15 +191,25 @@ docs-lint: .vale/Google ## check the Markdown against the prose style guide
 	@out=$$($(VALE) $(MARKDOWN) 2>&1) || { echo "$$out"; exit 1; }; \
 		echo "$$out"; echo "$$out" | grep -q '✔'
 
-# A file rule, so the package is fetched once rather than on every gate run — `make check` then
-# works offline, which an unconditional `vale sync` denied it.
+# A file rule, so the package is fetched once rather than on every gate run, which lets `make
+# check` work offline where an unconditional `vale sync` denied it.
 .vale/Google: .vale.ini
 	@echo -e "$(OK_COLOR)==> Fetching prose styles$(NO_COLOR)"
 	@$(VALE) sync >/dev/null
 	@touch $@
 
+# Go measures statements, not branches: `return a && b` is one statement, covered the moment it
+# runs, whichever way it evaluates. gobco instruments the conditions themselves and says which
+# were never true or never false. Pinned and run with `go run pkg@version`, which leaves go.mod
+# and go.sum untouched, so this stays a tool you reach for rather than a dependency.
+#
 # The copy is $(GIT_LS), the list `fmt` already uses, so uncommitted work is measured. A worktree
-# would be shorter and would silently report on HEAD instead.
+# would be shorter and would silently report on HEAD instead. Copied at all because gobco takes
+# the whole module root into its own temporary tree, with filepath.Walk and no exclusions
+# (main.go:153), so anything sitting beside the source comes too: a gitignored _reference/ of
+# cloned repositories made that 2.6GB, which filled /tmp and killed the run on ENOSPC. Same shape
+# as the one that made `make fmt` walk 74,469 files: a tool reading the filesystem where the Go
+# package graph was meant.
 cover-branches: ## report conditions never evaluated both ways
 	@echo -e "$(OK_COLOR)==> Condition coverage$(NO_COLOR)"
 	@test -n "$(GO_FILES)" || { echo "no Go files; this needs a git checkout"; exit 1; }
@@ -223,16 +220,15 @@ cover-branches: ## report conditions never evaluated both ways
 	 done
 
 # Coverage says a line ran; it cannot say a test would have noticed the line being wrong. Gremlins
-# changes the source — negating conditions, moving boundaries, flipping increments — and reports the
+# changes the source (negating conditions, moving boundaries, flipping increments) and reports the
 # mutants the suite failed to kill. A survivor is a line every test executes and none checks.
 #
 # Copied the same way as cover-branches, and for the same reason: gremlins works on its own copy of
 # the module root, so a gitignored _reference/ comes with it and fills /tmp.
 #
-# --timeout-coefficient is the whole difference between a result and a wasted run. Gremlins times
-# each mutant against a multiple of its baseline measurement, and the default left ours ~50ms
-# against a suite needing 400: 105 of 123 mutants timed out and said nothing. At 30 the run takes
-# twelve seconds and every mutant is decided.
+# --timeout-coefficient times each mutant against a multiple of its baseline measurement. The
+# default left ours ~50ms against a suite needing 400: 105 of 123 mutants timed out and said
+# nothing. At 30 the run takes twelve seconds and every mutant is decided.
 #
 # "Not covered" is worth reading but not chasing: those land on `switch { case <expr>: }` lines and
 # package-level var initialisers, neither of which Go's cover instruments where gremlins looks.
@@ -256,7 +252,7 @@ lint: ## run linters for current changes
 
 # CI only, and the same findings `lint` reports: reviewdog renders them as annotations on the pull
 # request diff, which a log cannot. Piped rather than using reviewdog's own golangci-lint action,
-# which downloads a version of its own choosing — the pin has to be the one that runs.
+# which downloads a version of its own choosing. The pin has to be the one that runs.
 #
 # Output aimed at a machine: no banner, no colour, no stats, or the errorformat has lines it cannot
 # parse. Scoped to the diff, as `lint` is, because that is what an annotation can point at.
@@ -285,7 +281,7 @@ endef
 #
 # gobco prints the same sentence for each package and nothing in it says which, so the two condition
 # lines are labelled here. That is the one thing copying by hand could not get wrong and reading the
-# output could — and the labels are positional, so the count is asserted: cover-branches swallows a
+# output could. The labels are positional, so the count is asserted: cover-branches swallows a
 # failed gobco run with `|| true`, and one surviving line would otherwise be labelled "# root"
 # whichever package it came from, in a block whose whole purpose is to be pasted somewhere.
 #
@@ -325,7 +321,7 @@ install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
 	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov/...
 
-# ./VERSION holds the last released version — bump it, then run this.
+# ./VERSION holds the last released version: bump it, then run this.
 release: ## tag a release from ./VERSION and publish it to the module proxy
 	@v="v$$(cat VERSION)"; \
 	if ! git diff --quiet || ! git diff --cached --quiet; then \
