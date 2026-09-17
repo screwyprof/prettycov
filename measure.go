@@ -3,6 +3,7 @@ package prettycov
 import (
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -51,6 +52,22 @@ const (
 	// RootMissed is a rename naming a package the profile does not hold. Only the matching catches it.
 	RootMissed
 )
+
+// String names the condition in this package's own words. A front end says which flag caused it,
+// which is more than this type knows: the domain has no command line to name.
+func (f Failure) String() string {
+	switch f {
+	case NoStatements:
+		return "no statements to cover"
+	case ExcludedAway:
+		return "the exclusions left nothing to report"
+	case RootMissed:
+		return "the rename matched nothing"
+	}
+
+	// The zero, which no run produces, in the shape stringer gives an unnamed value.
+	return "Failure(" + strconv.Itoa(int(f)) + ")"
+}
 
 // A Measurement is what a profile and the request that read it produced. The tree is the only
 // state, and whether there is one is read off it rather than stored beside it, so there is no pair

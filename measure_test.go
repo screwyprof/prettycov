@@ -187,6 +187,22 @@ func TestMeasurementTreeIsDerivedNotStored(t *testing.T) {
 	tree, ok = got.Tree()
 	require.True(t, ok)
 	assert.NotNil(t, tree)
+	assert.Zero(t, got.Failure(), "a run with a tree has no reason beside it")
+}
+
+// A caller told it can report a Failure and carry on needs the type to say something. Without this
+// the package's own example prints "no tree: 2".
+func TestFailureNamesItself(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "no statements to cover", prettycov.NoStatements.String())
+	assert.Equal(t, "the exclusions left nothing to report", prettycov.ExcludedAway.String())
+	assert.Equal(t, "the rename matched nothing", prettycov.RootMissed.String())
+
+	// The zero no run produces, so it reads as a value rather than as one of the three.
+	var none prettycov.Failure
+
+	assert.Equal(t, "Failure(0)", none.String())
 }
 
 // NamesNoPackage is Shorten's own rule, asked where a caller can reach it: Shorten trims every
