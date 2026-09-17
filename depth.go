@@ -64,8 +64,8 @@ func ParseDepth(s string) (Depth, error) {
 var _ encoding.TextUnmarshaler = (*Depth)(nil)
 
 // UnmarshalText parses a depth, so a Depth exists only because ParseDepth accepted it. Flag and
-// config libraries find this through encoding.TextUnmarshaler, which is what lets a caller hold the
-// parsed type rather than a string it has to remember to parse later.
+// config libraries find this through [encoding.TextUnmarshaler], which is what lets a caller hold
+// the parsed type rather than a string it has to remember to parse later.
 func (d *Depth) UnmarshalText(text []byte) error {
 	parsed, err := ParseDepth(string(text))
 	if err != nil {

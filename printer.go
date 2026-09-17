@@ -375,7 +375,7 @@ func sanitize(label string) string {
 }
 
 // obeyed reports whether whatever renders the report would act on the rune rather than draw it.
-// Not the same question as unicode.IsControl, which answers only for category Cc:
+// Not the same question as [unicode.IsControl], which answers only for category Cc:
 //
 //   - the bidi overrides and isolates are Cf, and one in a path reverses the reading order of
 //     everything after it, so a file is drawn under a name it does not have. This is the Trojan Source

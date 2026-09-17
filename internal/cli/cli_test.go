@@ -1274,9 +1274,10 @@ func clearColorEnv(t *testing.T) {
 }
 
 // A regular file is not a terminal, and a closed one answers no rather than panicking, and its
-// descriptor is -1 by then. Both are branches a bytes.Buffer never reaches, since it is not an
-// *os.File at all. The closed one also pins the exit code: the printer discards write errors, so a
-// report nobody could read is still exit 0. Deliberate for now, and this is where it is decided.
+// descriptor is -1 by then. Both are branches a [bytes.Buffer] never reaches, since it is not
+// an [os.File] at all. The closed one also pins the exit code: the printer discards write
+// errors, so a report nobody could read is still exit 0. Deliberate for now, and this is where
+// it is decided.
 //
 // The environment is cleared first, and nothing here is parallel because of it: palette asks about
 // NO_COLOR and TERM before it looks at the descriptor, so a runner with NO_COLOR exported would

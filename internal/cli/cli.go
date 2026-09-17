@@ -175,7 +175,7 @@ type totalCmd struct {
 
 type versionCmd struct{}
 
-// Streams is where a handler writes, bound by the composition root so nothing reaches os.Stdout
+// Streams is where a handler writes, bound by the composition root so nothing reaches [os.Stdout]
 // directly.
 type Streams struct {
 	Out, Err io.Writer

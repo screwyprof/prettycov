@@ -77,9 +77,9 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// main is os.Exit(app.Run(...)), so a status it propagates once it propagates always. The value
-// is opaque to it. One case per distinct code proves that; the branch matrix behind each code is
-// app_test's, and re-walking it here would cost a process fork per case to learn nothing.
+// main hands app.Run's status to [os.Exit], so one it propagates once it propagates always, and the
+// value is opaque to it. One case per distinct code proves that; the branch matrix behind each code
+// is app_test's, and re-walking it here would cost a process fork per case to learn nothing.
 func TestBinaryExitCodes(t *testing.T) {
 	t.Parallel()
 

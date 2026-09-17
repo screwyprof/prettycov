@@ -115,7 +115,7 @@ func TestPathTreeGetTakesTheSpellingTheReportDraws(t *testing.T) {
 	assert.NotNil(t, rooted.Get("/a.go"), "and a file under it")
 }
 
-// A package named as strconv.ParseBool reads it: t, f, true, 1 and their spellings, every one a
+// A package named as [strconv.ParseBool] reads it: t, f, true, 1 and their spellings, every one a
 // legal Go directory name cannot be asked for by name, because total settles the value before
 // the tree is consulted. "./t" is the escape, and it is the only one: the flag cannot tell them
 // apart, so the library has to offer a spelling the flag never claims.

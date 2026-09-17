@@ -30,7 +30,7 @@ func ParseProfile(path string) ([]FileCoverage, error) {
 }
 
 // scrubbed renders an error with its control characters replaced, and still unwraps to the
-// original so errors.Is keeps working. cover formats the offending line into its message, so a
+// original so [errors.Is] keeps working. cover formats the offending line into its message, so a
 // profile can plant the same escape sequences there that the report itself neutralises.
 type scrubbed struct{ err error }
 
