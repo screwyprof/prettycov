@@ -202,7 +202,7 @@ tidy: ## check go.mod and go.sum are what the imports say
 docs-lint: .vale/Google ## check the Markdown against the prose style guide
 	@echo -e "$(OK_COLOR)==> Linting docs$(NO_COLOR)"
 	@out=$$($(VALE) $(MARKDOWN) 2>&1) || { echo "$$out"; exit 1; }; \
-		echo "$$out"; echo "$$out" | grep -q '✔' || { echo "$$out"; exit 1; }
+		echo "$$out"; echo "$$out" | grep -q '✔'
 
 # A file rule, so the package is fetched once rather than on every gate run — `make check` then
 # works offline, which an unconditional `vale sync` denied it.
