@@ -38,9 +38,10 @@
       "automerge": false
     },
     {
-      "description": "One pull request for the Go module set rather than five, since x/ tags together.",
+      "description": "One pull request for the Go module set rather than five, since x/ tags together. Not automerged: make check runs `go test`, which links and executes the bumped module, so the code being judged produces the green check.",
       "matchManagers": ["gomod"],
-      "groupName": "go modules"
+      "groupName": "go modules",
+      "automerge": false
     },
     {
       "description": "The Makefile's tool pins, grouped and not automerged: make check runs these tools to decide whether the bump that changed them is safe, so an automerged bump would validate itself.",
