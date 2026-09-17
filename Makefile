@@ -41,8 +41,7 @@ GOVULNCHECK_VERSION := v1.8.0
 GOBCO_VERSION := v1.3.4
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
 GOLANGCI_VERSION := v2.13.2
-# vale-cli, not errata-ai: the module moved at v3.18.0 and the old path still carries the tags,
-# so `go run errata-ai/...@v3.21.0` resolves and then refuses — "module declares its path as".
+# vale-cli, not errata-ai: module moved at v3.18.0, old path still serves the tags and then refuses.
 # renovate: datasource=go depName=github.com/vale-cli/vale/v3
 VALE_VERSION := v3.21.0
 # renovate: datasource=go depName=github.com/reviewdog/reviewdog
@@ -268,12 +267,8 @@ lint-all: ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
 	$(GOLANGCI) run ./... --new-from-rev=""
 
-# summarise runs a gate and prints only the line worth quoting — but keeps the whole output to print
-# when the gate fails, because a filter that hides a failure's reason is worse than no filter. It
-# hid two: govulncheck's advisory detail, and the Vale run that said "1 error" where the pattern
-# wanted "errors".
-#
-# $(1) is the target, $(2) the extended regexp for the line to keep on success.
+# Prints $(2) when the gate passes, the whole output when it fails. Filtering both ways hid two
+# failures: govulncheck's advisory, and a Vale "1 error" against a pattern wanting "errors".
 define summarise
 out=$$($(MAKE) --no-print-directory $(1) 2>&1) || { echo "$$out"; exit 1; }; \
 	echo "$$out" | grep -E '$(2)' || { echo "$$out"; exit 1; }
