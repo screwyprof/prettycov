@@ -351,7 +351,6 @@ clean: ## cleans-up artifacts
 	@rm -rf ./coverage.*
 	@rm -rf ./$(COVERDATA)
 	@rm -rf ./prettycov
-	@rm -rf ./bin
 
 help: ## show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(MAKE_COLOR) %s\n", $$1, $$2}'

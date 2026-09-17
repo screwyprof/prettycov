@@ -30,7 +30,7 @@ jobs:
       # github-pr-check, the reporter the annotation step uses.
       checks: write
     steps:
-      # Checkout MUST precede setup-go: go-version-file reads go.mod off the working tree.
+      # Checkout MUST precede setup-go: cache-dependency-path reads go.sum off the working tree.
       - name: Check out code into the Go module directory
         uses: actions/checkout@v7
         with:

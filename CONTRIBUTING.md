@@ -21,11 +21,6 @@ golangci-lint or vale: `make check` fetches those itself at the versions pinned 
 never probes PATH, so a copy in your shell would be a second, different version of a gate's own
 tool rather than the one that runs.
 
-Renovate opens the dependency, action and tool bumps, and merges them itself once the checks pass.
-Anything but a major lands without a human; a major waits for one. It reads the Makefile's tool
-pins as well as `go.mod`, so the whole toolchain moves, and [renovate.json](renovate.json) records
-what is deliberately held back.
-
 One target is the exception. `make hooks` installs the git pre-commit hooks and needs `pre-commit`,
 which is Python rather than Go and so cannot be fetched the same way — `pip install pre-commit`, or
 enter the devShell, which registers them on entry. Nothing else asks for it.
@@ -34,7 +29,8 @@ Go 1.26, not 1.27. A coverage tool cannot ship on a toolchain that miscounts sta
 does ([golang/go#80974](https://github.com/golang/go/issues/80974)): it splits a straight-line block
 at a blank line and writes the whole run's count into each piece, inflating every figure this tool
 reports. CL 819000 fixed it for Go 1.28 and there is no 1.27 backport, so the pin lifts when 1.28
-ships and not before. It lives in [go.mod](go.mod) and [flake.nix](flake.nix).
+ships and not before. It lives in three places that must move together: [go.mod](go.mod),
+[flake.nix](flake.nix), and `go-version` in [the workflow](.github/workflows/go.yml).
 
 ## The gates
 
@@ -44,7 +40,7 @@ to paste into a pull request:
 | target | what it asks |
 | --- | --- |
 | `make test` | tests, with `-race` and `-shuffle=on` on both passes |
-| `make lint-all` | 69 linters, the count `golangci-lint linters` reports for this config |
+| `make lint-all` | the linters [.golangci.yml](.golangci.yml) enables, over the whole tree |
 | `make lint` | the same, narrowed to your diff — what CI annotates on the pull request |
 | `make vulns` | govulncheck, reachability-aware |
 | `make docs-lint` | Vale over the Markdown, against Google's style guide |

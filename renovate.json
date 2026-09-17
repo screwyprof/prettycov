@@ -15,6 +15,8 @@
   "minimumReleaseAge": "3 days",
   "internalChecksFilter": "strict",
 
+  "postUpdateOptions": ["gomodTidy"],
+
   "packageRules": [
     {
       "description": "Automerge everything that is not a major. The gate is make check, which CI runs as one job and branch protection requires; a bump that breaks anything cannot reach main, and a bump that breaks nothing does not need a human to look at it.",
@@ -30,7 +32,7 @@
       "addLabels": ["major"]
     },
     {
-      "description": "flake.lock is not automerged: nothing in CI opens the flake, so a nixpkgs bump that renames or drops go_1_26 would land on a green make check that never looked. A human reads this one.",
+      "description": "flake.lock is not automerged, monthly refresh included: nothing in CI opens the flake, so a nixpkgs bump that renames or drops go_1_26 would land on a green make check that never looked. nix is also the only manager here that supports lockFileMaintenance at all — gomod does not — so this rule is the whole of that decision.",
       "matchManagers": ["nix"],
       "automerge": false
     },
@@ -69,7 +71,6 @@
 
   "lockFileMaintenance": {
     "enabled": true,
-    "automerge": true,
     "schedule": ["before 6am on the first day of the month"]
   },
 
