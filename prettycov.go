@@ -58,8 +58,9 @@ func (c CoverageStats) AtLeast(bar Threshold) bool {
 	return share.Float() >= bar.value
 }
 
-// Percentage is a share of statements covered. Build one with CoverageStats.Percentage; the zero
-// value renders 0.00, a real and terrible figure rather than a visible mistake.
+// Percentage is a share of statements covered. Build one with CoverageStats.Percentage. Do not
+// declare one and use it: the zero value renders 0.00, a real and terrible figure rather than a
+// visible mistake.
 type Percentage struct {
 	value float64
 	// complete is a fact about the counts, not about value: 99.9986% rounds to 100.00 either way.

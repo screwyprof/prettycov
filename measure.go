@@ -56,7 +56,8 @@ const (
 
 // A Measurement is what a profile and the request that read it produced. The tree is the whole of
 // the state — Measured is derived from it, not stored beside it, so there is no pair to fall out of
-// step. Holding both let the zero value answer Tree with (nil, true).
+// step. Holding both once let the zero value answer Tree with (nil, true), which is the one thing
+// this type promises cannot happen.
 type Measurement struct {
 	// Exclusions is what each pattern took, whatever the outcome.
 	Exclusions []Exclusion

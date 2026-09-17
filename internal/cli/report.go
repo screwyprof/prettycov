@@ -37,8 +37,9 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 
 	// One switch over every outcome, so exhaustive asks when a fifth is added.
 	switch res.Outcome() {
-	// Said, not refused: a rename transforms the output, so one that did not happen leaves a report
-	// nobody asked for. --exclude is a filter, so "drop this if it is here" is reasonable.
+	// Refused, not merely said — it falls through to ExitFailed below. A rename transforms the
+	// output, so one that did not happen leaves a report nobody asked for. --exclude is a filter,
+	// where "drop this if it is here" is reasonable.
 	case prettycov.RootMissed:
 		_, _ = fmt.Fprintf(s.Err, "--old %q matched nothing, so no label was shortened\n", req.Rename.From)
 	case prettycov.NoStatements:

@@ -33,8 +33,8 @@ func Misses(tree *PathTree, opts Options) []Miss {
 		misses = merge(misses, d.Path, d.Blocks)
 	}
 
-	// prepare yields depth-first, so a package's own files come after its subpackages. Flattened into
-	// one list that reads wrong; sort again.
+	// prepare yields depth-first, so a package's own files come after its subpackages. Flattened,
+	// that puts b.go after deep/a.go and a reader loses their place; sort again.
 	slices.SortFunc(misses, func(x, y Miss) int {
 		return cmp.Or(cmp.Compare(x.File, y.File), cmp.Compare(x.Line, y.Line), cmp.Compare(x.Col, y.Col))
 	})
@@ -121,7 +121,7 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 //
 // The count is the message because the position cannot carry it — one untaken branch and a whole
 // untested function look alike without it. The column is cmd/cover's, a byte offset, which is what
-// go vet prints; Emacs wants display width, and the README names the setting.
+// go vet prints; Emacs wants display width, and docs/reference.md names the setting.
 func DisplayMisses(w io.Writer, tree *PathTree, opts Options) (int, error) {
 	buf := bufio.NewWriter(w)
 

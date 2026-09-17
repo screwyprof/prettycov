@@ -3,8 +3,7 @@
 //
 // `go tool cover -func` reports one line per function and a single number at the bottom. There is
 // no total per package, and none across packages at all (https://go.dev/issue/66506), so on a real
-// repository
-// the output is hundreds of lines a reader has to add up. This package builds the profile's paths
+// repository the output is hundreds of lines a reader has to add up. This package builds the paths
 // into a tree, rolls the counts up from the leaves, and hands back a node whose every row is the
 // sum of what sits beneath it.
 //
@@ -20,7 +19,8 @@
 // rather than against what the patterns left, the tree built last. Its example shows the shape.
 //
 // The error is the profile being unreadable; everything else comes back as an [Outcome], so a
-// caller can report it and carry on. [Measurement.Tree] is nil exactly when there is one to report.
+// caller can report it and carry on. [Measurement.Tree] returns the tree and whether there is one:
+// false is when the [Outcome] says why not.
 //
 // The steps are exported separately — [ParseProfile], [Exclude], [Shorten], [Process] — for a
 // caller who wants a different order or only one of them. [Measure] is the order that is right.

@@ -8,9 +8,9 @@ import (
 // ErrEmptyExclude reports the empty pattern, which matches every file.
 var ErrEmptyExclude = errors.New("want a pattern; an empty one matches every file")
 
-// ParseExclude compiles one exclusion pattern, refusing the empty one — it takes every file, so an
-// unset `--exclude=$(EXCLUDES)` would turn a coverage gate into a green no-op. Here rather than at
-// the flag, because it is a fact about what Exclude means.
+// ParseExclude compiles one exclusion pattern, refusing the empty one, which takes every file —
+// what an unset `--exclude=$(EXCLUDES)` expands to. Refused here so the message names the flag,
+// rather than letting the run reach "--exclude left nothing to report" with the cause a step back.
 func ParseExclude(s string) (*regexp.Regexp, error) {
 	if s == "" {
 		//nolint:wrapcheck // a sentinel of this package's own, returned for errors.Is.
