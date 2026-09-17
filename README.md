@@ -5,8 +5,8 @@ Go coverage as a tree, with a total on every row.
 
 `go tool cover -func` gives you one line per function and a single number at the bottom. It gives no
 total per package, and none across packages at all
-([golang/go#66506](https://github.com/golang/go/issues/66506)), so "how covered is `scraper`?" has no
-answer and on a real repository you get hundreds of lines to add up yourself.
+([golang/go#66506](https://github.com/golang/go/issues/66506)), so "how covered is `scraper`?" has
+no answer, and on a real repository you get hundreds of lines to add up yourself.
 
 prettycov reads the profile `go test` already wrote and answers that:
 
@@ -124,8 +124,8 @@ it works on a CI artefact or on a repository you have not checked out.
 Flags belong to the command that reads them, so each listing is exactly what applies, and they are
 written after the command name.
 
-Exit codes are `0`, `1` when `--fail-under` was not met, and `2` when prettycov could not do what was
-asked. They are distinct so a CI step can tell a bad invocation from a failed gate.
+Exit codes are `0`, `1` when `--fail-under` was not met, and `2` when prettycov could not do what
+was asked. They are distinct so a CI step can tell a bad invocation from a failed gate.
 
 ## Contributing
 
