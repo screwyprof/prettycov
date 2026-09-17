@@ -6,7 +6,7 @@
   ],
   "timezone": "Europe/London",
   "schedule": ["before 6am on monday"],
-  "prConcurrentLimit": 3,
+  "prConcurrentLimit": 5,
 
   "constraints": {
     "go": "1.26"
@@ -18,14 +18,6 @@
   "postUpdateOptions": ["gomodTidy"],
 
   "packageRules": [
-    {
-      "description": "Automerge everything that is not a major. The gate is make check, which CI runs as one job and branch protection requires; a bump that breaks anything cannot reach main, and a bump that breaks nothing does not need a human to look at it.",
-      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": true,
-      "automergeStrategy": "squash"
-    },
     {
       "description": "A major is a changelog to read, not a number to bump.",
       "matchUpdateTypes": ["major"],
@@ -78,7 +70,7 @@
   },
 
   "vulnerabilityAlerts": {
-    "description": "A security fix does not wait for Monday.",
+    "description": "A security fix gets its PR immediately rather than on Monday. It still waits for a human, like every other bump, so make check stays red on main until one merges it.",
     "schedule": ["at any time"]
   }
 }
