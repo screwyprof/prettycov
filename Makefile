@@ -40,9 +40,10 @@ GOVULNCHECK_VERSION := v1.8.0
 # renovate: datasource=go depName=github.com/rillig/gobco
 GOBCO_VERSION := v1.3.4
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
-GOLANGCI_VERSION := v2.13.1
-# renovate: datasource=go depName=github.com/errata-ai/vale/v3
-VALE_VERSION := v3.14.2
+GOLANGCI_VERSION := v2.13.2
+# vale-cli, not errata-ai: module moved at v3.20.0, old path still serves the tags and then refuses.
+# renovate: datasource=go depName=github.com/vale-cli/vale/v3
+VALE_VERSION := v3.21.0
 # renovate: datasource=go depName=github.com/reviewdog/reviewdog
 REVIEWDOG_VERSION := v0.21.1
 # renovate: datasource=go depName=github.com/go-gremlins/gremlins
@@ -185,7 +186,7 @@ vulns: ## report known vulnerabilities reachable from this module
 	@go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 # See GOLANGCI above: same convention, same reason.
-VALE := go run github.com/errata-ai/vale/v3/cmd/vale@$(VALE_VERSION)
+VALE := go run github.com/vale-cli/vale/v3/cmd/vale@$(VALE_VERSION)
 
 # `-diff` rather than tidy-then-`git diff`: it reports what would change without writing, so the
 # gate cannot leave a dirty tree behind when it fails. Both files are checked in, so a stale one is
@@ -197,9 +198,11 @@ tidy: ## check go.mod and go.sum are what the imports say
 # Google's developer documentation style guide, as Vale packages it, with this repo's deviations
 # recorded in .vale.ini. `vale sync` fetches the package into .vale/, which is gitignored, so the
 # first run on a clean checkout downloads it.
+# Vale exits 0 on warnings, so the ✔ is the assertion, not the status.
 docs-lint: .vale/Google ## check the Markdown against the prose style guide
 	@echo -e "$(OK_COLOR)==> Linting docs$(NO_COLOR)"
-	@$(VALE) $(MARKDOWN)
+	@out=$$($(VALE) $(MARKDOWN) 2>&1); st=$$?; echo "$$out"; \
+		[ $$st -eq 0 ] && echo "$$out" | grep -q '✔'
 
 # A file rule, so the package is fetched once rather than on every gate run — `make check` then
 # works offline, which an unconditional `vale sync` denied it.
@@ -266,6 +269,13 @@ lint-all: ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
 	$(GOLANGCI) run ./... --new-from-rev=""
 
+# Prints $(2) when the gate passes, the whole output when it fails. Filtering both ways hid two
+# failures: govulncheck's advisory, and a Vale "1 error" against a pattern wanting "errors".
+define summarise
+out=$$($(MAKE) --no-print-directory $(1) 2>&1) || { echo "$$out"; exit 1; }; \
+	echo "$$out" | grep -E '$(2)' || { echo "$$out"; exit 1; }
+endef
+
 # check runs every gate and prints one line per figure, so a PR description quotes the tools rather
 # than being retyped from them. Six descriptions in this repo have claimed numbers the tree did not
 # give, all of them hand-copied from these same targets.
@@ -296,16 +306,15 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@go run ./cmd/prettycov report --profile=$(COVERAGE) --old=$(LOCAL_PACKAGES) --new=prettycov \
 		--depth=2 --files --hide-covered --fail-under=$(COVERAGE_FLOOR)
 	@echo; echo '$$ make lint-all'
-	@$(MAKE) --no-print-directory lint-all 2>&1 | grep -E '^[0-9]+ issues\.'
+	@$(call summarise,lint-all,^[0-9]+ issues\.)
 	@echo; echo '$$ make tidy'
-	@$(MAKE) --no-print-directory tidy 2>&1 | tail -1
+	@$(call summarise,tidy,.)
 	@echo; echo '$$ make vulns'
-	@out=$$($(MAKE) --no-print-directory vulns 2>&1) || { echo "$$out"; exit 1; }; \
-		echo "$$out" | grep -E 'No vulnerabilities|Vulnerability #'
+	@$(call summarise,vulns,No vulnerabilities|Vulnerability #)
 	@echo; echo '$$ make docs-lint'
-	@$(MAKE) --no-print-directory docs-lint 2>&1 | grep -E 'errors.*warnings|^ *✔'
+	@$(call summarise,docs-lint,^ *✔)
 	@echo; echo '$$ make mutate'
-	@$(MAKE) --no-print-directory mutate 2>&1 | grep -E '^(Killed:|Test efficacy:)'
+	@$(call summarise,mutate,^(Killed:|Test efficacy:))
 	@echo; echo '$$ make cover-branches'
 	@$(MAKE) --no-print-directory cover-branches 2>&1 | grep '^Condition coverage:' \
 		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"} \
