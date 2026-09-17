@@ -48,7 +48,6 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 
 				tree, ok := m.Tree()
 				require.True(t, ok)
-				assert.Equal(t, prettycov.Measured, m.Outcome())
 				assert.Equal(t, 10, tree.Coverage.Total())
 			},
 		},
@@ -63,7 +62,7 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 
 				_, ok := m.Tree()
 				assert.False(t, ok)
-				assert.Equal(t, prettycov.NoStatements, m.Outcome(), "the profile is what is empty, not the root")
+				assert.Equal(t, prettycov.NoStatements, m.Failure(), "the profile is what is empty, not the root")
 			},
 		},
 		"patterns that take everything": {
@@ -76,7 +75,7 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 
 				_, ok := m.Tree()
 				assert.False(t, ok)
-				assert.Equal(t, prettycov.ExcludedAway, m.Outcome())
+				assert.Equal(t, prettycov.ExcludedAway, m.Failure())
 				assert.Len(t, m.Exclusions, 1, "and the accounting survives, so a caller can say what took it")
 			},
 		},
@@ -100,7 +99,7 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 			},
 			want: func(t *testing.T, m prettycov.Measurement) {
 				t.Helper()
-				assert.Equal(t, prettycov.RootMissed, m.Outcome(), "only the matching can catch a root that moved")
+				assert.Equal(t, prettycov.RootMissed, m.Failure(), "only the matching can catch a root that moved")
 
 				_, ok := m.Tree()
 				assert.False(t, ok)
@@ -160,11 +159,14 @@ func TestRenameWantedReadsTheSource(t *testing.T) {
 	assert.False(t, prettycov.Rename{To: "x"}.Wanted())
 }
 
-// Measured is derived from the tree rather than stored beside it, so the two cannot disagree. The
-// zero Measurement is the case that proves it matters: it is what Measure returns with an error, and
-// while Measured was a stored field at zero it answered Tree with (nil, true). A library caller
-// switching on that bool nil-dereferenced on any unreadable profile.
-func TestMeasurementOutcomeFollowsTheTree(t *testing.T) {
+// Whether there is a tree is read off the tree, not stored beside it, so the two cannot disagree.
+// The zero Measurement is the case that proves it matters: it is what Measure returns with an
+// error, and while that state was a stored field at zero it answered Tree with (nil, true). A
+// library caller switching on that bool nil-dereferenced on any unreadable profile.
+//
+// Its Failure is none of the three, which is what Failure counting from one buys: the value beside
+// an error names nothing rather than reading as the first constant.
+func TestMeasurementTreeIsDerivedNotStored(t *testing.T) {
 	t.Parallel()
 
 	var zero prettycov.Measurement
@@ -172,10 +174,11 @@ func TestMeasurementOutcomeFollowsTheTree(t *testing.T) {
 	tree, ok := zero.Tree()
 	assert.Nil(t, tree)
 	assert.False(t, ok, "a nil tree is never handed back as one")
-	assert.Equal(t, prettycov.Unmeasured, zero.Outcome())
+	assert.NotContains(t,
+		[]prettycov.Failure{prettycov.NoStatements, prettycov.ExcludedAway, prettycov.RootMissed},
+		zero.Failure(), "the zero Failure is not a reason")
 
-	// And the other way: a run that produced a tree reports Measured without anything having
-	// written it down.
+	// And the other way: a run that produced a tree says so without anything having written it down.
 	got, err := prettycov.Measure(prettycov.Request{
 		Profile: writeProfile(t, "mode: set\nm/a.go:1.1,2.2 1 1\n"),
 	})
@@ -184,7 +187,22 @@ func TestMeasurementOutcomeFollowsTheTree(t *testing.T) {
 	tree, ok = got.Tree()
 	require.True(t, ok)
 	assert.NotNil(t, tree)
-	assert.Equal(t, prettycov.Measured, got.Outcome())
+	assert.Zero(t, got.Failure(), "a run with a tree has no reason beside it")
+}
+
+// A caller told it can report a Failure and carry on needs the type to say something. Without this
+// the package's own example prints "no tree: 2".
+func TestFailureNamesItself(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "no statements to cover", prettycov.NoStatements.String())
+	assert.Equal(t, "the exclusions left nothing to report", prettycov.ExcludedAway.String())
+	assert.Equal(t, "the rename matched nothing", prettycov.RootMissed.String())
+
+	// The zero no run produces, so it reads as a value rather than as one of the three.
+	var none prettycov.Failure
+
+	assert.Equal(t, "Failure(0)", none.String())
 }
 
 // NamesNoPackage is Shorten's own rule, asked where a caller can reach it: Shorten trims every

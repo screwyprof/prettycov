@@ -10,6 +10,22 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Go API
+
+- **Breaking:** `Outcome`, `Measured` and `Unmeasured` are gone. `Measurement.Outcome()` is now
+  `Measurement.Failure()`, returning a `Failure` with the three reasons a run produced no tree:
+  `NoStatements`, `ExcludedAway` and `RootMissed`. Read it when `Measurement.Tree()` reports false.
+
+  `Outcome` answered two questions in one value, and `Tree()` already answered the first. `Measured`
+  was derived from the tree and `Unmeasured` was the zero carried beside an error the caller already
+  held, so neither was ever a stored reason. Every switch over `Outcome` therefore needed two arms
+  that could not run. A `Failure` has only the three, so the switch has only the three.
+
+  `Failure` counts from one, leaving its zero unnamed: the value beside an error names nothing
+  rather than reading as `NoStatements`.
+
 ## [0.14.0] — 2026-09-16
 
 ### CLI

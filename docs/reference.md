@@ -415,6 +415,13 @@ Coverage is a weak predictor of whether a suite catches bugs once suite size is 
 2014](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf)); what predicts it is how
 much the tests assert, which no profile can see. Treat `--fail-under` as a floor, not a goal.
 
+The unit is the statement, so anything the profile records without one cannot move the figure. An
+empty switch arm is the case that bites: `cmd/cover` writes it as a block declaring no statements,
+`x.go:5.9,5.9 0 0`, where the trailing count still says whether the arm was ever taken. Summing
+statements, a zero adds to neither side, so this tool and `go tool cover -func` both read straight
+past an arm no test reached, and `misses` has no position to list. A line-based service reads the
+same block as an uncovered line, which is the one thing codecov can say here that this cannot.
+
 ## How it works
 
 It parses the coverage profile into a prefix tree of paths and coverages, with the profile's files

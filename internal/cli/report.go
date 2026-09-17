@@ -29,14 +29,13 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 	// Before the failures below: a pattern that took everything is how a run ends up with nothing.
 	reportExclusions(res.Exclusions, s)
 
-	// The bool, not the Outcome, so a caller cannot read a nil tree without being told. Before the
-	// switch, which is then only the ways a run comes back empty.
+	// Returned before the switch, which is then only the ways a run comes back empty.
 	if tree, ok := res.Tree(); ok {
 		return tree, nil
 	}
 
-	// One switch over every outcome, so exhaustive asks when a fifth is added.
-	switch res.Outcome() {
+	// One switch over every failure, so exhaustive asks when a fourth is added.
+	switch res.Failure() {
 	// Refused, not merely said: it falls through to ExitFailed below. A rename transforms the
 	// output, so one that did not happen leaves a report nobody asked for. --exclude is a filter,
 	// where "drop this if it is here" is reasonable.
@@ -46,8 +45,6 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 		return nil, g.refuse("no statements to cover", s)
 	case prettycov.ExcludedAway:
 		return nil, g.refuse("--exclude left nothing to report", s)
-	case prettycov.Measured: // returned above, where the tree is
-	case prettycov.Unmeasured: // returned above, with the error that produced it
 	}
 
 	return nil, exitError{code: ExitFailed}
