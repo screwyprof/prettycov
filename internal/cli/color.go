@@ -31,7 +31,7 @@ const (
 // compiles and --color=never stops being a spelling kong knows.
 var _ encoding.TextUnmarshaler = (*colorMode)(nil)
 
-// UnmarshalText parses a mode, so a colorMode exists only because a valid spelling was given —
+// UnmarshalText parses a mode, so a colorMode exists only because a valid spelling was given.
 // kong finds it by interface, leaving no window where an unchecked string is lying around.
 func (m *colorMode) UnmarshalText(text []byte) error {
 	switch string(text) {

@@ -17,7 +17,7 @@ func buildVersion() string {
 	// Whatever that says is already the answer: the toolchain writes "(devel)" itself for a main
 	// module with no version, so there is nothing to check it against.
 	//
-	// The guard is for the pointer, not the value — it is nil when ok is false, and a binary
+	// The guard is for the pointer, not the value: it is nil when ok is false, and a binary
 	// carrying no build info at all is the only way there. No ordinary build produces one, which
 	// is why this is the single statement in the package no test reaches.
 	info, ok := debug.ReadBuildInfo()

@@ -37,7 +37,7 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 
 	// One switch over every outcome, so exhaustive asks when a fifth is added.
 	switch res.Outcome() {
-	// Refused, not merely said — it falls through to ExitFailed below. A rename transforms the
+	// Refused, not merely said: it falls through to ExitFailed below. A rename transforms the
 	// output, so one that did not happen leaves a report nobody asked for. --exclude is a filter,
 	// where "drop this if it is here" is reasonable.
 	case prettycov.RootMissed:
@@ -54,7 +54,7 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 }
 
 // cannotWrite reports a destination that would not take the report. Exit 2, never the gate's 1: what
-// failed is writing it down, not the coverage. A closed pipe does not reach here — Go raises SIGPIPE
+// failed is writing it down, not the coverage. A closed pipe does not reach here, since Go raises SIGPIPE
 // for stdout and stderr.
 func cannotWrite(err error, s Streams) error {
 	_, _ = fmt.Fprintf(s.Err, "cannot write the report: %v\n", err)
@@ -78,7 +78,7 @@ func (g gate) refuse(reason string, s Streams) error {
 
 // total writes one percentage and nothing else. The path is spelled as the report prints it, since
 // the tree is built from shortened paths; --exclude is the other way round. The same node is printed
-// and graded — two lookups disagreed once, and --fail-under=100 passed a report reading 99.99.
+// and graded. Two lookups disagreed once, and --fail-under=100 passed a report reading 99.99.
 func total(g gate, tree *prettycov.PathTree, want string, s Streams) error {
 	node := tree
 
@@ -98,7 +98,7 @@ func total(g gate, tree *prettycov.PathTree, want string, s Streams) error {
 		return g.refuse(fmt.Sprintf("total names nothing with statements to cover: %q", want), s)
 	}
 
-	// Checked, where the stderr messages above are not — this is the answer, and
+	// Checked, where the stderr messages above are not, because this is the answer and
 	// `COVERAGE := $(shell prettycov total)` on a full disk took an empty string. Before grade, so a
 	// write failure is exit 2 rather than exit 1 for a number nobody received.
 	if _, err := fmt.Fprintln(s.Out, pct); err != nil {

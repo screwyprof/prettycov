@@ -32,12 +32,12 @@ type Options struct {
 	HideCovered *Threshold
 
 	// Files draws the profile's files beside its packages, each costing a level the way `tree -L`
-	// counts one — unless a file is all its package holds, and the two merge into one row.
+	// counts one, unless a file is all its package holds and the two merge into one row.
 	Files bool
 }
 
 // Row is one line of the report: the indent and glyph that place it in the tree, the label of the
-// node, and that node's coverage. The percentage is not here — it is a rendering choice, and the
+// node, and that node's coverage. The percentage is not here, being a rendering choice, and the
 // counts it comes from are.
 type Row struct {
 	Prefix string
@@ -64,8 +64,8 @@ func Rows(tree *PathTree, opts Options) []Row {
 	return rows
 }
 
-// shape is what a renderer reads off each row. The halves are disjoint — a tree row is placed by
-// Prefix, a position named by Path — and building both cost a 30,000-file tree 137% of its memory.
+// shape is what a renderer reads off each row. The halves are disjoint: a tree row is placed by
+// Prefix, a position named by Path. Building both cost a 30,000-file tree 137% of its memory.
 type shape struct {
 	// files draws the profile's files. --files for a tree; always, for a list of positions.
 	files bool
@@ -73,11 +73,11 @@ type shape struct {
 	positions bool
 }
 
-// prepare is the whole of the output filtering: it reads --depth, --files and --hide-covered and
+// prepare does all the output filtering: it reads --depth, --files and --hide-covered and
 // yields the nodes left, in draw order.
 //
 // The one place those are read. Renderers receive and shape; they cannot filter, so two of them
-// cannot disagree about what the report contains — which is what both bugs this seam was built for
+// cannot disagree about what the report contains, which is what both bugs this seam was built for
 // were. want is the output's question, not a flag's: a list of positions is made of files either way.
 func prepare(tree *PathTree, opts Options, want shape) iter.Seq[drawn] {
 	return func(yield func(drawn) bool) {
@@ -124,13 +124,13 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) (int, error) {
 // What the renderers read, not the node they read it from: Rows takes Coverage, Misses takes
 // Blocks. Carrying the *PathTree instead would hand every renderer the Children and Files maps
 // below it, so re-deriving the subtree stage 4 has already decided against would be one field
-// access away and nothing would catch it — which is the way the two of them came to disagree twice.
+// access away and nothing would catch it, which is how the two came to disagree twice.
 type drawn struct {
 	Row
 
 	// Blocks is empty unless the row stands for a file.
 	Blocks []Block
-	// Path is the whole path, which Label is not — a row carries only its own segment. Built from
+	// Path is the whole path, which Label is not: a row carries only its own segment. Built from
 	// sanitised segments, so both printers spell one path the same way.
 	Path string
 }
@@ -164,7 +164,7 @@ type entry struct {
 }
 
 // visible is what to draw below tree: everything it holds that could be a row, minus the ones
-// already at the bar, sanitised and sorted — map order is randomised and this output gets diffed
+// already at the bar, sanitised and sorted, since map order is randomised and this output is diffed
 // between runs.
 func (b *walker) visible(tree *PathTree, level Depth) []entry {
 	size := len(tree.Children)
@@ -175,7 +175,7 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 	entries := make([]entry, 0, size)
 
 	for e := range b.below(tree) {
-		// The bar first, so a row nobody draws is never scanned — and asked of the node collapse
+		// The bar first, so a row nobody draws is never scanned, and asked of the node collapse
 		// merged to, which is the number the reader would have seen.
 		if b.hiding && b.allCovered(e.node, level) {
 			continue
@@ -188,8 +188,8 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 	}
 
 	// By the drawn label, not the name it started as: "api/errors.go" sorts before "api.go" because
-	// "/" follows ".". Merging is what lets two labels tie — a bare "a.go" merges to the same label
-	// as a directory called "a.go" — and the original name breaks it, being unique within a map.
+	// "/" follows ".". Merging is what lets two labels tie: a bare "a.go" merges to the same label
+	// as a directory called "a.go", and the original name breaks it, being unique within a map.
 	// Stable for the tie left when a name is in both maps; directories are gathered first.
 	slices.SortStableFunc(entries, func(x, y entry) int {
 		return cmp.Or(strings.Compare(x.label, y.label), strings.Compare(x.name, y.name))
@@ -201,7 +201,8 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 // allCovered reports whether a node and every row drawn beneath it are at the bar.
 //
 // What is drawn, not what the tree holds: a row --depth already cut cannot be why its parent
-// survives. And the subtree, not the node alone — coverage is not monotonic downwards below 100, so
+// survives. And the subtree, not the node alone, since coverage is not monotonic downwards below
+// 100, so
 // a package at 91 can hold one at 88, and judging the top row by itself hid the branch with the
 // work in it.
 //
@@ -243,7 +244,7 @@ func (b *walker) below(tree *PathTree) iter.Seq[entry] {
 			label, merged := collapse(name, node, b.files)
 
 			// The filesystem root has no name: an absolute path splits to a leading empty component.
-			// Named here, not at the row, so visible sorts on what the reader sees — "/" belongs
+			// Named here, not at the row, so visible sorts on what the reader sees. "/" belongs
 			// after ".", and the empty string sorted first.
 			if label == "" {
 				label = "/"
@@ -254,7 +255,7 @@ func (b *walker) below(tree *PathTree) iter.Seq[entry] {
 			}
 		}
 
-		// Not enumerated rather than filtered later, so they cost no level and no glyph — else the
+		// Not enumerated rather than filtered later, so they cost no level and no glyph. Otherwise the
 		// last package would draw a middle one's branch glyph whenever a file sorted after it.
 		if !b.files {
 			return
@@ -327,7 +328,7 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 // collapse merges a run of nodes that each hold nothing but the next into one row, so a module path
 // does not spend three levels on "github.com", "owner", "repo".
 //
-// Files of its own stop the run — unless mergeFiles and that one file is all the directory holds,
+// Files of its own stop the run, unless mergeFiles and that one file is all the directory holds,
 // where the two rows would carry the same number twice.
 func collapse(label string, node *PathTree, mergeFiles bool) (string, *PathTree) {
 	// Bounded like Get's descent: Children is exported, so a hand-built tree can point at itself.
@@ -360,7 +361,7 @@ func join(label, name string) string {
 // "\x1b[1A\x1b[2Kforged" erases the row above and writes over it, and above the first child is the
 // total. Positions too: the same escape erases a miss, and "real\revil/b.go" draws as "evil/b.go".
 //
-// The cost is that such a path loses its round trip — it will not open in an editor or match as an
+// The cost is that such a path loses its round trip: it will not open in an editor or match as an
 // --exclude pattern. Worth it: it is corrupted visibly rather than silently, most of this set breaks
 // a line-oriented consumer anyway, and Go forbids all of it in a module path.
 func sanitize(label string) string {
@@ -377,7 +378,7 @@ func sanitize(label string) string {
 // Not the same question as unicode.IsControl, which answers only for category Cc:
 //
 //   - the bidi overrides and isolates are Cf, and one in a path reverses the reading order of
-//     everything after it, so a file is drawn under a name it does not have — the Trojan Source
+//     everything after it, so a file is drawn under a name it does not have. This is the Trojan Source
 //     trick, which gosec's G116 catches in Go source for the same reason;
 //   - U+2028 and U+2029 end a line for a log viewer or a JSON consumer as surely as the carriage
 //     return already handled here, and this report is read a line at a time;
@@ -442,7 +443,7 @@ func childSymbol(index int, length int) boxType {
 	return between
 }
 
-// symbol is the glyph placing a row, with its trailing space — constants, since concatenating one
+// symbol is the glyph placing a row, with its trailing space. Constants, since concatenating one
 // allocated twice per row. An unrecognised box type draws blank rather than panicking.
 func symbol(root bool, b boxType) string {
 	if root {

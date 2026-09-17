@@ -8,7 +8,7 @@ import (
 // ErrEmptyExclude reports the empty pattern, which matches every file.
 var ErrEmptyExclude = errors.New("want a pattern; an empty one matches every file")
 
-// ParseExclude compiles one exclusion pattern, refusing the empty one, which takes every file —
+// ParseExclude compiles one exclusion pattern, refusing the empty one, which takes every file:
 // what an unset `--exclude=$(EXCLUDES)` expands to. Refused here so the message names the flag,
 // rather than letting the run reach "--exclude left nothing to report" with the cause a step back.
 func ParseExclude(s string) (*regexp.Regexp, error) {
@@ -33,7 +33,7 @@ func ParseExclude(s string) (*regexp.Regexp, error) {
 // Each pattern is tried unanchored against the file's path and against each block's position, with
 // and without the column. The path is tried first and wins, or a pattern aimed at a package would
 // be charged one block at a time. A path `go test` writes holds no colon, so the two do not collide
-// there — x/tools parses the filename as a greedy .+, so a FileCoverage a caller built by hand can
+// there. x/tools parses the filename as a greedy .+, so a FileCoverage a caller built by hand can
 // name "m/a.go:3x/y.go" and hand a coordinate pattern the whole file.
 //
 // Unanchored means the line is a prefix: "a.go:3" reaches 3, 30 and 300; "a.go:3$" is the one line.
@@ -65,7 +65,7 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 }
 
 // noteBlocksAlreadyGone credits a pattern naming a block inside a file another pattern took whole.
-// Without it such a pattern reports "matched nothing", which invites deleting it — and the day the
+// Without it such a pattern reports "matched nothing", which invites deleting it, and the day the
 // path pattern narrows, the block returns to the denominator. Patterns that took the path are
 // skipped, being a prefix of every coordinate in it.
 func noteBlocksAlreadyGone(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage) {
@@ -117,7 +117,7 @@ func chargeFile(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverag
 }
 
 // chargeBlocks takes the blocks a pattern names out of a file no pattern took whole, and reports
-// whether anything is left to draw. A file carrying no blocks is returned untouched — Blocks is
+// whether anything is left to draw. A file carrying no blocks is returned untouched, since Blocks is
 // optional. Coverage is recomputed only when something was dropped.
 func chargeBlocks(
 	dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage,
@@ -178,7 +178,7 @@ type Exclusion struct {
 	Files      int
 	Blocks     int
 	Statements int
-	// What it matched that another pattern was charged for — usually an earlier one, since first
+	// What it matched that another pattern was charged for, usually an earlier one, since first
 	// match wins. A path beats a coordinate wherever it sits, so a coordinate pattern can also be
 	// overlapped by a later path pattern that took the file whole. Kept apart from the charges,
 	// since a pattern can work and still be charged nothing.

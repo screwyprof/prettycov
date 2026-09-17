@@ -11,7 +11,7 @@ import (
 // Miss is a run of statements the tests never reached, in one file: one per contiguous region, not
 // per block, since cmd/cover emits a block per branch.
 //
-// Line and Col open the region's first block — `if !ok {` rather than the `return` inside it — and
+// Line and Col open the region's first block, `if !ok {` rather than the `return` inside it, and
 // are the only spelling a compiler-style consumer reads. EndLine is for the consumers that do speak
 // ranges (GitHub annotations, LSP). Statements is what the positions cannot say.
 type Miss struct {
@@ -50,7 +50,7 @@ func byPosition(x, y Block) int {
 // merge folds a file's uncovered blocks into the fewest regions covering them.
 //
 // Abutting means opening no later than the line after the last region ended, with nothing covered
-// between — a covered block in the gap stops the fold, or the region would claim a statement the
+// between. A covered block in the gap stops the fold, or the region would claim a statement the
 // tests reach.
 //
 // Breaking that is invisible in the default output: only the range goes wrong, the statement counts
@@ -89,7 +89,7 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 			continue
 		}
 
-		// Block is exported, so a caller's own FileCoverage leaves EndLine zero — an inverted region
+		// Block is exported, so a caller's own FileCoverage leaves EndLine zero, an inverted region
 		// a range consumer rejects.
 		end := max(block.Line, block.EndLine)
 
@@ -123,7 +123,7 @@ func merge(out []Miss, file string, blocks []Block) []Miss {
 // is not a location to that format and is dropped silently, and without a trailing message vim and
 // Emacs fall back to `file:line:message` and read the column as the text.
 //
-// The count is the message because the position cannot carry it — one untaken branch and a whole
+// The count is the message because the position cannot carry it: one untaken branch and a whole
 // untested function look alike without it. The column is cmd/cover's, a byte offset, which is what
 // go vet prints; Emacs wants display width, and docs/reference.md names the setting.
 func DisplayMisses(w io.Writer, tree *PathTree, opts Options) (int, error) {
@@ -133,7 +133,7 @@ func DisplayMisses(w io.Writer, tree *PathTree, opts Options) (int, error) {
 
 	for _, m := range Misses(tree, opts) {
 		// One definition of the format serves this and --exclude's matching, so a position pastes
-		// back as a pattern. It matches the block opening there, not the region, and unanchored —
+		// back as a pattern. It matches the block opening there, not the region, and unanchored:
 		// a.go:9:2 also matches a.go:9:24. docs/reference.md covers the round trip.
 		_, _ = buf.WriteString(position(m.File, m.Line, m.Col))
 		_, _ = buf.WriteString(": ")

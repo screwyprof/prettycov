@@ -59,7 +59,7 @@ func ParseDepth(s string) (Depth, error) {
 
 // Kong finds UnmarshalText by reflection, so nothing refers to it by name and a rename compiles:
 // --depth=max would quietly fall back to kong's uint64 parser and be refused. The assertion makes
-// that a build failure — as it does for Threshold and colorMode, which are found the same way.
+// that a build failure, as it does for Threshold and colorMode, which are found the same way.
 var _ encoding.TextUnmarshaler = (*Depth)(nil)
 
 // UnmarshalText parses a depth, so a Depth exists only because ParseDepth accepted it. Flag and

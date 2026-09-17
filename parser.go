@@ -42,8 +42,8 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 	items := make([]FileCoverage, 0, len(profiles))
 
 	// One backing array for every file's blocks, sized exactly, so a file costs no allocation of
-	// its own. Exactness is for waste, not safety: a re-alloc part way is harmless — the slices
-	// already handed out keep the old array, which is still correct — but it would leave two.
+	// its own. Exactness is for waste, not safety. A re-alloc part way is harmless, since the slices
+	// already handed out keep the old array and stay correct, but it would leave two.
 	//
 	// The cost is a shared lifetime. Every file's Blocks points into this one array, so it lives
 	// as long as any FileCoverage does: Exclude dropping nine files in ten frees none of it. That
@@ -55,7 +55,7 @@ func parse(profiles []*cover.Profile) ([]FileCoverage, error) {
 
 	slab := make([]Block, 0, blocks)
 
-	// Every later sum — per package, then up the tree — adds a subset of these same blocks, so
+	// Every later sum, per package and then up the tree, adds a subset of these same blocks, so
 	// a running total that stays in range here keeps all of them in range too. cover rejects a
 	// negative NumStmt, so adding one can only grow the total or wrap it past zero.
 	var total int

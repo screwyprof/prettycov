@@ -12,7 +12,7 @@ type CoverageStats struct {
 	Uncovered int
 }
 
-// Total is the statements a node holds, covered or not — named, because --counts prints the fraction
+// Total is the statements a node holds, covered or not. Named, because --counts prints the fraction
 // the percentage stands for and a second expression could divide by a different number.
 //
 // No overflow check: this is the raw sum, and Percentage refuses one that has wrapped.
@@ -24,7 +24,7 @@ func (c CoverageStats) Plus(other CoverageStats) CoverageStats {
 	return CoverageStats{Covered: c.Covered + other.Covered, Uncovered: c.Uncovered + other.Uncovered}
 }
 
-// Percentage reports the share of statements covered. False is not 0% — there is nothing to report.
+// Percentage reports the share of statements covered. False is not 0%; there is nothing to report.
 // Derived rather than stored, or it could disagree with the counts beside it.
 func (c CoverageStats) Percentage() (Percentage, bool) {
 	total := c.Total()
@@ -45,7 +45,8 @@ func (c CoverageStats) Percentage() (Percentage, bool) {
 // at 100 the question is whether an uncovered statement is left, since 2^56-1 covered beside one
 // uncovered divides to exactly 100.0 in float64.
 //
-// Nothing to cover is not "at least anything". Nothing above 100 can be asked — Threshold is parsed.
+// Nothing to cover is not "at least anything". Nothing above 100 can be asked, since Threshold is
+// parsed.
 func (c CoverageStats) AtLeast(bar Threshold) bool {
 	share, ok := c.Percentage()
 	if !ok {
@@ -72,7 +73,7 @@ type Percentage struct {
 // Float is the unrounded percentage, for comparing against a threshold.
 func (p Percentage) Float() float64 { return p.value }
 
-// String renders two decimals, and never 100.00 for code that is not fully covered — rounding would
+// String renders two decimals, and never 100.00 for code that is not fully covered. Rounding would
 // print it for 73999 of 74000, and 100% is what stops someone writing another test.
 func (p Percentage) String() string {
 	text := strconv.FormatFloat(p.value, 'f', 2, 64)
@@ -89,14 +90,14 @@ func (p Percentage) String() string {
 type FileCoverage struct {
 	File     string
 	Coverage CoverageStats
-	// Blocks is where the file's statements are, in profile order. Optional — Coverage is the sum
+	// Blocks is where the file's statements are, in profile order. Optional, since Coverage is the sum
 	// and stays the authority. Exclude matches against these, and Process carries them onto the
 	// tree's leaves, which is what lets Misses say where rather than only how much.
 	Blocks []Block
 }
 
-// Block is one of a file's basic blocks. Exactly one side of Coverage is non-zero — a block is run
-// or not run, never partly — and the position is where cmd/cover opens it, so `if !ok {` on line 32
+// Block is one of a file's basic blocks. Exactly one side of Coverage is non-zero, since a block is
+// run or not run and never partly. The position is where cmd/cover opens it, so `if !ok {` on line 32
 // owns the `return` on line 33.
 //
 // Line and Col are its identity, and all --exclude matches against. EndLine is what Misses folds on.
@@ -116,7 +117,7 @@ func (b Block) at(file string) (withCol, toLine string) {
 }
 
 // position names a place in a file as a compiler does. One spelling, because --exclude matches
-// against it and the misses command prints it — a position pastes back as a pattern.
+// against it and the misses command prints it, so a position pastes back as a pattern.
 func position(file string, line, col int) string {
 	return file + ":" + strconv.Itoa(line) + ":" + strconv.Itoa(col)
 }
@@ -139,7 +140,7 @@ func Process(files []FileCoverage) *PathTree {
 }
 
 // rollUp gives every node the statements beneath it, counted once. Only files arrive carrying
-// statements, so a directory's total is entirely this sum — counting its own as well grew a node's
+// statements, so a directory's total is entirely this sum. Counting its own as well grew a node's
 // totals by a factor of its child count. In place: Process owns the tree until this returns.
 func rollUp(node *PathTree) CoverageStats {
 	for _, file := range node.Files {
@@ -159,10 +160,10 @@ func rollUp(node *PathTree) CoverageStats {
 // The count is why this is its own step: a root naming no package rewrites nothing, which otherwise
 // looks exactly like asking for no rename.
 //
-// The prefix must be leading and end on a separator — matching anywhere rewrote
+// The prefix must be leading and end on a separator. Matching anywhere rewrote
 // "github.com/rapid/api" for --old=api, and a bare prefix rewrote "github.com/foobar" to "xbar".
 // All trailing separators are trimmed, not one: `--old=$(MODULE)/` can spell "example.com/m//".
-// Only trailing — a leading one is part of an absolute root.
+// Only trailing: a leading one is part of an absolute root.
 func Shorten(files []FileCoverage, oldRoot, newRoot string) ([]FileCoverage, int) {
 	oldRoot = strings.TrimRight(oldRoot, "/")
 	if oldRoot == "" || newRoot == "" {

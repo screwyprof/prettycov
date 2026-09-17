@@ -10,7 +10,7 @@ import (
 	"github.com/screwyprof/prettycov"
 )
 
-// sayNothingShown reports a printer that came up empty, without asking which one — the filters
+// sayNothingShown reports a printer that came up empty, without asking which one, since the filters
 // emptied it either way.
 //
 // The two causes are opposite news and the tree's count separates them: "nothing left to cover" for
@@ -27,7 +27,7 @@ func (d drawn) sayNothingShown(tree *prettycov.PathTree, s Streams) {
 		d.filters(), plural(tree.Uncovered(), "uncovered statement"))
 }
 
-// filters names the flags that could have emptied the output, as typed — the one place a filter
+// filters names the flags that could have emptied the output, as typed. It is the one place a filter
 // added later has to be named. Not --files, which cannot empty either output, and not --exclude,
 // which acts on the profile and is refused further up with its own message.
 func (d drawn) filters() string {
@@ -41,7 +41,7 @@ func (d drawn) filters() string {
 }
 
 // reportExclusions says what each pattern took. Not behind a verbose flag: exclusion moves the
-// denominator. A pattern that matched nothing is said, not refused — unlike --old.
+// denominator. A pattern that matched nothing is said, not refused, unlike --old.
 func reportExclusions(excluded []prettycov.Exclusion, s Streams) {
 	for _, ex := range excluded {
 		took := ex.Files > 0 || ex.Blocks > 0
@@ -61,7 +61,7 @@ func reportExclusions(excluded []prettycov.Exclusion, s Streams) {
 			continue
 		}
 
-		// Charged and overlapping at once: say both, or it reads as barely earning its keep — the
+		// Charged and overlapping at once: say both, or it reads as barely earning its keep. The
 		// same trap as above, sprung on a pattern that did take something.
 		overlap := ""
 		if ex.Overlapped() > 0 {

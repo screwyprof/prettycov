@@ -16,7 +16,7 @@ type Rename struct {
 // from "asked for and did not happen".
 func (r Rename) Wanted() bool { return r.From != "" }
 
-// NamesNoPackage reports a source that cannot match anything — separators and nothing else, which
+// NamesNoPackage reports a source that cannot match anything: separators and nothing else, which
 // `--old=$(MODULE)/` spells with MODULE unset. Here rather than in a caller, so it cannot disagree
 // with Shorten's own trimming.
 func (r Rename) NamesNoPackage() bool {
@@ -28,14 +28,14 @@ func (r Rename) NamesNoPackage() bool {
 func (r Rename) Half() bool { return (r.From == "") != (r.To == "") }
 
 // A Request is what to measure: the profile, and what changes its contents. How the answer is drawn
-// is Options — that changes what is shown rather than what is counted.
+// is Options, which changes what is shown rather than what is counted.
 type Request struct {
 	Profile string
 	Rename  Rename
 	Exclude []*regexp.Regexp
 }
 
-// An Outcome is how a measurement turned out. Exactly one is true of any run — one value rather
+// An Outcome is how a measurement turned out. Exactly one is true of any run, so it is one value rather
 // than a tree beside a bool beside a reason, which could spell twenty states where five mean
 // anything.
 type Outcome int
@@ -54,8 +54,8 @@ const (
 	RootMissed
 )
 
-// A Measurement is what a profile and the request that read it produced. The tree is the whole of
-// the state — Measured is derived from it, not stored beside it, so there is no pair to fall out of
+// A Measurement is what a profile and the request that read it produced. The tree is the only
+// state. Measured is derived from it, not stored beside it, so there is no pair to fall out of
 // step. Holding both once let the zero value answer Tree with (nil, true), which is the one thing
 // this type promises cannot happen.
 type Measurement struct {

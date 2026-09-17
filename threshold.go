@@ -18,7 +18,7 @@ var ErrBadThreshold = errors.New("want a percentage from 0 to 100")
 // coverage and a filter would hide nothing, each saying nothing about it.
 type Threshold struct{ value float64 }
 
-// NewThreshold is a bar a caller computed. The zero Threshold is 0%, which is a real bar — use the
+// NewThreshold is a bar a caller computed. The zero Threshold is 0%, which is a real bar, so use the
 // pointer, or a bool beside it, to say that none was asked for.
 func NewThreshold(pct float64) (Threshold, error) {
 	if math.IsNaN(pct) || pct < 0 || pct > 100 {

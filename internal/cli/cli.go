@@ -3,8 +3,8 @@
 //
 // The router and its handlers, in the shape an HTTP service uses. A command reads its flags, asks
 // the domain to measure, and turns what came back into output and a status; it decides no coverage
-// question of its own. Everything user-facing lives here — the domain returns facts and outcomes,
-// never words — which is why this is the one place a flag is named in a sentence.
+// question of its own. Everything user-facing lives here, since the domain returns facts and
+// outcomes and never words. This is the one place a flag is named in a sentence.
 //
 // The composition root is internal/app: it builds the parser and binds these handlers to their
 // dependencies. A depguard rule keeps that direction, so nothing here imports it.
@@ -81,7 +81,7 @@ type Measured struct {
 	FailUnder *prettycov.Threshold `help:"Exit 1 when coverage is below this percentage."                                                            placeholder:"PCT"`
 }
 
-// Validate is the only place the rename is judged. Kong's `and:"rename"` asked the wrong question —
+// Validate is the only place the rename is judged. Kong's `and:"rename"` asked the wrong question:
 // satisfied once both flags appear, whatever they hold, so `--old=$(MODULE) --new=.` with MODULE
 // unset passed and renamed nothing.
 //
@@ -129,13 +129,13 @@ const (
 )
 
 // options is how a row is drawn. Colour is not among them: only report draws anything a palette
-// reaches, so it carries the flag and resolves it against the destination — a question argv is too
+// reaches, so it carries the flag and resolves it against the destination, a question argv is too
 // early to ask.
 func (d drawn) options() prettycov.Options {
 	return prettycov.Options{Depth: d.Depth, HideCovered: d.HideCovered}
 }
 
-// CLI is the whole command line. Every command is named, so `prettycov` alone prints help — an
+// CLI is the whole command line. Every command is named, so `prettycov` alone prints help. An
 // implicit one would need its flags at the root, where help does not list them and a bare word is
 // ambiguous between a command and a file.
 //
@@ -266,7 +266,7 @@ func (c *versionCmd) Run(s *Streams, vars kong.Vars) error {
 	return nil
 }
 
-// request is what the domain measures. Only the patterns are settled here — every other flag is
+// request is what the domain measures. Only the patterns are settled here; every other flag is
 // already its parsed type, read at the boundary.
 func (m *Measured) request() (prettycov.Request, error) {
 	req := prettycov.Request{Profile: m.Profile, Rename: prettycov.Rename{From: m.Old, To: m.New}}
@@ -284,7 +284,7 @@ func (m *Measured) request() (prettycov.Request, error) {
 }
 
 // OptionalPercentage is --hide-covered, the one flag whose value may be left off. Kong has no
-// NoOptDefVal, so Decode takes a value only when "=" supplied one — the shape kong's own boolMapper
+// NoOptDefVal, so Decode takes a value only when "=" supplied one, the shape kong's own boolMapper
 // uses. `--hide-covered 90` is the bare form and a stray argument, as under cobra too.
 //
 // Named rather than registered for *float64, which --fail-under also is and has no bare form.
