@@ -30,7 +30,8 @@ type ExitCode int
 const (
 	// ExitOK is a run that did what was asked.
 	ExitOK ExitCode = iota
-	// ExitBelow is coverage under --fail-under. Nothing else returns it.
+	// ExitBelow is --fail-under not met: coverage under the bar, or nothing left to measure once
+	// --exclude and the profile are through. Either way a gate was set and the answer was no.
 	ExitBelow
 	// ExitFailed is prettycov not doing what was asked: a bad flag, an unreadable profile, a path
 	// the profile does not hold, a destination that would not take the output.

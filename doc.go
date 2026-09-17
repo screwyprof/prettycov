@@ -23,7 +23,7 @@
 // false is when the [Outcome] says why not.
 //
 // The steps are exported separately — [ParseProfile], [Exclude], [Shorten], [Process] — for a
-// caller who wants a different order or only one of them. [Measure] is the order that is right.
+// caller who wants only one of them, or a different order.
 //
 // # Reading the answer
 //
@@ -38,9 +38,11 @@
 // its own renderer. Both writers return the destination's error: a report written to a full disk
 // is not a report that was printed.
 //
-// All four take [Options], which decides what the output holds — how deep, whether files are drawn,
-// whether a subtree already at the bar is left out. The zero value prints the top row alone. It
-// shapes and never measures: [PathTree.Percentage] reads the same whatever is drawn.
+// All four take [Options], which decides what the output holds: how deep, and whether a subtree
+// already at the bar is left out. The zero value prints the top row alone. Options.Files is the one
+// the two lists ignore — a miss is a file position whether or not a file is drawn as a row.
+//
+// Options shapes and never measures. [PathTree.Percentage] reads the same whatever is drawn.
 //
 // # Stability
 //

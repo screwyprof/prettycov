@@ -32,8 +32,9 @@ func ParseExclude(s string) (*regexp.Regexp, error) {
 //
 // Each pattern is tried unanchored against the file's path and against each block's position, with
 // and without the column. The path is tried first and wins, or a pattern aimed at a package would
-// be charged one block at a time. A path `go test` writes holds no colon, so the two cannot be
-// confused.
+// be charged one block at a time. A path `go test` writes holds no colon, so the two do not collide
+// there — x/tools parses the filename as a greedy .+, so a FileCoverage a caller built by hand can
+// name "m/a.go:3x/y.go" and hand a coordinate pattern the whole file.
 //
 // Unanchored means the line is a prefix: "a.go:3" reaches 3, 30 and 300; "a.go:3$" is the one line.
 func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, []Exclusion) {
@@ -177,9 +178,10 @@ type Exclusion struct {
 	Files      int
 	Blocks     int
 	Statements int
-	// What it matched that another pattern was charged for — usually an earlier one, but a path
-	// beats a coordinate wherever it sits, so a later pattern can overlap an earlier one. Kept
-	// apart from the charges, since a pattern can work and still be charged nothing.
+	// What it matched that another pattern was charged for — usually an earlier one, since first
+	// match wins. A path beats a coordinate wherever it sits, so a coordinate pattern can also be
+	// overlapped by a later path pattern that took the file whole. Kept apart from the charges,
+	// since a pattern can work and still be charged nothing.
 	OverlappedFiles  int
 	OverlappedBlocks int
 }
