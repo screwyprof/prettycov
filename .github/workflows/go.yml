@@ -68,8 +68,8 @@ jobs:
       # runs the same linter again as part of the whole suite.
       #
       # Never a gate, whoever opened the pull request. reviewdog's github-pr-check reporter needs a
-      # writable token, and GitHub hands a read-only one to any run it treats as untrusted — a fork,
-      # and Dependabot's own pull requests too, whatever `permissions:` above asks for. With
+      # writable token, and GitHub hands a read-only one to any run it treats as untrusted — a fork
+      # being the case that reaches this repository — whatever `permissions:` above asks for. With
       # -fail-level=any the 403 failed the job before `make check` ever ran, so the contributor saw
       # a permissions error and no lint or test result at all.
       #

@@ -15,13 +15,15 @@ is not already on your PATH — golangci-lint, vale, govulncheck, gobco, gremlin
 `make check` compiles them, so it is slow once and fast after.
 
 There is a nix flake, and it is a convenience rather than a requirement: `nix develop` pins the Go
-toolchain and puts gopls, pre-commit and tparse on your PATH. It does not supply the gates' tools —
-`make check` fetches those itself at the versions pinned in the Makefile and never probes PATH, so
-whatever golangci-lint is in your shell is not the one that runs.
+toolchain and puts gopls, pre-commit and tparse on your PATH. It deliberately does not carry
+golangci-lint or vale: `make check` fetches those itself at the versions pinned in the Makefile and
+never probes PATH, so a copy in your shell would be a second, different version of a gate's own
+tool rather than the one that runs.
 
-Dependabot opens the dependency and action bumps. A `gomod` one needs `make nix-hash` run on its
-branch before it merges: `flake.nix` pins the module set by hash, the pre-commit hook that keeps it
-in step needs nix, and Dependabot has neither. No gate catches a stale one.
+Renovate opens the dependency, action and tool bumps, and merges them itself once the checks pass.
+Anything but a major lands without a human; a major waits for one. It reads the Makefile's tool
+pins as well as `go.mod`, so the whole toolchain moves, and [renovate.json](renovate.json) records
+what is deliberately held back.
 
 One target is the exception. `make hooks` installs the git pre-commit hooks and needs `pre-commit`,
 which is Python rather than Go and so cannot be fetched the same way — `pip install pre-commit`, or
