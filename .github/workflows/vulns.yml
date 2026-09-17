@@ -1,7 +1,10 @@
-name: Vulns
+name: Vulnerabilities
 
 # An advisory lands whether or not anyone pushes, and Go's triggers do not: `Go` runs on push and
 # pull_request only, so an idle repository learns about a CVE on its next commit.
+#
+# Ceiling: GitHub disables a schedule after 60 days without repository activity — the same idleness
+# this exists for. Re-enable from the notification; nothing here can detect it stopped.
 on:
   schedule:
     - cron: '17 6 * * *'
@@ -20,7 +23,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          # Same pin as the Go workflow; see the comment there.
+          # Fifth place the 1.26 pin lives; CONTRIBUTING lists them.
           go-version: '1.26.x'
           cache: true
           cache-dependency-path: go.sum

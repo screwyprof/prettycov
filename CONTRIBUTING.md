@@ -29,9 +29,9 @@ Go 1.26, not 1.27. A coverage tool cannot ship on a toolchain that miscounts sta
 does ([golang/go#80974](https://github.com/golang/go/issues/80974)): it splits a straight-line block
 at a blank line and writes the whole run's count into each piece, inflating every figure this tool
 reports. CL 819000 fixed it for Go 1.28 and there is no 1.27 backport, so the pin lifts when 1.28
-ships and not before. It lives in four places that must move together: [go.mod](go.mod),
-[flake.nix](flake.nix), `go-version` in [the workflow](.github/workflows/go.yml), and
-`constraints.go` in [renovate.json](renovate.json).
+ships and not before. It lives in five places that must move together: [go.mod](go.mod),
+[flake.nix](flake.nix), `go-version` in [go.yml](.github/workflows/go.yml) and
+[vulns.yml](.github/workflows/vulns.yml), and `constraints.go` in [renovate.json](renovate.json).
 
 ## The gates
 

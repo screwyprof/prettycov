@@ -47,7 +47,7 @@
       "automerge": false
     },
     {
-      "description": "Go itself is pinned to 1.26 deliberately — golang/go#80974 makes 1.27 miscount statements, which is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27 backport, so this lifts when 1.28 ships and not before. One name, because only go.mod's directive is read by a manager — it comes from gomod via the golang-version datasource. The workflow's go-version and flake.nix's nixpkgs attribute are read by nothing, so lifting the pin means editing four places by hand: those two, go.mod, and `constraints.go` above.",
+      "description": "Go itself is pinned to 1.26 deliberately — golang/go#80974 makes 1.27 miscount statements, which is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27 backport, so this lifts when 1.28 ships and not before. One name, because only go.mod's directive is read by a manager — it comes from gomod via the golang-version datasource. The workflow's go-version and flake.nix's nixpkgs attribute are read by nothing, so lifting the pin means editing five places by hand: those two, go.mod, both workflows, and `constraints.go` above.",
       "matchDepNames": ["go"],
       "enabled": false
     }
