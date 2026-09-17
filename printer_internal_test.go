@@ -36,7 +36,7 @@ func TestSymbolNeverPanics(t *testing.T) {
 
 // prepare yields rather than returning a slice, so it has to honour a consumer that stops early:
 // range-over-func panics if the body is left and the function yields again. The unwinding is what
-// is easy to get wrong — stopping inside a grandchild has to stop every ancestor's loop too, not
+// is easy to get wrong: stopping inside a grandchild has to stop every ancestor's loop too, not
 // just the one that yielded, and neither Rows nor Misses breaks, so nothing else exercises it.
 func TestPrepareStopsWhenTheConsumerDoes(t *testing.T) {
 	t.Parallel()

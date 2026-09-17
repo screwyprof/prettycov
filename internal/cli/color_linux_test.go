@@ -36,7 +36,7 @@ func runToTerminal(t *testing.T) string {
 	master, slave := openPTY(t)
 
 	// Drained from the start, not after: app.Run writes the whole report into the slave, and with
-	// nobody reading the master a report past the line discipline's buffer would block forever —
+	// nobody reading the master a report past the line discipline's buffer would block forever.
 	// a package timeout rather than a failed assertion.
 	var out bytes.Buffer
 
@@ -72,7 +72,7 @@ func openPTY(t *testing.T) (master, slave *os.File) {
 	t.Helper()
 
 	// O_NOCTTY on both ends. Without it, a test binary that is a session leader with no controlling
-	// terminal — which is how some sandboxes start one — would adopt this pty as its controlling
+	// terminal, which is how some sandboxes start one, would adopt this pty as its controlling
 	// terminal, and closing the master below would SIGHUP the process group and kill the run with
 	// no failure to read.
 	//

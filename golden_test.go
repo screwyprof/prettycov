@@ -19,7 +19,7 @@ import (
 //nolint:gochecknoglobals // a test flag has nowhere else to live.
 var update = flag.Bool("update", false, "rewrite the golden files")
 
-// Every other test here asks a question about the report — is it sorted, does it collapse, does it
+// Every other test here asks a question about the report: is it sorted, does it collapse, does it
 // colour. None of them would notice the whole thing changing shape, and TestDisplayTreeIsDeterministic
 // compares renders only to each other, so it passes just as happily if every row is wrong.
 //

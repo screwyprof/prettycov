@@ -27,7 +27,7 @@ const (
 
 // 6 of 10 statements covered, so the report reads 60.00 and a --fail-under above that fails. In the
 // repo's testdata because cmd/prettycov's integration test needs the same bytes, and go:embed cannot
-// reach out of its own directory — which is what kept two copies of this in step by hand.
+// reach out of its own directory, which is what kept two copies of this in step by hand.
 //
 //nolint:gochecknoglobals // one read for every test in the file, as the embed it replaces was.
 var profile = string(fixture("sixty-percent.out"))
@@ -273,7 +273,7 @@ func TestRunReportsAMalformedProfileWithoutTheHint(t *testing.T) {
 	assert.NotContains(t, stderr.String(), "go test -coverprofile=")
 }
 
-// Help that was asked for is output, not a diagnostic, so it belongs on stdout — otherwise
+// Help that was asked for is output, not a diagnostic, so it belongs on stdout. Otherwise
 // `prettycov help | less` shows nothing. Usage printed because of a mistake stays on stderr.
 func TestRunPrintsRequestedHelpOnStdout(t *testing.T) {
 	t.Parallel()
@@ -326,7 +326,7 @@ func TestRunKeepsABadFlagShort(t *testing.T) {
 
 // `version` as a bare word is recognised before the flag package sees it, which would take it for
 // a profile path; --version is the ordinary flag. What the version actually says is the binary
-// tests' business — it depends on how the binary was linked, and nix stamps it during checkPhase.
+// tests' business. It depends on how the binary was linked, and nix stamps it during checkPhase.
 func TestRunAcceptsBothVersionSpellings(t *testing.T) {
 	t.Parallel()
 
@@ -521,7 +521,7 @@ func TestRunTellsOverlapApartFromNoMatch(t *testing.T) {
 }
 
 // A pattern that matched nothing is said and not refused, unlike a root that did. prettycov has no
-// history, so it cannot tell a pattern that rotted from one written to be conditional — and "drop
+// history, so it cannot tell a pattern that rotted from one written to be conditional, and "drop
 // this if it is here" is a reasonable thing to write. A defensive `--exclude=\.pb\.go$`, or one
 // config shared across repositories, is right to match nothing where nothing is generated. A root
 // has no such case: it either names this profile's packages or the labels are wrong.
@@ -597,8 +597,8 @@ func TestRunReportsFilesAndBlocksTakenByOnePattern(t *testing.T) {
 
 // A pattern can take something and still be covering for an earlier one. Saying only what it took
 // reads as barely earning its keep, and deleting it hands back the files the earlier pattern is
-// holding — the trap the overlap count exists to prevent, sprung on a pattern that did take
-// something.
+// holding. That is the trap the overlap count exists to prevent, sprung on a pattern that did
+// take something.
 func TestRunReportsOverlapAlongsideWhatAPatternTook(t *testing.T) {
 	t.Parallel()
 
@@ -626,7 +626,7 @@ func TestRunReportsOverlapAlongsideWhatAPatternTook(t *testing.T) {
 }
 
 // A pattern that matched a file declaring no statements emptied nothing, so the reader is sent to
-// the profile rather than to a pattern that is not the reason — the report was empty before it ran.
+// the profile rather than to a pattern that is not the reason. The report was empty before it ran.
 func TestRunBlamesTheProfileWhenAPatternTookNoStatements(t *testing.T) {
 	t.Parallel()
 
@@ -645,7 +645,7 @@ func TestRunBlamesTheProfileWhenAPatternTookNoStatements(t *testing.T) {
 }
 
 // A profile with nothing in it has nothing for a flag to match, so judging one against it reports
-// every pattern and every root as stale — naming a good `--old=$(MODULE)` as the fault when the
+// every pattern and every root as stale, naming a good `--old=$(MODULE)` as the fault when the
 // profile is what is empty, and exiting 2 where the gate says 1.
 func TestRunDoesNotBlameFlagsForAnEmptyProfile(t *testing.T) {
 	t.Parallel()
@@ -699,8 +699,8 @@ func TestRunRefusesHalfARename(t *testing.T) {
 			want: `one alone does nothing: got --new="p"`,
 		},
 		// Both flags given, one of them empty, which is what a Makefile writing --old=$(MODULE)
-		// spells when MODULE is unset. Kong's `and:"rename"` group passed these — it is satisfied
-		// once both flags appear, whatever they hold — and the report came back unrenamed, exit 0,
+		// spells when MODULE is unset. Kong's `and:"rename"` group passed these. It is satisfied
+		// once both flags appear, whatever they hold, and the report came back unrenamed, exit 0,
 		// with nothing on stderr. The rule is about the values, so it cannot live in a tag.
 		"old empty, new given": {
 			args: []string{"report", "--old", "", "--new", "."},
@@ -727,7 +727,7 @@ func TestRunRefusesHalfARename(t *testing.T) {
 }
 
 // A different mistake, so a different sentence. --old=/ names no package, and both flags may well
-// have been given — telling the reader "--old and --new must be used together" sends them to supply a flag they
+// have been given, telling the reader "--old and --new must be used together" sends them to supply a flag they
 // already supplied. `--old=$(MODULE)/` with MODULE unset spells this, and with both unset it is
 // --old=/ with no --new at all.
 func TestRunRefusesARootThatNamesNoPackage(t *testing.T) {
@@ -805,14 +805,14 @@ func TestRunRefusesARootThatMatchedNothing(t *testing.T) {
 }
 
 // Shorten runs on what --exclude left, so a pattern that took every file under a perfectly good
-// root would report the root as wrong — sending someone to fix a flag that is already right. The
+// root would report the root as wrong, sending someone to fix a flag that is already right. The
 // question is asked of the whole profile instead.
 func TestRunDoesNotBlameTheRootForWhatExcludeTook(t *testing.T) {
 	t.Parallel()
 
 	// A file outside the root, so taking everything under it still leaves a report standing. With a
 	// profile entirely under m/ the run ends in "--exclude left nothing to report", and the silence
-	// below holds for that reason rather than the one being tested — which is what it did.
+	// below holds for that reason rather than the one being tested, which is what it did.
 	twoRoots := "mode: set\nm/a.go:1.1,2.2 5 1\nother/b.go:1.1,2.2 5 1\n"
 
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -876,7 +876,7 @@ func TestRunPrintsOnlyTheTotal(t *testing.T) {
 
 // totalShaped is a tree whose every node reports a different number, so a lookup that returned the
 // wrong one cannot pass. pkg holds a file of its own beside a subpackage, so it is not its child;
-// web holds two files, so it is not either of them — which is what makes the file cases prove that
+// web holds two files, so it is not either of them, which is what makes the file cases prove that
 // the last segment resolves to a file and not to the directory above it.
 //
 //	m                          74.00
@@ -970,7 +970,7 @@ func TestRunTotalRefusesAPathTheTreeDoesNotHold(t *testing.T) {
 }
 
 // An empty path is refused rather than read as the whole tree, which is what `total "$PKG"` spells
-// when PKG is unset or misspelled — and the whole tree passing a gate the package would have failed
+// when PKG is unset or misspelled, and the whole tree passing a gate the package would have failed
 // is the one way this command can be silently wrong in CI.
 //
 // The bar is set below the tree's own coverage so that reading it as the whole tree would exit 0.
@@ -1004,7 +1004,7 @@ func TestRunTotalWithNoPathIsTheWholeTree(t *testing.T) {
 }
 
 // A row is drawn with its own segment, so reading `pkg - 96.41` off a report and asking for "pkg"
-// is the obvious next thing to type and the wrong one — the tree holds it under the whole module
+// is the obvious next thing to type and the wrong one. The tree holds it under the whole module
 // path. It resolves rather than refusing, which is safe because the prefixed path is checked against
 // the tree before it is used and the literal spelling is tried first.
 func TestRunTotalResolvesThePathUnderTheRoot(t *testing.T) {
@@ -1273,7 +1273,7 @@ func clearColorEnv(t *testing.T) {
 	t.Setenv("TERM", "xterm")
 }
 
-// A regular file is not a terminal, and a closed one answers no rather than panicking — its
+// A regular file is not a terminal, and a closed one answers no rather than panicking, and its
 // descriptor is -1 by then. Both are branches a bytes.Buffer never reaches, since it is not an
 // *os.File at all. The closed one also pins the exit code: the printer discards write errors, so a
 // report nobody could read is still exit 0. Deliberate for now, and this is where it is decided.
@@ -1379,7 +1379,7 @@ func TestRunHideCovered(t *testing.T) {
 }
 
 // The threshold can take every row a depth draws. The exit code is unchanged, but a command that
-// prints nothing reads as one that failed, so it says which flag emptied it — and does not claim
+// prints nothing reads as one that failed, so it says which flag emptied it, and does not claim
 // the profile holds nothing below the bar, which the deeper run here disproves.
 func TestRunSaysWhenHideCoveredTookEveryRow(t *testing.T) {
 	t.Parallel()
@@ -1435,7 +1435,7 @@ func TestRunSaysWhenHideCoveredTookEveryRow(t *testing.T) {
 
 // The ends of the range are thresholds, not errors: 100 is the bare form written out, and 0 asks
 // for everything with a percentage to go. The rejections and the boundaries they bound belong in
-// one table, as --fail-under's are — both flags read the same percentage now.
+// one table, as --fail-under's are. Both flags read the same percentage now.
 func TestRunHideCoveredPercentage(t *testing.T) {
 	t.Parallel()
 
@@ -1450,7 +1450,7 @@ func TestRunHideCoveredPercentage(t *testing.T) {
 		"a hundred":      {value: "100", wantCode: codeOK},
 		"zero":           {value: "0", wantCode: codeOK},
 		// BoolFunc advertises the flag as boolean, so every spelling ParseBool takes is its own
-		// contract — recognising two of the twelve and calling the rest "not a percentage" had the
+		// contract. Recognising two of the twelve and calling the rest "not a percentage" had the
 		// flag arguing with its usage line. Capitalisation is whatever the shell handed over.
 	}
 
@@ -1518,7 +1518,7 @@ func TestRunMisses(t *testing.T) {
 
 	// own.go belongs to m itself; deep/ is a level further down.
 	// deep/ holds two files, so it does not merge into one of them and its files sit a level below
-	// it — which is what lets the depth tell the two cases apart.
+	// it, which is what lets the depth tell the two cases apart.
 	shaped := "mode: set\n" +
 		"m/own.go:5.2,6.3 1 0\n" +
 		"m/deep/a.go:9.2,10.3 1 0\n" +
@@ -1585,7 +1585,7 @@ func TestRunMissesStillGrades(t *testing.T) {
 	assert.Contains(t, stderr.String(), "total coverage 60.00% is below 80.00%")
 }
 
-// A fully covered profile has no positions to print, which is news rather than a failure — an empty
+// A fully covered profile has no positions to print, which is news rather than a failure. An empty
 // stdout from a command that exits 0 reads as one that did not run.
 func TestRunMissesSaysWhenThereAreNone(t *testing.T) {
 	t.Parallel()
@@ -1610,7 +1610,7 @@ func TestRunMissesSaysWhenThereAreNone(t *testing.T) {
 func TestRunNamesWhatEmptiedTheOutput(t *testing.T) {
 	t.Parallel()
 
-	// pkg holds two files, so nothing merges and both sit at level 2 — the default --depth=1 draws
+	// pkg holds two files, so nothing merges and both sit at level 2. The default --depth=1 draws
 	// pkg itself and reaches neither of them. web holds one, which merges into a row of its own at
 	// level 1, and it is covered: without it the whole chain would collapse to a single file row at
 	// level 0 and the depth would reach it after all.
@@ -1666,7 +1666,7 @@ func TestRunNamesWhatEmptiedTheOutput(t *testing.T) {
 	}
 }
 
-// --exclude acts on the profile before the tree, so an excluded block is not a miss — which is what
+// --exclude acts on the profile before the tree, so an excluded block is not a miss, which is what
 // makes the two compose: the positions this prints are the coordinates that flag takes.
 func TestRunMissesHonoursExclude(t *testing.T) {
 	t.Parallel()
@@ -1731,7 +1731,7 @@ func TestRunRefusesABadDepthOnBothDrawingCommands(t *testing.T) {
 // ExitCodeOf is the contract between the handlers and the composition root: an error a handler has
 // already reported carries its own status, and anything else is a usage failure for app to print.
 //
-// Only the "not reported" half can be built from outside, which is the point — a status is not
+// Only the "not reported" half can be built from outside, which is the point. A status is not
 // something a caller of this package can invent.
 var errSomethingWentWrong = errors.New("something went wrong")
 
@@ -1782,7 +1782,7 @@ func TestRunRefusesABadPatternFromEveryCommand(t *testing.T) {
 
 // --color belongs to report, which is the only command that draws anything a palette reaches.
 // misses prints file:line:col and DisplayMisses never reads Options.Color, so the flag was accepted
-// and inert — `misses --color=always` emitted byte-identical output to `--color=never`. That is the
+// and inert: `misses --color=always` emitted byte-identical output to `--color=never`. That is the
 // same defect that took --color off total.
 func TestOnlyReportTakesColor(t *testing.T) {
 	t.Parallel()

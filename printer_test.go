@@ -44,7 +44,7 @@ func TestDisplayTreeNeutralisesEscapesFromTheProfile(t *testing.T) {
 		{name: "colour", pkg: "m/\x1b[31mred"},
 		{name: "carriage return", pkg: "m/\roverwritten"},
 		{name: "bell", pkg: "m/\anoisy"},
-		// Not control characters — these are category Cf, so unicode.IsControl says no — but a
+		// Not control characters. These are category Cf, so unicode.IsControl says no, but a
 		// terminal obeys them just the same and reverses everything after them, which is how a
 		// file gets drawn under a name it does not have. Written as escapes rather than as the
 		// characters themselves, which is what gosec's G116 asks of Go source for this very reason.
@@ -115,7 +115,7 @@ func TestDisplayTreeSortsOnTheLabelAsDrawn(t *testing.T) {
 }
 
 // A nil tree is nothing to draw, not a crash. Nothing in the CLI passes one, so only a caller of
-// the library would find this — gobco reported the condition as never once true.
+// the library would find this. gobco reported the condition as never once true.
 func TestRowsHandlesANilTree(t *testing.T) {
 	t.Parallel()
 
@@ -203,7 +203,7 @@ func TestDisplayTreeKeepsDirsThatAreAlsoPackages(t *testing.T) {
 		},
 		{
 			// A doc.go holding only a package comment has no statements. Both cases take the
-			// same path now that holding a file is what makes a directory a package — this one
+			// same path now that holding a file is what makes a directory a package. This one
 			// is here so that inferring it from Coverage again would have to delete a test.
 			name: "own file with no statements",
 			files: []prettycov.FileCoverage{
@@ -285,7 +285,7 @@ func TestDisplayTreeHidesFilesUnlessAsked(t *testing.T) {
 // One name can be both a file and a directory: "m/a.go" beside "m/a.go/b.go" names a file and a
 // package called the same thing. No filesystem allows it, so no single `go test` run produces it,
 // but merging two profiles or rewriting a root with --old/--new can. Such a node is drawn as the
-// directory it also is — hiding it as a file took its whole subtree with it while every ancestor
+// directory it also is, and hiding it as a file took its whole subtree with it while every ancestor
 // went on counting the statements.
 func TestDisplayTreeKeepsANameThatIsBothAFileAndADirectory(t *testing.T) {
 	t.Parallel()
@@ -336,7 +336,7 @@ func TestDisplayTreeOrdersATieBetweenAFileAndADirectory(t *testing.T) {
 		"the directory and its files first, then the file of the same name")
 }
 
-// A file is one level below the package holding it, exactly as a subdirectory is — --depth counts
+// A file is one level below the package holding it, exactly as a subdirectory is, so --depth counts
 // levels the way tree -L does, and a file is one of a directory's entries like any other.
 func TestDisplayTreeFilesCountAsALevel(t *testing.T) {
 	t.Parallel()
@@ -382,8 +382,8 @@ func TestDisplayTreeMergesAPackageThatIsOneFile(t *testing.T) {
 	assert.Equal(t, []string{"m", "one", "two"}, nodeNames(t, tree, prettycov.DepthAll))
 }
 
-// A profile can name a file with no directory of its own — `prettycov --new=.` writes every path
-// that way — and such a file lands under ".", the row the report draws it beside. Merging the two
+// A profile can name a file with no directory of its own: `prettycov --new=.` writes every path
+// that way, and such a file lands under ".", the row the report draws it beside. Merging the two
 // must not write that "." into the label: the profile has no path spelled "./printer.go", and its
 // siblings are written plainly. The filesystem root is the opposite case and keeps its separator,
 // because there the separator is the whole name.
@@ -670,7 +670,7 @@ func TestDisplayTreeHideCovered(t *testing.T) {
 }
 
 // A package with nothing to cover has no percentage, so it is not "covered" and stays. Hiding it
-// would answer a different question — whether an empty package is worth drawing — with this flag.
+// would answer a different question: whether an empty package is worth drawing, with this flag.
 func TestDisplayTreeHideCoveredKeepsAPackageWithNoStatements(t *testing.T) {
 	t.Parallel()
 
@@ -747,7 +747,7 @@ func TestDisplayTreeHideCoveredHidesFiles(t *testing.T) {
 
 // At 100 the test is "is an uncovered statement left", not "does the ratio reach 100", and the two
 // are not the same question. 2^56-1 covered beside one uncovered divides to exactly 100.0 in
-// float64 — the miss is below the mantissa — so a ratio comparison hides a package that still has
+// float64. The miss is below the mantissa, so a ratio comparison hides a package that still has
 // work in it. Percentage already renders this 99.99 for the same reason.
 func TestDisplayTreeHideCoveredTrustsTheCountNotTheRatio(t *testing.T) {
 	t.Parallel()
@@ -825,7 +825,7 @@ func TestDisplayTreeHideCoveredJudgesWhatIsDrawn(t *testing.T) {
 // A collapsed run is one row, so it must cost one level here too. allCovered walked the tree a node
 // at a time while the report draws a merged run as a single row, so below the first collapse the
 // budget ran out early and a subtree was called covered without the rows it actually draws being
-// looked at. Single-child directories are the norm in Go — internal/app, a module path prefix — so
+// looked at. Single-child directories are the norm in Go, internal/app and a module path prefix among them, so
 // this hid real gaps at any finite depth.
 func TestDisplayTreeHideCoveredSpendsALevelPerRowNotPerNode(t *testing.T) {
 	t.Parallel()
@@ -895,7 +895,7 @@ func TestEmptyResultsAreNilNotEmptySlices(t *testing.T) {
 
 // DisplayTree counts as it writes rather than taking the length of a slice it built, so the count
 // is no longer true by construction and has to be asserted. Nothing downstream notices a wrong one
-// until it is used to decide the report came up empty, which only a zero reaches — a mutation
+// until it is used to decide the report came up empty, which only a zero reaches. A mutation
 // turning the increment into a decrement survived the whole suite.
 //
 // Pinned against both the rows and the lines, because those are the two things it claims to be.

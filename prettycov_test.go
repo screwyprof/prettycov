@@ -164,7 +164,7 @@ func TestCoverageStatsAtLeast(t *testing.T) {
 			pct:   100,
 			want:  false,
 		},
-		// Nothing to cover has no share to compare, so it is not at any bar — including 0, which
+		// Nothing to cover has no share to compare, so it is not at any bar, including 0, which
 		// would otherwise make every empty package pass every gate.
 		{name: "no statements", stats: prettycov.CoverageStats{}, pct: 0, want: false},
 	}
@@ -216,7 +216,7 @@ func TestShortenCountsEveryFileItRenamed(t *testing.T) {
 }
 
 // HasRoot answers with a boolean what Shorten answers with a count, so the two have to agree on
-// what a root names — every case here is one Shorten is asserted on above, asked the other way.
+// what a root names. Every case here is one Shorten is asserted on above, asked the other way.
 func TestHasRootMatchesTheSameRootsShortenRenames(t *testing.T) {
 	t.Parallel()
 
@@ -303,7 +303,7 @@ func TestProcessAddsUpAFileNamedTwice(t *testing.T) {
 	}, node.Files["a.go"].Blocks)
 }
 
-// Which paths a root names, and the count that follows from it — a row that rewrites nothing is a
+// Which paths a root names, and the count that follows from it. A row that rewrites nothing is a
 // row that counts nothing, and stating both together is what stops the two drifting apart.
 //
 // Asserted on the path Shorten returns rather than on a node in the tree built from it: renaming
@@ -419,7 +419,7 @@ func TestProcessCleansPaths(t *testing.T) {
 // package off the second-to-last path component instead left such a file hanging under the tree
 // root, which nothing draws: the statements stayed in the total and appeared beside no row, and a
 // profile of nothing but bare filenames printed an empty report and exited 0.
-// "./x.go" and "x.go" are one file, because they are one path — path.Dir cleans a leading "." away
+// "./x.go" and "x.go" are one file, because they are one path: path.Dir cleans a leading "." away
 // as redundant. Worth pinning: making --new=. draw a single "." root means giving that prefix a
 // meaning of its own, and then a profile naming both spellings of one package splits into two rows
 // carrying the same label, with the package's statements divided between them.

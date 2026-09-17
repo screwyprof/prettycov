@@ -81,7 +81,7 @@ func ExampleDisplayTree() {
 	//  └ web - 66.67
 }
 
-// A rename shortens the root in every label, and the count says whether it matched anything — which
+// A rename shortens the root in every label, and the count says whether it matched anything, which
 // is the only way to tell "did not rename" from "was not asked to".
 func ExampleShorten() {
 	files, err := prettycov.ParseProfile(writeExampleProfile())

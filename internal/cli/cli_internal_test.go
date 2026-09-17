@@ -7,8 +7,8 @@ import (
 )
 
 // exitError is unexported, so this is the one thing about it no external test can reach: its
-// message. Nothing prints it today — status checks ExitCodeOf first, and an error carrying a code
-// has already been reported — so Error exists to satisfy the interface and is the fallback for the
+// message. Nothing prints it today. Status checks ExitCodeOf first, and an error carrying a code
+// has already been reported, so Error exists to satisfy the interface and is the fallback for the
 // day something formats one anyway.
 //
 // Pinned rather than left to that day: "exit status 1" is what a Go reader expects from a value

@@ -43,7 +43,7 @@ func TestPathTreeKeepsFilesAndDirectoriesApart(t *testing.T) {
 	assert.Equal(t, []string{"sub"}, slices.Sorted(maps.Keys(pkg.Children)), "directories only")
 	assert.Equal(t, []string{"own.go"}, slices.Sorted(maps.Keys(pkg.Files)), "and the files it holds")
 
-	// Two maps, so a name belonging to both stays two nodes — but Get reaches through to the file,
+	// Two maps, so a name belonging to both stays two nodes, but Get reaches through to the file,
 	// since the last segment of a path a reader typed off a row is the row they were looking at.
 	own := tree.Get("m/x/own.go")
 	require.NotNil(t, own, "the last segment may name a file")
@@ -53,7 +53,7 @@ func TestPathTreeKeepsFilesAndDirectoriesApart(t *testing.T) {
 
 // A file wins the last segment, which only matters for a profile no filesystem could have produced:
 // one directory cannot hold a file and a directory of one name. cmd/cover cannot write it, so the
-// rule is here to be predictable rather than to arbitrate a real case — and a path ending in .go is
+// rule is here to be predictable rather than to arbitrate a real case, and a path ending in .go is
 // a file to whoever typed it.
 func TestPathTreeGetPrefersAFileOnTheLastSegment(t *testing.T) {
 	t.Parallel()
@@ -77,7 +77,7 @@ func TestPathTreeGetPrefersAFileOnTheLastSegment(t *testing.T) {
 // A key read off a row resolves, and the report draws two labels the tree does not hold under that
 // name: path.Clean drops a "." component, so a file the profile gave no directory of its own merges
 // into a row spelled as just the file; and the filesystem root has no name of its own, so it draws
-// as "/". Both are the renderer's substitutions, and Get undoes them — otherwise `total main.go` is
+// as "/". Both are the renderer's substitutions, and Get undoes them. Otherwise `total main.go` is
 // refused for a row the tool printed one line above.
 func TestPathTreeGetTakesTheSpellingTheReportDraws(t *testing.T) {
 	t.Parallel()
@@ -115,8 +115,8 @@ func TestPathTreeGetTakesTheSpellingTheReportDraws(t *testing.T) {
 	assert.NotNil(t, rooted.Get("/a.go"), "and a file under it")
 }
 
-// A package named as strconv.ParseBool reads it — t, f, true, 1 and their spellings, every one a
-// legal Go directory name — cannot be asked for by name, because total settles the value before
+// A package named as strconv.ParseBool reads it: t, f, true, 1 and their spellings, every one a
+// legal Go directory name cannot be asked for by name, because total settles the value before
 // the tree is consulted. "./t" is the escape, and it is the only one: the flag cannot tell them
 // apart, so the library has to offer a spelling the flag never claims.
 func TestPathTreeGetTakesADotSlashEscape(t *testing.T) {
@@ -162,7 +162,7 @@ func TestPathTreeGetDoesNotResolveARepeatedSegmentEarly(t *testing.T) {
 }
 
 // Nothing at all is nil rather than a zero node, so a caller can tell "no such path" from "nothing
-// covered" — the two print very differently and only one is a mistake.
+// covered". The two print very differently and only one is a mistake.
 func TestPathTreeGetMissesAreNil(t *testing.T) {
 	t.Parallel()
 
@@ -178,7 +178,7 @@ func TestPathTreeGetMissesAreNil(t *testing.T) {
 
 // Prefixing under the collapsed root must not let a key climb out of it. Building each candidate as
 // a path meant path.Clean, which folds "..", so `total ..` resolved to an ancestor and printed its
-// percentage with exit 0 — the one failure the "a path the profile does not hold is exit 2" rule
+// percentage with exit 0. The one failure the "a path the profile does not hold is exit 2" rule
 // exists to prevent, since a CI gate would grade a different node instead of failing.
 func TestPathTreeGetRefusesToClimbOutOfTheRoot(t *testing.T) {
 	t.Parallel()
@@ -197,7 +197,7 @@ func TestPathTreeGetRefusesToClimbOutOfTheRoot(t *testing.T) {
 
 // An absolute profile collapses the same way, and the prefixing has to reach it. Rebuilding the
 // path to probe with lost this: an absolute path splits to a leading empty component, path.Join
-// drops it, and "/abs/x/y/p" was probed as "abs/x/y/p" — so no absolute tree ever resolved a row
+// drops it, and "/abs/x/y/p" was probed as "abs/x/y/p", so no absolute tree ever resolved a row
 // label, while the identical relative profile did.
 func TestPathTreeGetResolvesUnderAnAbsoluteRoot(t *testing.T) {
 	t.Parallel()
@@ -213,7 +213,7 @@ func TestPathTreeGetResolvesUnderAnAbsoluteRoot(t *testing.T) {
 }
 
 // The empty key is nil on every profile, not just the relative ones. An absolute path splits to a
-// leading empty component, so the filesystem root is held as Children[""] — and walk("") cuts to an
+// leading empty component, so the filesystem root is held as Children[""], and walk("") cuts to an
 // empty part and reads that very entry. Get("") handed back the whole tree, answering 100.00 for a
 // key naming nothing, where the identical relative profile returned nil.
 //
@@ -231,7 +231,7 @@ func TestPathTreeGetEmptyKeyIsNilOnAnAbsoluteProfile(t *testing.T) {
 
 // A segment of the collapsed root that is also a package inside it resolves to the package, which
 // is the row the report drew. Probing on the way down the run answered from above that row: "y" is
-// the last segment of "github.com/x/y" and a package beside "z", and the root won — so
+// the last segment of "github.com/x/y" and a package beside "z", and the root won, so
 // `total y --fail-under=80` graded the whole tree at 90 and passed where the package it names is 0.
 func TestPathTreeGetPrefersTheDeepestRootPrefix(t *testing.T) {
 	t.Parallel()
@@ -246,11 +246,11 @@ func TestPathTreeGetPrefersTheDeepestRootPrefix(t *testing.T) {
 }
 
 // Get documents that a miss can be chained, and these are what a caller reaches for next. All three
-// panicked on the node Get had just handed back, so the one line the doc invites —
-// tree.Get("pkg").Uncovered() — was the one that crashed.
+// panicked on the node Get had just handed back, so the one line the doc invites.
+// tree.Get("pkg").Uncovered(), was the one that crashed.
 //
 // A nil node answers as a node holding nothing does, which is what the tree already says about an
-// empty one: no uncovered statements, no percentage to report, and not at any bar — including 0,
+// empty one: no uncovered statements, no percentage to report, and not at any bar, including 0,
 // since nothing to cover is not "at least anything".
 func TestPathTreeMethodsAnswerForAMissedNode(t *testing.T) {
 	t.Parallel()

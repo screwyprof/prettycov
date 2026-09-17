@@ -15,7 +15,7 @@ import (
 )
 
 // Every profile in testdata is checked against totals derived straight from the file text, for
-// every directory in it — not just the root. Adding a profile therefore needs no hand-computed
+// every directory in it, not just the root. Adding a profile therefore needs no hand-computed
 // expectations: drop the file in testdata and it is covered from then on.
 func TestProcessMatchesProfileTotals(t *testing.T) {
 	t.Parallel()
@@ -38,7 +38,7 @@ func TestProcessMatchesProfileTotals(t *testing.T) {
 				require.NotNilf(t, node, "%q is in the profile but missing from the tree", dir)
 
 				// Counts only. The ratio is derived from these by CoverageStats.Percentage, so it
-				// cannot disagree with them — which it could when it was a stored field, and did.
+				// cannot disagree with them, which it could when it was a stored field, and did.
 				assert.Equalf(t, want.Covered, node.Coverage.Covered, "covered statements at %q", dir)
 				assert.Equalf(t, want.Uncovered, node.Coverage.Uncovered, "uncovered statements at %q", dir)
 			}

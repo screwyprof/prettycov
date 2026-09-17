@@ -12,7 +12,7 @@ import (
 
 // benchFiles is how many files the synthetic profile names. Small enough that `go test -bench=.`
 // is not a coffee break, large enough that growth shows: doubling a slice by 96 bytes a row rather
-// than 56 is invisible at a hundred rows. Edit it to measure the shape of a monorepo — the
+// than 56 is invisible at a hundred rows. Edit it to measure the shape of a monorepo. The
 // regression these exist to catch was found at 30000, where the tree printer had gone from 11.8MB
 // to 23.3MB and 46k allocations to 123k.
 const benchFiles = 2000
@@ -35,7 +35,7 @@ const closeColumn = 3
 // Nothing about the shape is invented, which is the point: the directory spread (14 directories for
 // 19 files, ten of them holding one), the block layout, the run counts and which files are finished
 // are all a Go repository's. Generating it took a dozen constants that had to be argued for, and two
-// of them were wrong — every package held exactly one file at 2000 and exactly four at 30000, so
+// of them were wrong. Every package held exactly one file at 2000 and exactly four at 30000, so
 // collapse either fired on everything or on nothing, and neither is what the printer meets.
 //
 // The copies share each file's Blocks rather than cloning them. Nothing here mutates a block, and
