@@ -326,7 +326,7 @@ func TestRunKeepsABadFlagShort(t *testing.T) {
 
 // `version` as a bare word is recognised before the flag package sees it, which would take it for
 // a profile path; --version is the ordinary flag. What the version actually says is the binary
-// tests' business. It depends on how the binary was linked, and nix stamps it during checkPhase.
+// tests' business, since it depends on how the binary was linked.
 func TestRunAcceptsBothVersionSpellings(t *testing.T) {
 	t.Parallel()
 

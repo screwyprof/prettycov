@@ -35,12 +35,13 @@
 //
 // [DisplayTree] draws the rows and [DisplayMisses] prints the uncovered statements as
 // file:line:col. [Rows] and [Misses] return the same decisions as data, for a caller writing its own
-// renderer. Both writers return the destination's error, so a report that failed to write is never
-// reported as drawn.
+// renderer. Both writers return the destination's error. The count beside it is of rows decided
+// rather than bytes that landed, since bufio holds a write failure until Flush, so read the error.
 //
 // All four take [Options], which decides how deep the output goes and whether a subtree already at
-// the bar is left out. The zero value prints the top row alone. [Misses] and [DisplayMisses] ignore
-// Options.Files, because a miss is a file position whether or not a file is drawn as a row.
+// the bar is left out. The zero value draws the top row alone, which for [Misses] and
+// [DisplayMisses] is nothing at all, since Depth 0 never reaches a file. Both ignore Options.Files,
+// because a miss is a file position whether or not a file is drawn as a row.
 //
 // Options changes what is shown, never what is counted. [PathTree.Percentage] reads the same
 // whatever is drawn.

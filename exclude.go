@@ -33,8 +33,8 @@ func ParseExclude(s string) (*regexp.Regexp, error) {
 // Each pattern is tried unanchored against the file's path and against each block's position, with
 // and without the column. The path is tried first and wins, or a pattern aimed at a package would
 // be charged one block at a time. A path `go test` writes holds no colon, so the two do not collide
-// there. x/tools parses the filename as a greedy .+, so a FileCoverage a caller built by hand can
-// name "m/a.go:3x/y.go" and hand a coordinate pattern the whole file.
+// there. x/tools parses the filename as a greedy .+, so a profile can name a file "m/a.go:3x/y.go"
+// and hand a coordinate pattern the whole file. Profiles are untrusted input here.
 //
 // Unanchored means the line is a prefix: "a.go:3" reaches 3, 30 and 300; "a.go:3$" is the one line.
 func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, []Exclusion) {

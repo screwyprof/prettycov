@@ -202,9 +202,8 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 //
 // What is drawn, not what the tree holds: a row --depth already cut cannot be why its parent
 // survives. And the subtree, not the node alone, since coverage is not monotonic downwards below
-// 100, so
-// a package at 91 can hold one at 88, and judging the top row by itself hid the branch with the
-// work in it.
+// 100: a package at 91 can hold one at 88, and judging the top row by itself hid the branch with
+// the work in it.
 //
 // O(n·depth), since an ancestor re-walks what its child did. Measured worth it: 3.7ms of re-walk
 // against 7ms of rendering saved at 99% coverage.
