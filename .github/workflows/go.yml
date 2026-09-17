@@ -27,9 +27,12 @@ jobs:
       - name: Check out code into the Go module directory
         uses: actions/checkout@v7
         with:
-          # .golangci.yml sets `new-from-rev: main`, which needs real history to diff against, and
+          # .golangci.yml diffs against origin/main, which needs real history, and
           # `make cover-branches` copies what git tracks.
           fetch-depth: 0
+          # Nothing here pushes, so the token does not belong in .git/config where `make check`
+          # can read it — and `make check` runs bumped dependency code.
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v7
