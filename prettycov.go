@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+// CoverageStats is a count of statements, split by whether the tests reached them. Statements, not
+// lines: one line can hold several, and cmd/cover counts what it compiled.
 type CoverageStats struct {
 	Covered   int
 	Uncovered int
@@ -81,6 +83,9 @@ func (p Percentage) String() string {
 	return text
 }
 
+// FileCoverage is one file of a profile: its path as the profile spells it, and what the tests
+// reached in it. ParseProfile returns these; a caller can also build them to use Exclude or Process
+// on coverage from somewhere else.
 type FileCoverage struct {
 	File     string
 	Coverage CoverageStats

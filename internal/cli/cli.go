@@ -28,8 +28,12 @@ import (
 type ExitCode int
 
 const (
+	// ExitOK is a run that did what was asked.
 	ExitOK ExitCode = iota
+	// ExitBelow is coverage under --fail-under. Nothing else returns it.
 	ExitBelow
+	// ExitFailed is prettycov not doing what was asked: a bad flag, an unreadable profile, a path
+	// the profile does not hold, a destination that would not take the output.
 	ExitFailed
 )
 
@@ -285,6 +289,7 @@ func (m *Measured) request() (prettycov.Request, error) {
 // Named rather than registered for *float64, which --fail-under also is and has no bare form.
 type OptionalPercentage struct{}
 
+// Decode reads the flag's value, or supplies 100 when "=" gave none.
 func (OptionalPercentage) Decode(ctx *kong.DecodeContext, target reflect.Value) error {
 	// 100 is what --hide-covered means with nothing after it: hide what is fully covered, where
 	// absence means "nothing to do here".
