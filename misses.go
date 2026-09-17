@@ -53,6 +53,10 @@ func byPosition(x, y Block) int {
 // between — a covered block in the gap stops the fold, or the region would claim a statement the
 // tests reach.
 //
+// Breaking that is invisible in the default output: only the range goes wrong, the statement counts
+// stay right, and the CLI prints the opening position alone. Verify a change here against EndLine,
+// not against what `misses` shows.
+//
 // A profile is already sorted; Process also takes a caller's own FileCoverage, where an out-of-order
 // block would fold into whatever region is open. Sorts a copy, so asking for misses does not reorder
 // the caller's tree.
