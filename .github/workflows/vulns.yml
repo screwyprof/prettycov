@@ -1,0 +1,28 @@
+name: Vulns
+
+# An advisory lands whether or not anyone pushes, and Go's triggers do not: `Go` runs on push and
+# pull_request only, so an idle repository learns about a CVE on its next commit.
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vulns:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          # Same pin as the Go workflow; see the comment there.
+          go-version: '1.26.x'
+          cache: true
+          cache-dependency-path: go.sum
+
+      - run: make vulns
