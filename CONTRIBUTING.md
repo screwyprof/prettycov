@@ -10,18 +10,16 @@ cd prettycov
 make check
 ```
 
-Every tool the build reaches for is a Go program, fetched at a pinned version by `go run` when it
-is not already on your PATH — golangci-lint, vale, govulncheck, gobco, gremlins. The first
-`make check` compiles them, so it is slow once and fast after.
+Every tool the build reaches for is a Go program, fetched at its pinned version by `go run` —
+golangci-lint, vale, govulncheck, gobco, gremlins. Never from your PATH, whatever is on it: a pin
+that defers to whatever happens to be installed is a pin that lies. The first `make check` compiles
+them, so it is slow once and fast after.
 
 There is a nix flake, and it is a convenience rather than a requirement: `nix develop` pins the Go
-toolchain and puts gopls, pre-commit and tparse on your PATH. It does not supply the gates' tools —
-`make check` fetches those itself at the versions pinned in the Makefile and never probes PATH, so
-whatever golangci-lint is in your shell is not the one that runs.
-
-Dependabot opens the dependency and action bumps. A `gomod` one needs `make nix-hash` run on its
-branch before it merges: `flake.nix` pins the module set by hash, the pre-commit hook that keeps it
-in step needs nix, and Dependabot has neither. No gate catches a stale one.
+toolchain and puts gopls, pre-commit and tparse on your PATH. It deliberately does not carry
+golangci-lint or vale: `make check` fetches those itself at the versions pinned in the Makefile and
+never probes PATH, so a copy in your shell would be a second, different version of a gate's own
+tool rather than the one that runs.
 
 One target is the exception. `make hooks` installs the git pre-commit hooks and needs `pre-commit`,
 which is Python rather than Go and so cannot be fetched the same way — `pip install pre-commit`, or
@@ -31,7 +29,9 @@ Go 1.26, not 1.27. A coverage tool cannot ship on a toolchain that miscounts sta
 does ([golang/go#80974](https://github.com/golang/go/issues/80974)): it splits a straight-line block
 at a blank line and writes the whole run's count into each piece, inflating every figure this tool
 reports. CL 819000 fixed it for Go 1.28 and there is no 1.27 backport, so the pin lifts when 1.28
-ships and not before. It lives in [go.mod](go.mod) and [flake.nix](flake.nix).
+ships and not before. It lives in four places that must move together: [go.mod](go.mod),
+[flake.nix](flake.nix), `go-version` in [the workflow](.github/workflows/go.yml), and
+`constraints.go` in [renovate.json](renovate.json).
 
 ## The gates
 
@@ -41,7 +41,7 @@ to paste into a pull request:
 | target | what it asks |
 | --- | --- |
 | `make test` | tests, with `-race` and `-shuffle=on` on both passes |
-| `make lint-all` | 74 linters, including nilaway compiled in as a plugin |
+| `make lint-all` | the linters [.golangci.yml](.golangci.yml) enables, over the whole tree |
 | `make lint` | the same, narrowed to your diff — what CI annotates on the pull request |
 | `make vulns` | govulncheck, reachability-aware |
 | `make docs-lint` | Vale over the Markdown, against Google's style guide |

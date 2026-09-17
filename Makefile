@@ -32,15 +32,24 @@ COVERDATA := .covdata
 # main_test.go spawns a binary, so it is tagged and run in a pass of its own. Also in .golangci.yml,
 # which needs the tag to lint the file at all.
 GO_TAGS := integration
+# Every tool is fetched by `go run pkg@version` at the version named here, so this block is the
+# whole toolchain. The `# renovate:` lines let the bot read a Makefile it would otherwise ignore —
+# datasource=go makes it resolve each module against the proxy, the same place `go run` will.
+# renovate: datasource=go depName=golang.org/x/vuln
 GOVULNCHECK_VERSION := v1.8.0
+# renovate: datasource=go depName=github.com/rillig/gobco
 GOBCO_VERSION := v1.3.4
+# renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
 GOLANGCI_VERSION := v2.13.1
+# renovate: datasource=go depName=github.com/errata-ai/vale/v3
 VALE_VERSION := v3.14.2
+# renovate: datasource=go depName=github.com/reviewdog/reviewdog
 REVIEWDOG_VERSION := v0.21.1
+# renovate: datasource=go depName=github.com/go-gremlins/gremlins
 GREMLINS_VERSION := v0.6.0
 
-# ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
-# from it. Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
+# ./VERSION is the single source of truth: `make release` tags from it and the linker stamps it in.
+# Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
 VERSION := v$(shell cat VERSION)+$(shell git rev-parse --short HEAD)
 
 # warning: -w will disable runtime profiling and affect debugging
@@ -92,17 +101,6 @@ build: ## build application
 # pinned version is what runs. Probing PATH first was faster in the devShell and quietly ran
 # whatever version was installed there instead, which is a pin that lies.
 GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
-
-# nilaway is a module plugin, so it has to be compiled into a golangci-lint of our own — see
-# .custom-gcl.yml. A real file rule, so the build happens when that file changes and never again —
-# 13s from a cold GOCACHE, 6s warm, which is the link step alone.
-#
-# Formatting uses the stock binary: the plugin adds a linter, not a formatter.
-GCL := bin/golangci-lint-prettycov
-
-$(GCL): .custom-gcl.yml .golangci.yml
-	@echo -e "$(OK_COLOR)==> Building golangci-lint with nilaway$(NO_COLOR)"
-	@$(GOLANGCI) custom
 
 # golangci-lint formats as well as reports: `fmt` applies the formatters block in .golangci.yml,
 # which is gofumpt and gci — the same two this used to shell out to — plus golines, which the
@@ -249,25 +247,24 @@ mutate: ## report mutants the tests failed to kill
 test-cover-tree: $(COVERAGE) ## show the coverage tree (prettycov on itself)
 	@go run ./cmd/prettycov report --profile=$(COVERAGE) --old=$(LOCAL_PACKAGES) --new=prettycov --depth=2
 
-lint: $(GCL) ## run linters for current changes
+lint: ## run linters for current changes
 	@echo -e "$(OK_COLOR)==> Linting current changes$(NO_COLOR)"
-	./$(GCL) run ./...
+	$(GOLANGCI) run ./...
 
 # CI only, and the same findings `lint` reports: reviewdog renders them as annotations on the pull
-# request diff, which a log cannot. It reads golangci-lint's own format from stdin, so this works
-# with the nilaway-carrying binary the GCL rule builds — reviewdog's own golangci-lint action
-# downloads the stock one, which cannot load this config at all and exits 3.
+# request diff, which a log cannot. Piped rather than using reviewdog's own golangci-lint action,
+# which downloads a version of its own choosing — the pin has to be the one that runs.
 #
 # Output aimed at a machine: no banner, no colour, no stats, or the errorformat has lines it cannot
 # parse. Scoped to the diff, as `lint` is, because that is what an annotation can point at.
-lint-annotate: $(GCL)
-	@./$(GCL) run ./... --output.text.print-issued-lines=false --output.text.colors=false --show-stats=false \
+lint-annotate:
+	@$(GOLANGCI) run ./... --output.text.print-issued-lines=false --output.text.colors=false --show-stats=false \
 		| go run github.com/reviewdog/reviewdog/cmd/reviewdog@$(REVIEWDOG_VERSION) \
 			-f=golangci-lint -name=golangci-lint -reporter=github-pr-check -fail-level=any
 
-lint-all: $(GCL) ## run linters
+lint-all: ## run linters
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
-	./$(GCL) run ./... --new-from-rev=""
+	$(GOLANGCI) run ./... --new-from-rev=""
 
 # check runs every gate and prints one line per figure, so a PR description quotes the tools rather
 # than being retyped from them. Six descriptions in this repo have claimed numbers the tree did not
@@ -319,22 +316,6 @@ install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
 	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov/...
 
-# buildGoModule needs a fixed-output hash for the module set, and nix only reveals the correct one
-# by failing a build with a wrong one. So: write a known-bad hash, read the `got:` line, write that.
-# `sed -i.bak` rather than `sed -i` because BSD sed (macOS) requires the suffix.
-FAKE_HASH := sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-
-nix-hash: ## recompute flake.nix vendorHash (run after go.mod/go.sum change)
-	@echo -e "$(OK_COLOR)==> Recomputing vendorHash$(NO_COLOR)"
-	@sed -i.bak -E 's|vendorHash = "sha256-[^"]*"|vendorHash = "$(FAKE_HASH)"|' flake.nix
-	@hash=$$( { nix build --no-link .#default 2>&1 || true; } | grep -oE 'sha256-[A-Za-z0-9+/=]{44}' | grep -v '^$(FAKE_HASH)$$' | head -1 || true); \
-	if [ -z "$$hash" ]; then \
-		echo "could not determine vendorHash; restoring"; mv flake.nix.bak flake.nix; exit 1; \
-	fi; \
-	sed -i.bak2 -E "s|vendorHash = \"$(FAKE_HASH)\"|vendorHash = \"$$hash\"|" flake.nix; \
-	rm -f flake.nix.bak flake.nix.bak2; \
-	echo "vendorHash = $$hash"
-
 # ./VERSION holds the last released version — bump it, then run this.
 release: ## tag a release from ./VERSION and publish it to the module proxy
 	@v="v$$(cat VERSION)"; \
@@ -370,7 +351,6 @@ clean: ## cleans-up artifacts
 	@rm -rf ./coverage.*
 	@rm -rf ./$(COVERDATA)
 	@rm -rf ./prettycov
-	@rm -rf ./bin
 
 help: ## show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(MAKE_COLOR) %s\n", $$1, $$2}'
@@ -380,4 +360,4 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: lint lint-annotate lint-all vulns docs-lint tidy check install hooks nix-hash release publish clean help
+.PHONY: lint lint-annotate lint-all vulns docs-lint tidy check install hooks release publish clean help

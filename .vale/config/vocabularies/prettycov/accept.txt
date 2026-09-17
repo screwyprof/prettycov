@@ -9,7 +9,6 @@ codecov
 config
 [Dd]iátaxis
 delegator
-Dependabot
 depguard
 devShell
 footgun
@@ -24,7 +23,6 @@ ints
 [Kk]ubernetes
 kong
 Makefile
-nilaway
 nixpkgs
 openable
 pflag
