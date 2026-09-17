@@ -72,8 +72,17 @@ jobs:
       # untrusted is not ours to keep, and this step has nothing to gate with. `make check` below
       # runs the same linter as a real gate, so a failure here costs annotations on the diff and
       # nothing else. The same-repo condition stays only to skip a step known to be unable to work.
+      #
+      # Not for a bot either, and that one is about privilege rather than tokens. GitHub hands
+      # Dependabot's runs an empty secret context; Renovate is an ordinary app pushing in-repo
+      # branches, so its runs are fully trusted — which would put a freshly bumped, unreviewed
+      # golangci-lint in the same step as a writable token. A bump diff has no Go changes to
+      # annotate, so skipping costs nothing and `make check` still lints it.
       - name: Lint annotations
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        if: >-
+          github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && github.event.pull_request.user.login != 'renovate[bot]'
         continue-on-error: true
         run: make lint-annotate
         env:
