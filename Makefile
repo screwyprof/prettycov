@@ -40,9 +40,9 @@ GOVULNCHECK_VERSION := v1.8.0
 # renovate: datasource=go depName=github.com/rillig/gobco
 GOBCO_VERSION := v1.3.4
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
-GOLANGCI_VERSION := v2.13.1
+GOLANGCI_VERSION := v2.13.2
 # renovate: datasource=go depName=github.com/errata-ai/vale/v3
-VALE_VERSION := v3.14.2
+VALE_VERSION := v3.21.0
 # renovate: datasource=go depName=github.com/reviewdog/reviewdog
 REVIEWDOG_VERSION := v0.21.1
 # renovate: datasource=go depName=github.com/go-gremlins/gremlins
