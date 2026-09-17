@@ -10,9 +10,10 @@ cd prettycov
 make check
 ```
 
-Every tool the build reaches for is a Go program, fetched at a pinned version by `go run` when it
-is not already on your PATH — golangci-lint, vale, govulncheck, gobco, gremlins. The first
-`make check` compiles them, so it is slow once and fast after.
+Every tool the build reaches for is a Go program, fetched at its pinned version by `go run` —
+golangci-lint, vale, govulncheck, gobco, gremlins. Never from your PATH, whatever is on it: a pin
+that defers to whatever happens to be installed is a pin that lies. The first `make check` compiles
+them, so it is slow once and fast after.
 
 There is a nix flake, and it is a convenience rather than a requirement: `nix develop` pins the Go
 toolchain and puts gopls, pre-commit and tparse on your PATH. It deliberately does not carry

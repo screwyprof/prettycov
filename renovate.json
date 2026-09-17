@@ -8,6 +8,13 @@
   "schedule": ["before 6am on monday"],
   "prConcurrentLimit": 3,
 
+  "constraints": {
+    "go": "1.26"
+  },
+
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+
   "packageRules": [
     {
       "description": "Automerge everything that is not a major. The gate is make check, which CI runs as one job and branch protection requires; a bump that breaks anything cannot reach main, and a bump that breaks nothing does not need a human to look at it.",
@@ -23,6 +30,11 @@
       "addLabels": ["major"]
     },
     {
+      "description": "flake.lock is not automerged: nothing in CI opens the flake, so a nixpkgs bump that renames or drops go_1_26 would land on a green make check that never looked. A human reads this one.",
+      "matchManagers": ["nix"],
+      "automerge": false
+    },
+    {
       "description": "One pull request for the Go module set rather than five, since x/ tags together.",
       "matchManagers": ["gomod"],
       "groupName": "go modules"
@@ -30,22 +42,22 @@
     {
       "description": "The Makefile's tool pins, grouped: they are one toolchain and make check is one gate over all of them.",
       "matchManagers": ["custom.regex"],
-      "groupName": "make tools"
+      "groupName": "go tools"
     },
     {
-      "description": "Go itself is pinned to 1.26 deliberately — golang/go#80974 makes 1.27 miscount statements, which is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27 backport, so this lifts when 1.28 ships and not before. The pin lives in go.mod, flake.nix and .github/workflows/go.yml; unblock all three together.",
-      "matchDepNames": ["go", "golang", "pkgs.go_1_26"],
+      "description": "Go itself is pinned to 1.26 deliberately — golang/go#80974 makes 1.27 miscount statements, which is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27 backport, so this lifts when 1.28 ships and not before. One name, because `go` is what both the gomod and github-actions managers emit — flake.nix's pin is a nixpkgs attribute no manager reads, so unblocking means editing it, go.mod and the workflow by hand. The constraints block above stops an ordinary bump raising the directive past this.",
+      "matchDepNames": ["go"],
       "enabled": false
     }
   ],
 
   "customManagers": [
     {
-      "description": "The Makefile's *_VERSION pins. Every tool is fetched with `go run pkg@version`, so the version lives beside the command that uses it rather than in go.mod — which is why no bot read them until this.",
+      "description": "Tool versions that live outside go.mod: the Makefile's *_VERSION pins, fetched with `go run pkg@version`, and .custom-gcl.yml's two, which decide what binary `make lint` builds. Both files are matched, because golangci-lint is pinned in both and only the .custom-gcl.yml one governs the lint gate — bumping the Makefile alone would leave the gate on the old version with make check green.",
       "customType": "regex",
-      "managerFilePatterns": ["/^Makefile$/"],
+      "managerFilePatterns": ["/^Makefile$/", "/^\\.custom-gcl\\.yml$/"],
       "matchStrings": [
-        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+?)\\s+depName=(?<depName>[^\\s]+?)\\s*\\n\\s*[A-Z_]+_VERSION\\s*:?=\\s*(?<currentValue>\\S+)"
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+?)\\s+depName=(?<depName>[^\\s]+?)\\s*\\n\\s*(?:[A-Z_]+_VERSION\\s*:?=|version:)\\s*(?<currentValue>\\S+)"
       ]
     }
   ],
@@ -63,7 +75,6 @@
 
   "vulnerabilityAlerts": {
     "description": "A security fix does not wait for Monday.",
-    "schedule": ["at any time"],
-    "automerge": true
+    "schedule": ["at any time"]
   }
 }

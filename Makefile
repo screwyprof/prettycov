@@ -48,8 +48,8 @@ REVIEWDOG_VERSION := v0.21.1
 # renovate: datasource=go depName=github.com/go-gremlins/gremlins
 GREMLINS_VERSION := v0.6.0
 
-# ./VERSION is the single source of truth: flake.nix reads the same file, and `make release` tags
-# from it. Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
+# ./VERSION is the single source of truth: `make release` tags from it and the linker stamps it in.
+# Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
 VERSION := v$(shell cat VERSION)+$(shell git rev-parse --short HEAD)
 
 # warning: -w will disable runtime profiling and affect debugging
