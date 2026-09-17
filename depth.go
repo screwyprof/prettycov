@@ -18,7 +18,8 @@ const DepthAll Depth = math.MaxUint
 const depthMax = "max"
 
 var (
-	// ErrBadDepth is a depth that is neither a number of levels nor "max".
+	// ErrBadDepth is a depth that will not parse. A negative one lands here rather than in the
+	// range error below: ParseUint reads "-1" as bad syntax, not as out of range.
 	ErrBadDepth = errors.New(`want a number of levels, or "` + depthMax + `"`)
 	// ErrDepthTooLarge is a number too large to be a depth. Separate from ErrBadDepth because it
 	// says what to type: a number that big was reaching for the whole tree.

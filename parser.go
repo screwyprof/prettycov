@@ -8,7 +8,8 @@ import (
 	"golang.org/x/tools/cover"
 )
 
-// ErrInvalidProfile reports a profile that could be read but not parsed.
+// ErrInvalidProfile reports a profile that could be read but not used: a line that will not parse,
+// or statement counts that overflow once summed. Always wrapped with which.
 var ErrInvalidProfile = errors.New("invalid coverage profile")
 
 // ParseProfile reads a coverage profile produced by `go test -coverprofile`.
