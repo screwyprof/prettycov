@@ -11,10 +11,12 @@ config
 delegator
 depguard
 devShell
+errorformat
 footgun
 gobco
 gofmt
 golangci
+golint
 gopls
 govulncheck
 gremlins

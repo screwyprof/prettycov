@@ -206,10 +206,10 @@ read.
 
 A percentage says how much is untested; `misses` says where. One line per run of statements the
 tests never reached, as `file:line:col: N uncovered`, the shape `go vet` prints and an editor's
-error format parses, so it pipes straight into `vim -q -` or `reviewdog`:
+error format parses:
 
 ```shell
-❯ prettycov misses --depth=max --old=github.com/screwyprof/delegator --new=.
+❯ prettycov misses --old=github.com/screwyprof/delegator --new=. --depth=max
 pkg/httpkit/httpkit.go:62:2: 1 uncovered
 pkg/logger/logger.go:22:16: 1 uncovered
 pkg/logger/logger.go:44:26: 1 uncovered
@@ -244,6 +244,26 @@ web/store/pgxstore/store.go:43:16: 1 uncovered
 web/store/pgxstore/store.go:50:16: 1 uncovered
 ```
 
+Vim reads it as a quickfix list, but not off a pipe: `-q` takes a filename, and `-` is not special
+to it, so `prettycov misses | vim -q -` is `E40: Can't open errorfile -`. Vim also wants the
+terminal that the pipe took. Give it the list as a file instead:
+
+```shell
+❯ vim -q <(prettycov misses --old=$MODULE --new=. --depth=max)
+❯ prettycov misses --old=$MODULE --new=. --depth=max > misses.txt && vim -q misses.txt
+```
+
+Already inside Vim, `:cexpr system('prettycov misses --old=$MODULE --new=. --depth=max')` does
+the same.
+`system()` merges the two streams, so add `2>/dev/null` when the run has anything to say on stderr:
+a filter note lands in the quickfix list as an entry pointing nowhere.
+
+reviewdog reads the same output under `-f=golint`, which is
+[errorformat](https://github.com/reviewdog/errorformat)'s name for `%f:%l:%c: %m` rather than a
+claim about golint. It parses rather than passes through: a line that is not a diagnostic is
+dropped. Which reporter to hand it, `local` at a terminal or one of the `github-*` ones in CI, is
+reviewdog's question and not this format's.
+
 `sourcefile:lineno:column: message` is one of the two forms the [GNU coding
 standards](https://www.gnu.org/prep/standards/html_node/Errors.html) give for a compiler naming a
 column, and it is the one `go vet`, `gcc` and `golangci-lint` all emit.
@@ -275,8 +295,15 @@ Editors that hyperlink terminal output rather than parse an error format are loo
 also takes `file(12,3)`, `file#12` and `file on line 12`, and needs no message at all.
 
 It replaces the report rather than decorating it: the tree is the summary, these are the drill-down.
-The path comes from the profile, which names Go packages rather than files on disk, so `--new=.`
-strips the module prefix and leaves something an editor can open.
+
+The path in the profile names a Go package rather than a file on disk, so the root in front of every
+one is a prefix no editor resolves. `--old=$MODULE --new=.` takes it off, and what is left
+resolves against the directory you ran `go test` in, which is where `coverage.out` is.
+
+Both flags, rather than a root read off the profile: the deepest directory every path shares is the
+module root when the profile spans the module and one level too deep when it covers a single
+package, and nothing here reads `go.mod` to tell those apart. A wrong guess prints a path that looks
+openable and is not, which is worse than one that plainly is not a file.
 
 Blocks that abut fold into one entry. `cmd/cover` emits one per branch, so a function nothing covers
 arrives as a dozen of them. That halves the list on a badly covered profile and changes almost
@@ -285,24 +312,28 @@ uncovered ones stops the fold, or the entry would claim a statement the tests do
 
 `--depth` and `--hide-covered` narrow it as they narrow the tree under `--files`, being the same
 filtering with that one option set for you: a file is an entry of the package holding it, so it sits
-one level below that package. The default `--depth=1` gives 8 of the 32 entries a full listing has,
-and `--depth=max` gives all of them. `--hide-covered=90` leaves out the ones in subtrees already at
-the bar. Against the *default* tree the two part company, since asking for files is also what merges
-a package holding one into a single row: `misses --depth=2` reaches a file that `report --depth=2`
-alone stops one row above.
+one level below that package. `--depth=1`, the default here as for a report, gives 8 of the 32
+entries a full listing has, and the count on stderr says so. `--depth=max` gives all of them.
+`--hide-covered=90` leaves out the ones in subtrees already at the bar.
 
-That level is worth counting before reaching for `--depth`. `--new=.` above leaves packages at the
-top level and their files one below, which the default draws; without a rename the module path is a
-top row of its own and everything moves down one, so `prettycov misses` alone lists only the files
-in your module root.
+Stripping the root takes a level off every path, so a depth here is one less than the same view
+costs under a report drawing the module as its top row. Against the *default* tree the two part
+company, since asking for files is also what merges a package holding one into a single row:
+`misses --depth=2` reaches a file that `report --depth=2` alone stops one row above.
 
-You are told when that happens, because a short list and a whole one look alike:
+That level is worth counting before reaching for `--depth`. With the root off, `--depth=1` reaches
+the files one level under a top-level package, `pkg/httpkit/httpkit.go` among them because a
+package holding a single file merges into that row, and stops above anything deeper:
+`web/handler/bind/bind.go` is cut even though its package holds one file too. Without the rename
+every path moves down one, and `--depth=1` reaches no file in this profile at all.
+
+You are told whenever a filter shortens the list, because a short one and a whole one look alike:
 
 ```shell
-❯ prettycov misses --old=github.com/screwyprof/delegator --new=.
+❯ prettycov misses --old=github.com/screwyprof/delegator --new=. --depth=1
 pkg/httpkit/httpkit.go:62:2: 1 uncovered
 …
---depth=1 lists 10 of 34 uncovered statements        # on stderr
+--depth=1 lists 10 of 34 uncovered statements                        # on stderr
 ```
 
 A tree carries its subtree's count on every row, so a shallow one is a summary and says so. A list
@@ -317,8 +348,13 @@ them either way. Passing it is exit 2, like any other flag a command does not ta
 
 `--exclude` removes them outright, since it acts on the profile before any of this, and it takes the
 same `file:line:col` spelling, so a position you judge unreachable pastes back as a pattern. It
-matches the paths the profile holds, so paste the position as printed when you are not renaming, and
-the profile's own path when you are.
+matches the paths the profile holds. Under `--new=.` a printed position pastes back as printed,
+since taking a root off leaves what is left sitting inside the profile's own spelling and patterns
+are unanchored. Under any other destination it does not: `--new=SRC` prints `SRC/b/b.go:1:1`, and
+the profile holds no `SRC`. Paste the profile's own path when you renamed to anything but `.`.
+
+Without `--new`, `misses` prints the profile's own spelling, which is what `--exclude` matches and
+what a position pastes back as.
 
 Anchor it with `$`. Patterns are unanchored, so the column is a prefix like the line is:
 `a\.go:9:2` also matches `a\.go:9:24`, which is an ordinary second block on the same line. `if err

@@ -80,16 +80,27 @@ total coverage 74.51% is below 85.00%      # exit 1
 
 ### A list your editor can open
 
-`misses` prints where the untested statements are, in the format `go vet` uses, so it pipes into
-`vim -q -` or reviewdog:
+`misses` prints where the untested statements are, in the format `go vet` uses. The path in a
+profile names a Go package, so `--old` and `--new` take the root off the front, which is what
+leaves something an editor can open:
 
 ```shell
-❯ prettycov misses --depth=max --old=github.com/screwyprof/delegator --new=.
+❯ prettycov misses --old=github.com/screwyprof/delegator --new=. --depth=max
 pkg/httpkit/httpkit.go:62:2: 1 uncovered
 pkg/logger/logger.go:22:16: 1 uncovered
 pkg/logger/logger.go:44:26: 1 uncovered
 …
 ```
+
+```shell
+❯ vim -q <(prettycov misses --old=$MODULE --new=. --depth=max)     # quickfix list
+❯ prettycov misses --old=$MODULE --new=. --depth=max | reviewdog -f=golint -reporter=local
+```
+
+Vim's `-q` wants a filename rather than a pipe, so the process substitution, or redirect to a file
+first. `-f=golint` is reviewdog's name for `file:line:col: message`, not a claim about golint.
+
+The [reference](docs/reference.md#where-the-uncovered-statements-are) has the rest.
 
 The count matters: one untaken branch and a whole untested function look alike without it.
 
