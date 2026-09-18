@@ -41,7 +41,7 @@ GOBCO_VERSION := v1.3.4
 GOLANGCI_VERSION := v2.13.2
 # vale-cli, not errata-ai: module moved at v3.20.0, old path still serves the tags and then refuses.
 # renovate: datasource=go depName=github.com/vale-cli/vale/v3
-VALE_VERSION := v3.21.0
+VALE_VERSION := v3.22.0
 # renovate: datasource=go depName=github.com/reviewdog/reviewdog
 REVIEWDOG_VERSION := v0.21.1
 # renovate: datasource=go depName=github.com/go-gremlins/gremlins
