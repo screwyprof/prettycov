@@ -10,6 +10,16 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
+## [Unreleased]
+
+### Documentation
+
+- `misses` never piped into `vim -q -`. `-q` takes a filename and `-` is not special to it, so the
+  command both the README and the reference gave was `E40: Can't open errorfile -`, and vim wants
+  the terminal the pipe took. They now give `vim -q <(prettycov misses --old=$MODULE --new=.
+  --depth=max)`, a redirect, and `:cexpr system(...)`, and name `-f=golint` as the errorformat
+  reviewdog reads this output under.
+
 ## [0.15.0] — 2026-09-17
 
 ### Go API
