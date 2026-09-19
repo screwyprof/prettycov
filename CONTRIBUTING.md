@@ -40,7 +40,7 @@ to paste into a pull request:
 | target | what it asks |
 | --- | --- |
 | `make test` | tests, with `-race` and `-shuffle=on` on both passes |
-| `make lint-all` | the linters [.golangci.yml](.golangci.yml) enables, over the whole tree |
+| `make lint-all` | the linters [.golangci.yml](.golangci.yml) enables, over the whole tree, unfiltered |
 | `make lint` | the same, narrowed to your diff, which is what CI annotates |
 | `make vulns` | govulncheck, reachability-aware |
 | `make docs-lint` | Vale over the Markdown, against Google's style guide |

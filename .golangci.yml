@@ -116,6 +116,41 @@ linters:
     govet:
       enable:
         - shadow
+    # argument-limit is the reason this block exists: a function taking five things is usually two
+    # of them that belong together, which is how a pair of parallel slices travelled through four
+    # signatures here. Four is the bar because three real ones sit there and earn it — append takes
+    # its destination first, and walk's level, parent and padding are recursion state.
+    #
+    # The rest of the list is revive's own default set, written out because naming any rule replaces
+    # the defaults rather than adding to them. Without it, adding argument-limit would silently turn
+    # off var-naming and the twenty-two beside it, which is a gate quietly doing less.
+    revive:
+      rules:
+        - name: argument-limit
+          arguments: [4]
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
     # Keep in sync with the golines formatter below: same budget, same tab cost,
     # so `golangci-lint fmt` actually fixes what lll reports.
     lll:
