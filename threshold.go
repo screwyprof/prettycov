@@ -23,7 +23,6 @@ type Threshold struct{ value float64 }
 // pointer, or a bool beside it, to say that none was asked for.
 func NewThreshold(pct float64) (Threshold, error) {
 	if math.IsNaN(pct) || pct < 0 || pct > 100 {
-		//nolint:wrapcheck // a sentinel of this package's own.
 		return Threshold{}, ErrBadThreshold
 	}
 
@@ -39,7 +38,6 @@ var _ encoding.TextUnmarshaler = (*Threshold)(nil)
 func (t *Threshold) UnmarshalText(text []byte) error {
 	pct, err := strconv.ParseFloat(string(text), 64)
 	if err != nil {
-		//nolint:wrapcheck // a sentinel of this package's own.
 		return ErrBadThreshold
 	}
 

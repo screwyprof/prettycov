@@ -250,7 +250,6 @@ func (c *totalCmd) Run(s Streams) error {
 	want := ""
 	if c.Node != nil {
 		if want = *c.Node; want == "" {
-			//nolint:wrapcheck // a sentinel of this package's own.
 			return errEmptyTotalPath
 		}
 	}

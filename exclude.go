@@ -14,7 +14,6 @@ var ErrEmptyExclude = errors.New("want a pattern; an empty one matches every fil
 // rather than letting the run reach "--exclude left nothing to report" with the cause a step back.
 func ParseExclude(s string) (*regexp.Regexp, error) {
 	if s == "" {
-		//nolint:wrapcheck // a sentinel of this package's own, returned for errors.Is.
 		return nil, ErrEmptyExclude
 	}
 

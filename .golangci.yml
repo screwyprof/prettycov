@@ -163,13 +163,20 @@ linters:
     lll:
       line-length: 120
       tab-width: 4
+    # allow-unused off, so a directive that stops suppressing anything fails rather than sitting
+    # there. It caught one the moment it went on: errors.New below made a //nolint redundant and
+    # the comment would have outlived the finding.
     nolintlint:
-      allow-unused: true
+      allow-unused: false
     wrapcheck:
       # Substrings of signatures to ignore; overrides wrapcheck's default set.
       # See https://github.com/tomarrell/wrapcheck#configuration
+      # errors.New cannot return anyone else's error, so one it produced is this package's own
+      # sentinel and returning it unwrapped is what lets errors.Is match. Said here rather than as
+      # six //nolint comments repeating "a sentinel of this package's own".
       ignore-sigs:
         - fmt.Errorf(
+        - errors.New(
   exclusions:
     generated: lax
     presets:
