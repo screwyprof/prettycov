@@ -20,9 +20,10 @@ tags.
 
 ### Changed
 
-- `Exclude`, `Rows`, `Misses` and the report allocate far less on a large profile. On a
-  2,000-file one, `Exclude` went from 38,699 allocations to 3, and drawing every file with
-  `--depth=max --files` from 7,901 to 1,068. Output is unchanged, byte for byte.
+- `Exclude`, `Rows`, `Misses` and the report allocate far less on a large profile, and `Exclude`
+  itself runs in about half the time. On a 2,000-file profile `Exclude` went from 38,699
+  allocations to 3, and drawing every file with `--depth=max --files` from 7,901 to 1,067.
+  Output is unchanged, byte for byte.
 
 ### Documentation
 

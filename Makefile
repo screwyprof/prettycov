@@ -353,7 +353,7 @@ bench: ## run the benchmarks, with timings worth reading
 bench-cmp: ## compare allocations against $(BENCH_BASE) and fail on a regression
 	@echo -e "$(OK_COLOR)==> Allocations vs $(BENCH_BASE)$(NO_COLOR)"
 	@tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"; git worktree prune' EXIT; \
-		git worktree add --detach "$$tmp/base" $(BENCH_BASE) >/dev/null 2>&1 \
+		git worktree add --detach "$$tmp/base" $(BENCH_BASE) >/dev/null \
 			|| { echo "cannot check out $(BENCH_BASE); pass BENCH_BASE=<ref>"; exit 1; }; \
 		(cd "$$tmp/base" && $(BENCH_RUN) $(BENCH_FLAGS) .) > "$$tmp/base.txt"; \
 		$(BENCH_RUN) $(BENCH_FLAGS) . > "$$tmp/new.txt"; \

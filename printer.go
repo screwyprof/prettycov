@@ -266,7 +266,10 @@ func (b *walker) below(tree *PathTree, labels bool) iter.Seq[entry] {
 			// The filesystem root has no name: an absolute path splits to a leading empty component.
 			// Named here, not at the row, so visible sorts on what the reader sees. "/" belongs
 			// after ".", and the empty string sorted first.
-			if label == "" {
+			//
+			// Only when one was asked for: an unjoined run would otherwise read as a plausible path
+			// that is not the row's, where the empty string reads as the absence it is.
+			if labels && label == "" {
 				label = "/"
 			}
 
@@ -379,6 +382,10 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 // label is built only when the caller reads one; see below. The node it returns is the same either
 // way, so the two callers cannot disagree about which subtree a row stands for.
 func collapse(label string, node *PathTree, mergeFiles, wantLabel bool) (string, *PathTree) {
+	if !wantLabel {
+		label = ""
+	}
+
 	for name, child := range node.onlyChildren() {
 		if wantLabel {
 			label = join(label, name)
