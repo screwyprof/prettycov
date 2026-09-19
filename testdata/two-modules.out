@@ -1,0 +1,25 @@
+mode: set
+github.com/x/y/cmd/tool/main.go:3.16,3.28 1 0
+github.com/x/y/cmd/tool/main.go:5.13,5.26 1 0
+example.org/z/cmd/tool/main.go:3.16,3.28 1 0
+example.org/z/cmd/tool/main.go:5.13,5.26 1 0
+example.org/z/pkg/logger/log.go:3.27,4.13 1 0
+example.org/z/pkg/logger/log.go:4.13,6.3 1 0
+example.org/z/pkg/logger/log.go:7.2,7.10 1 0
+github.com/x/y/cmd/tool/main.go:3.16,3.28 1 0
+github.com/x/y/cmd/tool/main.go:5.13,5.26 1 0
+github.com/x/y/pkg/logger/log.go:3.27,4.13 1 1
+github.com/x/y/pkg/logger/log.go:4.13,6.3 1 0
+github.com/x/y/pkg/logger/log.go:7.2,7.10 1 1
+example.org/z/cmd/tool/main.go:3.16,3.28 1 0
+example.org/z/cmd/tool/main.go:5.13,5.26 1 0
+example.org/z/pkg/logger/log.go:3.27,4.13 1 1
+example.org/z/pkg/logger/log.go:4.13,6.3 1 0
+example.org/z/pkg/logger/log.go:7.2,7.10 1 1
+github.com/x/y/cmd/tool/main.go:3.16,3.28 1 0
+github.com/x/y/cmd/tool/main.go:5.13,5.26 1 0
+github.com/x/y/pkg/logger/log.go:3.27,4.13 1 0
+github.com/x/y/pkg/logger/log.go:4.13,6.3 1 0
+github.com/x/y/pkg/logger/log.go:7.2,7.10 1 0
+example.org/z/cmd/tool/main.go:3.16,3.28 1 0
+example.org/z/cmd/tool/main.go:5.13,5.26 1 0

@@ -1,6 +1,7 @@
 package prettycov
 
 import (
+	"iter"
 	"path"
 	"slices"
 	"strings"
@@ -157,7 +158,7 @@ func (n *PathTree) Get(key string) *PathTree {
 		}
 	}
 
-	return n.underRoot(key, maxRootDepth)
+	return n.underRoot(key)
 }
 
 // onlyChild is the single directory below this node when that is all there is. One definition
@@ -176,35 +177,62 @@ func (n *PathTree) onlyChild() (string, *PathTree, bool) {
 	return "", nil, false
 }
 
-// maxRootDepth bounds how far the collapsed root is followed. The deepest run measured across the
-// reference checkouts is seven, so this stops a cycle without reaching any real tree.
-const maxRootDepth = 64
+// maxRunDepth bounds a run of single-child directories. The deepest measured across the reference
+// checkouts is seven, so this stops a cycle without reaching any real tree.
+const maxRunDepth = 64
+
+// onlyChildren yields each node below this one that is all its parent holds, nearest first: the run
+// collapse folds into one row. The one definition of that walk, because collapse builds the row's
+// label from it and underRoot walks the same nodes to resolve a path read off that row. The two
+// had their own copies, agreeing by comment.
+func (n *PathTree) onlyChildren() iter.Seq2[string, *PathTree] {
+	return func(yield func(string, *PathTree) bool) {
+		// Bounded, since Children is exported and a hand-built tree can point at itself.
+		for range maxRunDepth {
+			name, child, ok := n.onlyChild()
+			if !ok || !yield(name, child) {
+				return
+			}
+
+			n = child
+		}
+	}
+}
 
 // underRoot resolves key under the run of single-child directories the report collapsed into its
 // top row: "pkg/logger" read off a report, where the tree holds "github.com/x/y/pkg/logger".
 // Literal spellings are tried first, so this only adds answers.
 //
-// Descended first and probed from the deepest node back up, since the whole run is the one row the
-// report drew. Probing downwards let `total y` match the "y" inside "github.com/x/y" before the
-// package "y" beside it, grading the whole tree and passing where that package failed.
-func (n *PathTree) underRoot(key string, depth int) *PathTree {
-	// No empty-key guard: Get is the only caller, refuses one, and the recursion passes key through.
-	if depth == 0 {
-		return nil
+// Only meaningful where there is one root to put back. A profile naming several has no single run
+// below the tree root, so onlyChildren yields nothing and this answers nil — which is right: the
+// report draws each of those rows with its full path, and a bare label under one of them names a
+// node under every other just as well.
+//
+// Probed from the deepest node back up, since the whole run is the one row the report drew. Probing
+// downwards let `total y` match the "y" inside "github.com/x/y" before the package "y" beside it,
+// grading the whole tree and passing where that package failed.
+func (n *PathTree) underRoot(key string) *PathTree {
+	// No empty-key guard: Get is the only caller and refuses one.
+	//
+	// An array, not a slice: this is the miss path, and Get allocates nothing on it. onlyChildren
+	// yields at most maxRunDepth, which is the length.
+	var run [maxRunDepth]*PathTree
+
+	depth := 0
+
+	for _, child := range n.onlyChildren() {
+		run[depth] = child
+		depth++
 	}
 
-	_, child, ok := n.onlyChild()
-	if !ok {
-		return nil
+	for i := depth - 1; i >= 0; i-- {
+		// walk, not Get, which is what calls this: probing through Get would recurse without bound.
+		if node := run[i].walk(key); node != nil {
+			return node
+		}
 	}
 
-	// Deepest first, so a shorter prefix of the run cannot answer instead.
-	if found := child.underRoot(key, depth-1); found != nil {
-		return found
-	}
-
-	// walk, not Get, which is what calls this: probing through Get would recurse without bound.
-	return child.walk(key)
+	return nil
 }
 
 // walk resolves key against this node: directories all the way but the last segment, where a file

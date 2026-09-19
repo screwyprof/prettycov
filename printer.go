@@ -103,6 +103,13 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) (int, error) {
 	rows := 0
 
 	for d := range prepare(tree, opts, shape{files: opts.Files}) {
+		// A profile naming more than one root draws a forest, and depth-first order puts the first
+		// tree's deepest row directly above the second's top row. Blank line only between them, so
+		// a single-root report is unchanged.
+		if d.Level == 0 && rows > 0 {
+			_ = buf.WriteByte('\n')
+		}
+
 		_, _ = buf.WriteString(d.Prefix)
 		_, _ = buf.WriteString(d.Label)
 		_, _ = buf.WriteString(" - ")
@@ -335,13 +342,7 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 // Files of its own stop the run, unless mergeFiles and that one file is all the directory holds,
 // where the two rows would carry the same number twice.
 func collapse(label string, node *PathTree, mergeFiles bool) (string, *PathTree) {
-	// Bounded like Get's descent: Children is exported, so a hand-built tree can point at itself.
-	for range maxRootDepth {
-		name, child, ok := node.onlyChild()
-		if !ok {
-			break
-		}
-
+	for name, child := range node.onlyChildren() {
 		label, node = join(label, name), child
 	}
 

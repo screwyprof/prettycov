@@ -48,3 +48,23 @@ func TestPrepareStopsWhenTheConsumerDoes(t *testing.T) {
 		assert.Equal(t, all[:stop], got, "stopping after %d rows", stop)
 	}
 }
+
+// onlyChildren is an iterator, so it has to honour a consumer that stops: range-over-func panics if
+// the body is left and the function yields again. Neither collapse nor underRoot breaks, so nothing
+// else reaches the early exit.
+func TestOnlyChildrenStopsWhenTheConsumerDoes(t *testing.T) {
+	t.Parallel()
+
+	// A run of three, so a stop after the first leaves two it must not yield.
+	tree := Process([]FileCoverage{{File: "a/b/c/d.go", Coverage: CoverageStats{Covered: 1}}})
+
+	var got []string
+
+	for name := range tree.onlyChildren() {
+		got = append(got, name)
+
+		break
+	}
+
+	assert.Equal(t, []string{"a"}, got)
+}

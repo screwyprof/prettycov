@@ -176,7 +176,11 @@ report already draws, which nothing else could hand back:
 The path is spelled as the report prints it. A row is drawn with its own segment only, so what you
 read off one is `pkg/logger` where the profile holds
 `github.com/screwyprof/delegator/pkg/logger`, and both work: the module root the report collapsed
-away is put back for you when the bare path is not there itself. A row that
+away is put back for you when the bare path is not there itself. That needs a root to put back, so
+it holds for a profile naming one module. A profile naming several — a `go.work` workspace built
+with `-coverpkg` across two of them — collapses nothing into a shared top row, draws each tree
+under its own, and can give two of them a row reading `pkg/logger`. Ask for those by the full path
+the report prints above them. A row that
 `--files` merges into one label (`main.go` for a file the profile gave no directory) answers to that
 label as well as to its full path. `total ""` is refused rather than read as the whole tree, so an
 unset `total "$PKG"` fails instead of quietly gating the repository. That is the opposite of
