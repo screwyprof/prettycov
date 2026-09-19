@@ -190,7 +190,7 @@ func (b *walker) visible(tree *PathTree, level Depth) int {
 	// so badly on a shallow report that the pool costs more than the per-node slice it replaces.
 	b.pool = slices.Grow(b.pool, size)
 
-	for e := range b.below(tree) {
+	for e := range b.below(tree, true) {
 		// The bar first, so a row nobody draws is never scanned, and asked of the node collapse
 		// merged to, which is the number the reader would have seen.
 		if b.hideAt != nil && b.allCovered(e.node, level) {
@@ -236,7 +236,7 @@ func (b *walker) allCovered(node *PathTree, level Depth) bool {
 	// The rows the report would draw, so a level spent here is one the report spends. Walking node
 	// by node spent the budget early wherever a run collapses, and called a subtree covered above
 	// rows the report does draw.
-	for child := range b.below(node) {
+	for child := range b.below(node, false) {
 		if !b.allCovered(child.node, level+1) {
 			return false
 		}
@@ -252,11 +252,16 @@ func (b *walker) drawsAt(level Depth) bool { return level <= b.depth }
 
 // below yields what the node holds that could be a row: directories with any run beneath them
 // merged in, and files when the output includes them. The one place collapse and the files gate are
-// read. An iterator, since allCovered walks it per node judged and reads only the nodes.
-func (b *walker) below(tree *PathTree) iter.Seq[entry] {
+// read. An iterator, since allCovered walks it per node judged.
+//
+// labels is the consumer's question, the way shape is the output's: allCovered reads only the
+// nodes, and building a label it never reads cost a --hide-covered run one string per collapsed
+// level of every node it judged, which on a well-covered tree is nearly every allocation the
+// report makes.
+func (b *walker) below(tree *PathTree, labels bool) iter.Seq[entry] {
 	return func(yield func(entry) bool) {
 		for name, node := range tree.Children {
-			label, merged := collapse(name, node, b.files)
+			label, merged := collapse(name, node, b.files, labels)
 
 			// The filesystem root has no name: an absolute path splits to a leading empty component.
 			// Named here, not at the row, so visible sorts on what the reader sees. "/" belongs
@@ -371,15 +376,25 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 //
 // Files of its own stop the run, unless mergeFiles and that one file is all the directory holds,
 // where the two rows would carry the same number twice.
-func collapse(label string, node *PathTree, mergeFiles bool) (string, *PathTree) {
+// label is built only when the caller reads one; see below. The node it returns is the same either
+// way, so the two callers cannot disagree about which subtree a row stands for.
+func collapse(label string, node *PathTree, mergeFiles, wantLabel bool) (string, *PathTree) {
 	for name, child := range node.onlyChildren() {
-		label, node = join(label, name), child
+		if wantLabel {
+			label = join(label, name)
+		}
+
+		node = child
 	}
 
 	// A file has nothing below it, so this is where the run ends either way.
 	if mergeFiles && len(node.Files) == 1 && len(node.Children) == 0 {
 		for name, file := range node.Files {
-			return join(label, name), file
+			if wantLabel {
+				label = join(label, name)
+			}
+
+			return label, file
 		}
 	}
 

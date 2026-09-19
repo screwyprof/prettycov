@@ -164,6 +164,50 @@ func BenchmarkDisplayTreeHideCovered(b *testing.B) {
 	benchDisplayTree(b, prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar})
 }
 
+// coveredProfile is the same fixture with all but one file in two hundred fully covered. The
+// profile itself is under-covered, so BenchmarkDisplayTreeHideCovered's allCovered refuses at the
+// first node and measures none of the walk below it — which is the walk the flag is made of.
+//
+// Blocks are cloned rather than rewritten: syntheticProfile's copies share one backing array.
+func coveredProfile(tb testing.TB) []prettycov.FileCoverage {
+	tb.Helper()
+
+	files := syntheticProfile(tb)
+
+	for i, f := range files {
+		// One file in two hundred keeps its misses, so there is still something to draw.
+		if i%200 == 0 {
+			continue
+		}
+
+		blocks := make([]prettycov.Block, len(f.Blocks))
+		for j, block := range f.Blocks {
+			block.Coverage = prettycov.CoverageStats{Covered: block.Coverage.Total()}
+			blocks[j] = block
+		}
+
+		f.Blocks, f.Coverage = blocks, prettycov.CoverageStats{Covered: f.Coverage.Total()}
+		files[i] = f
+	}
+
+	return files
+}
+
+// --hide-covered over a tree it descends rather than refusing at the top row, which is the shape
+// the flag exists for and the one a repository running this gate on itself has.
+func BenchmarkDisplayTreeHideCoveredDense(b *testing.B) {
+	bar := prettycov.MustThreshold(100.0)
+	tree := prettycov.Process(coveredProfile(b))
+	opts := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		// io.Discard never fails, so there is no error here to be interested in.
+		_, _ = prettycov.DisplayTree(io.Discard, tree, opts)
+	}
+}
+
 // Rows without the writer, so the traversal is measured rather than the formatting.
 func BenchmarkRows(b *testing.B) {
 	tree := prettycov.Process(syntheticProfile(b))
