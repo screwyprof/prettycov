@@ -3,6 +3,7 @@ package prettycov
 import (
 	"errors"
 	"regexp"
+	"strings"
 )
 
 // ErrEmptyExclude reports the empty pattern, which matches every file.
@@ -43,8 +44,11 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 	}
 
 	dropped := make([]Exclusion, len(patterns))
+	matchers := make([]matcher, len(patterns))
+
 	for i, re := range patterns {
 		dropped[i].Pattern = re.String()
+		matchers[i] = matcher{re: re, endAnchored: endAnchored(re)}
 	}
 
 	kept := make([]FileCoverage, 0, len(items))
@@ -56,13 +60,13 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 	at := make([]byte, 0, 512)
 
 	for _, item := range items {
-		if chargeFile(dropped, patterns, item) {
-			noteBlocksAlreadyGone(dropped, patterns, item, at)
+		if chargeFile(dropped, matchers, item) {
+			noteBlocksAlreadyGone(dropped, matchers, item, at)
 
 			continue
 		}
 
-		if trimmed, ok := chargeBlocks(dropped, patterns, item, at); ok {
+		if trimmed, ok := chargeBlocks(dropped, matchers, item, at); ok {
 			kept = append(kept, trimmed)
 		}
 	}
@@ -74,11 +78,11 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 // Without it such a pattern reports "matched nothing", which invites deleting it, and the day the
 // path pattern narrows, the block returns to the denominator. Patterns that took the path are
 // skipped, being a prefix of every coordinate in it.
-func noteBlocksAlreadyGone(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage, at []byte) {
+func noteBlocksAlreadyGone(dropped []Exclusion, patterns []matcher, item FileCoverage, at []byte) {
 	// A fact about the file, so asked once. Answered here rather than carried from chargeFile.
 	tookPath := make([]bool, len(patterns))
-	for i, re := range patterns {
-		tookPath[i] = re.MatchString(item.File)
+	for i, m := range patterns {
+		tookPath[i] = m.re.MatchString(item.File)
 	}
 
 	for _, block := range item.Blocks {
@@ -86,27 +90,49 @@ func noteBlocksAlreadyGone(dropped []Exclusion, patterns []*regexp.Regexp, item 
 		// Kept, or a path over the buffer's capacity reallocates for every block rather than once.
 		at = withCol
 
-		for i, re := range patterns {
-			if !tookPath[i] && names(re, withCol, toLine) {
+		for i, m := range patterns {
+			if !tookPath[i] && names(m, withCol, toLine) {
 				dropped[i].OverlappedBlocks++
 			}
 		}
 	}
 }
 
+// A matcher is one --exclude pattern and whether its second spelling can ever answer differently.
+// Built once per run, since Exclude asks every pattern about every block of every file.
+type matcher struct {
+	re          *regexp.Regexp
+	endAnchored bool
+}
+
+// endAnchored reports whether a pattern could match a position without its column but not with it.
+//
+// toLine is a prefix of withCol, and Go's regexp has no lookaround, so any match found inside the
+// prefix is a match inside the whole: asking twice can only add an answer for a pattern that
+// anchors at the end. Read off the source text and deliberately over-approximating — an escaped
+// `\$` or a `$` inside a character class costs one redundant match and nothing else.
+func endAnchored(re *regexp.Regexp) bool {
+	return strings.Contains(re.String(), "$") || strings.Contains(re.String(), `\z`)
+}
+
 // names reports whether the pattern picks out a block at either spelling of its position.
-func names(re *regexp.Regexp, withCol, toLine []byte) bool {
-	return re.Match(withCol) || re.Match(toLine)
+func names(m matcher, withCol, toLine []byte) bool {
+	if m.re.Match(withCol) {
+		return true
+	}
+
+	// Only an end anchor can make the shorter spelling answer differently. See endAnchored.
+	return m.endAnchored && m.re.Match(toLine)
 }
 
 // chargeFile asks every pattern about the path and reports whether the file goes whole. Every
 // pattern is asked, not just up to the first hit, or one that only matches files an earlier pattern
 // took would report as a typo. First match wins for the statements, so the totals still add up.
-func chargeFile(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage) bool {
+func chargeFile(dropped []Exclusion, patterns []matcher, item FileCoverage) bool {
 	charged := -1
 
-	for i, re := range patterns {
-		if !re.MatchString(item.File) {
+	for i, m := range patterns {
+		if !m.re.MatchString(item.File) {
 			continue
 		}
 
@@ -128,7 +154,7 @@ func chargeFile(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverag
 // whether anything is left to draw. A file carrying no blocks is returned untouched, since Blocks is
 // optional. Coverage is recomputed only when something was dropped.
 func chargeBlocks(
-	dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage, at []byte,
+	dropped []Exclusion, patterns []matcher, item FileCoverage, at []byte,
 ) (FileCoverage, bool) {
 	if len(item.Blocks) == 0 {
 		return item, true

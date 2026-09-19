@@ -408,6 +408,11 @@ func TestExcludeAnchorsOnTheLine(t *testing.T) {
 
 	_, withCol := prettycov.Exclude(items, patterns(t, `a\.go:3:2$`))
 	assert.Equal(t, 1, withCol[0].Blocks, "and the column still anchors")
+
+	// The other end anchor Go's regexp spells. Asking the line-only spelling is what an anchored
+	// pattern needs, and the two anchors have to be recognised alike or `\z` silently loosens.
+	_, zed := prettycov.Exclude(items, patterns(t, `a\.go:3\z`))
+	assert.Equal(t, 1, zed[0].Blocks, `\z anchors as $ does`)
 }
 
 // cmd/cover emits blocks declaring no statements, so "every block went" is the wrong test for an
