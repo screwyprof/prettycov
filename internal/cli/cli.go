@@ -88,7 +88,7 @@ type Measured struct {
 // Order matters: `--old=/` with no --new answers both, and naming the root is the more useful
 // sentence.
 func (m *Measured) Validate() error {
-	rename := prettycov.Rename{From: m.Old, To: m.New}
+	rename := m.rename()
 
 	if rename.NamesNoPackage() {
 		return fmt.Errorf("%w: got --old=%q", errRootNamesNoPkg, m.Old)
@@ -181,23 +181,26 @@ type Streams struct {
 	Out, Err io.Writer
 }
 
-// measure is every command's first move: settle the flags, then read the profile through them. The
-// gate comes back too, since the same bar grades what was measured and refuses what was not.
-func (m *Measured) measure(s Streams) (*prettycov.PathTree, gate, error) {
+// rename is what --old and --new ask for. One reading, so the rename Validate judges cannot be a
+// different value from the one request measures.
+func (m *Measured) rename() prettycov.Rename { return prettycov.Rename{From: m.Old, To: m.New} }
+
+// gate is --fail-under, which grades what was measured and refuses what was not. Derived rather
+// than passed around, so it cannot go missing on one path.
+func (m *Measured) gate() gate { return gate{m.FailUnder} }
+
+// measure is every command's first move: settle the flags, then read the profile through them.
+func (m *Measured) measure(s Streams) (*prettycov.PathTree, error) {
 	req, err := m.request()
 	if err != nil {
-		return nil, gate{}, err
+		return nil, err
 	}
 
-	g := gate{m.FailUnder}
-
-	tree, err := treeOf(req, g, s)
-
-	return tree, g, err
+	return treeOf(req, m.gate(), s)
 }
 
-func (c *reportCmd) Run(s *Streams) error {
-	tree, g, err := c.measure(*s)
+func (c *reportCmd) Run(s Streams) error {
+	tree, err := c.measure(s)
 	if err != nil {
 		return err
 	}
@@ -207,43 +210,43 @@ func (c *reportCmd) Run(s *Streams) error {
 
 	shown, err := prettycov.DisplayTree(s.Out, tree, opts)
 	if err != nil {
-		return cannotWrite(err, *s)
+		return cannotWrite(err, s)
 	}
 
 	if shown == 0 {
-		c.sayNothingShown(tree, *s)
+		c.sayNothingShown(tree, s)
 	}
 
-	return g.grade(tree, *s)
+	return c.gate().grade(tree, s)
 }
 
-func (c *missesCmd) Run(s *Streams) error {
-	tree, g, err := c.measure(*s)
+func (c *missesCmd) Run(s Streams) error {
+	tree, err := c.measure(s)
 	if err != nil {
 		return err
 	}
 
 	shown, err := prettycov.DisplayMisses(s.Out, tree, c.options())
 	if err != nil {
-		return cannotWrite(err, *s)
+		return cannotWrite(err, s)
 	}
 
 	// Two messages where the tree has one: a shallow tree carries its subtree's count on every row
 	// and reads as a summary, where a short list reads as a clean bill.
 	switch {
 	case shown == 0:
-		c.sayNothingShown(tree, *s)
+		c.sayNothingShown(tree, s)
 	case shown < tree.Uncovered():
 		_, _ = fmt.Fprintf(s.Err, "%s lists %d of %s\n",
 			c.filters(), shown, plural(tree.Uncovered(), "uncovered statement"))
 	}
 
-	return g.grade(tree, *s)
+	return c.gate().grade(tree, s)
 }
 
 // Run refuses an empty path before reading anything: `total "$PKG"` with PKG unset would otherwise
 // grade the whole tree and pass a gate the package would have failed.
-func (c *totalCmd) Run(s *Streams) error {
+func (c *totalCmd) Run(s Streams) error {
 	want := ""
 	if c.Node != nil {
 		if want = *c.Node; want == "" {
@@ -252,15 +255,15 @@ func (c *totalCmd) Run(s *Streams) error {
 		}
 	}
 
-	tree, g, err := c.measure(*s)
+	tree, err := c.measure(s)
 	if err != nil {
 		return err
 	}
 
-	return total(g, tree, want, *s)
+	return total(c.gate(), tree, want, s)
 }
 
-func (c *versionCmd) Run(s *Streams, vars kong.Vars) error {
+func (c *versionCmd) Run(s Streams, vars kong.Vars) error {
 	_, _ = fmt.Fprintln(s.Out, vars["version"])
 
 	return nil
@@ -269,7 +272,7 @@ func (c *versionCmd) Run(s *Streams, vars kong.Vars) error {
 // request is what the domain measures. Only the patterns are settled here; every other flag is
 // already its parsed type, read at the boundary.
 func (m *Measured) request() (prettycov.Request, error) {
-	req := prettycov.Request{Profile: m.Profile, Rename: prettycov.Rename{From: m.Old, To: m.New}}
+	req := prettycov.Request{Profile: m.Profile, Rename: m.rename()}
 
 	for _, pattern := range m.Exclude {
 		re, err := prettycov.ParseExclude(pattern)

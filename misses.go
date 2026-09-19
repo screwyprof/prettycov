@@ -131,14 +131,19 @@ func DisplayMisses(w io.Writer, tree *PathTree, opts Options) (int, error) {
 
 	listed := 0
 
+	// One buffer for every line: bufio copies it out before the next overwrites it.
+	var line []byte
+
 	for _, m := range Misses(tree, opts) {
 		// One definition of the format serves this and --exclude's matching, so a position pastes
 		// back as a pattern. It matches the block opening there, not the region, and unanchored:
 		// a.go:9:2 also matches a.go:9:24. docs/reference.md covers the round trip.
-		_, _ = buf.WriteString(position(m.File, m.Line, m.Col))
-		_, _ = buf.WriteString(": ")
-		_, _ = buf.WriteString(strconv.Itoa(m.Statements))
-		_, _ = buf.WriteString(" uncovered\n")
+		line = appendPosition(line[:0], m.File, m.Line, m.Col)
+		line = append(line, ": "...)
+		line = strconv.AppendInt(line, int64(m.Statements), 10)
+		line = append(line, " uncovered\n"...)
+
+		_, _ = buf.Write(line)
 
 		listed += m.Statements
 	}

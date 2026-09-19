@@ -49,14 +49,20 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 
 	kept := make([]FileCoverage, 0, len(items))
 
+	// One buffer for every position built below, since each is thrown away as soon as the patterns
+	// have been asked about it. See Block.at. Given a capacity rather than left nil: at[:0] on a nil
+	// slice appends into a fresh array every time, which is the allocation this exists to remove. A
+	// path longer than this still works, at one allocation for that block.
+	at := make([]byte, 0, 512)
+
 	for _, item := range items {
 		if chargeFile(dropped, patterns, item) {
-			noteBlocksAlreadyGone(dropped, patterns, item)
+			noteBlocksAlreadyGone(dropped, patterns, item, at)
 
 			continue
 		}
 
-		if trimmed, ok := chargeBlocks(dropped, patterns, item); ok {
+		if trimmed, ok := chargeBlocks(dropped, patterns, item, at); ok {
 			kept = append(kept, trimmed)
 		}
 	}
@@ -68,7 +74,7 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 // Without it such a pattern reports "matched nothing", which invites deleting it, and the day the
 // path pattern narrows, the block returns to the denominator. Patterns that took the path are
 // skipped, being a prefix of every coordinate in it.
-func noteBlocksAlreadyGone(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage) {
+func noteBlocksAlreadyGone(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage, at []byte) {
 	// A fact about the file, so asked once. Answered here rather than carried from chargeFile.
 	tookPath := make([]bool, len(patterns))
 	for i, re := range patterns {
@@ -76,7 +82,7 @@ func noteBlocksAlreadyGone(dropped []Exclusion, patterns []*regexp.Regexp, item 
 	}
 
 	for _, block := range item.Blocks {
-		withCol, toLine := block.at(item.File)
+		withCol, toLine := block.at(at, item.File)
 
 		for i, re := range patterns {
 			if !tookPath[i] && names(re, withCol, toLine) {
@@ -87,8 +93,8 @@ func noteBlocksAlreadyGone(dropped []Exclusion, patterns []*regexp.Regexp, item 
 }
 
 // names reports whether the pattern picks out a block at either spelling of its position.
-func names(re *regexp.Regexp, withCol, toLine string) bool {
-	return re.MatchString(withCol) || re.MatchString(toLine)
+func names(re *regexp.Regexp, withCol, toLine []byte) bool {
+	return re.Match(withCol) || re.Match(toLine)
 }
 
 // chargeFile asks every pattern about the path and reports whether the file goes whole. Every
@@ -120,19 +126,23 @@ func chargeFile(dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverag
 // whether anything is left to draw. A file carrying no blocks is returned untouched, since Blocks is
 // optional. Coverage is recomputed only when something was dropped.
 func chargeBlocks(
-	dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage,
+	dropped []Exclusion, patterns []*regexp.Regexp, item FileCoverage, at []byte,
 ) (FileCoverage, bool) {
 	if len(item.Blocks) == 0 {
 		return item, true
 	}
 
-	blocks := make([]Block, 0, len(item.Blocks))
+	// Nil until a block is actually taken, since most files match no coordinate pattern and the
+	// copy is then thrown away: one per kept file, against the parser's one for the whole profile.
+	// Staying nil is also how "nothing was charged" is known below.
+	var (
+		blocks []Block
+		left   CoverageStats
+	)
 
-	var left CoverageStats
-
-	for _, block := range item.Blocks {
+	for seen, block := range item.Blocks {
 		charged := -1
-		withCol, toLine := block.at(item.File)
+		withCol, toLine := block.at(at, item.File)
 
 		for i, re := range patterns {
 			if !names(re, withCol, toLine) {
@@ -151,13 +161,25 @@ func chargeBlocks(
 		}
 
 		if charged < 0 {
-			blocks = append(blocks, block)
 			left = left.Plus(block.Coverage)
+
+			if blocks != nil {
+				blocks = append(blocks, block)
+			}
+
+			continue
+		}
+
+		// The first block to go is where the copy starts, holding everything kept so far.
+		if blocks == nil {
+			blocks = make([]Block, seen, len(item.Blocks))
+			copy(blocks, item.Blocks[:seen])
 		}
 	}
 
 	switch {
-	case len(blocks) == len(item.Blocks):
+	// Still nil, so no block was ever charged and the file stands as it came.
+	case blocks == nil:
 		return item, true
 	// Not len(blocks) == 0: a zero-statement block left behind kept an emptied file in the report.
 	case left.Total() == 0:

@@ -335,14 +335,14 @@ func TestExcludeTakesAColonBearingPathAsAFile(t *testing.T) {
 }
 
 // patterns compiles through the same door the flag uses.
-func patterns(t *testing.T, exprs ...string) []*regexp.Regexp {
-	t.Helper()
+func patterns(tb testing.TB, exprs ...string) []*regexp.Regexp {
+	tb.Helper()
 
 	compiled := make([]*regexp.Regexp, 0, len(exprs))
 
 	for _, expr := range exprs {
 		re, err := prettycov.ParseExclude(expr)
-		require.NoError(t, err)
+		require.NoError(tb, err)
 
 		compiled = append(compiled, re)
 	}

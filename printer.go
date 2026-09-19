@@ -81,10 +81,7 @@ type shape struct {
 // were. want is the output's question, not a flag's: a list of positions is made of files either way.
 func prepare(tree *PathTree, opts Options, want shape) iter.Seq[drawn] {
 	return func(yield func(drawn) bool) {
-		b := walker{shape: want, depth: opts.Depth, yield: yield}
-		if opts.HideCovered != nil {
-			b.hiding, b.hideAt = true, *opts.HideCovered
-		}
+		b := walker{shape: want, depth: opts.Depth, yield: yield, hideAt: opts.HideCovered}
 
 		// One leading space, with room to grow two bytes per level. Deep enough for any real path;
 		// append handles a deeper one correctly if it comes.
@@ -103,7 +100,7 @@ func prepare(tree *PathTree, opts Options, want shape) iter.Seq[drawn] {
 // length.
 func DisplayTree(w io.Writer, tree *PathTree, opts Options) (int, error) {
 	buf := bufio.NewWriter(w)
-	drawn := 0
+	rows := 0
 
 	for d := range prepare(tree, opts, shape{files: opts.Files}) {
 		_, _ = buf.WriteString(d.Prefix)
@@ -112,11 +109,11 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) (int, error) {
 		_, _ = buf.WriteString(formatCoverage(d.Coverage, opts))
 		_ = buf.WriteByte('\n')
 
-		drawn++
+		rows++
 	}
 
 	//nolint:wrapcheck // the writer's own error; this adds no context the caller lacks.
-	return drawn, buf.Flush()
+	return rows, buf.Flush()
 }
 
 // drawn is one row the traversal decided on, and everything a renderer needs to shape it.
@@ -148,10 +145,8 @@ type walker struct {
 	yield func(drawn) bool
 
 	depth Depth
-	// hiding says --hide-covered was given; hideAt is the threshold, read once rather than through
-	// the pointer at every node.
-	hiding bool
-	hideAt Threshold
+	// hideAt is --hide-covered's bar, or nil when it was not given.
+	hideAt *Threshold
 }
 
 // entry is one row to draw: the node, and the label it carries once any run below it is merged in.
@@ -177,7 +172,7 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 	for e := range b.below(tree) {
 		// The bar first, so a row nobody draws is never scanned, and asked of the node collapse
 		// merged to, which is the number the reader would have seen.
-		if b.hiding && b.allCovered(e.node, level) {
+		if b.hideAt != nil && b.allCovered(e.node, level) {
 			continue
 		}
 
@@ -208,7 +203,7 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 // O(n·depth), since an ancestor re-walks what its child did. Measured worth it: 3.7ms of re-walk
 // against 7ms of rendering saved at 99% coverage.
 func (b *walker) allCovered(node *PathTree, level Depth) bool {
-	if !node.AtLeast(b.hideAt) {
+	if !node.AtLeast(*b.hideAt) {
 		return false
 	}
 
@@ -278,17 +273,17 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 	}
 
 	entries := b.visible(tree, level)
-	root := level == 0
 
 	for at, e := range entries {
-		// The glyph placing this row, and the column carried under it. The top row has neither.
-		glyph, carry := "\u251c ", "\u2502 " // ├ │
-		if at+1 == len(entries) {
-			glyph, carry = "\u2514 ", "  " // └, then the columns a glyph would have taken
-		}
+		// The glyph placing this row, and the column carried under it.
+		var glyph, carry string
 
-		if root {
-			glyph, carry = "", ""
+		switch {
+		case level == 0: // the top row carries neither
+		case at+1 == len(entries):
+			glyph, carry = "\u2514 ", "  " // └, then the columns a glyph would have taken
+		default:
+			glyph, carry = "\u251c ", "\u2502 " // ├ │
 		}
 
 		// Each is read by one renderer only, so the one nobody asked for is not built.

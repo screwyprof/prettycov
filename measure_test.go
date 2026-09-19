@@ -1,7 +1,6 @@
 package prettycov_test
 
 import (
-	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,21 +13,6 @@ import (
 // root and still leave a measurement standing. With one root, every case below would end in
 // ExcludedAway and prove nothing about the root.
 const twoRoots = "mode: set\nm/a.go:1.1,2.2 5 1\nother/b.go:1.1,2.2 5 0\n"
-
-func excluding(tb testing.TB, patterns ...string) []*regexp.Regexp {
-	tb.Helper()
-
-	compiled := make([]*regexp.Regexp, 0, len(patterns))
-
-	for _, p := range patterns {
-		re, err := prettycov.ParseExclude(p)
-		require.NoError(tb, err)
-
-		compiled = append(compiled, re)
-	}
-
-	return compiled
-}
 
 // Measure states facts. Every case here reads a field rather than a sentence, which is the whole
 // reason it is separable from the command line that phrases them.
@@ -68,7 +52,7 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 		"patterns that take everything": {
 			profile: twoRoots,
 			req: func(p string) prettycov.Request {
-				return prettycov.Request{Profile: p, Exclude: excluding(t, `\.go$`)}
+				return prettycov.Request{Profile: p, Exclude: patterns(t, `\.go$`)}
 			},
 			want: func(t *testing.T, m prettycov.Measurement) {
 				t.Helper()
@@ -114,7 +98,7 @@ func TestMeasureReportsWhatTheProfileAndTheFlagsLeft(t *testing.T) {
 				return prettycov.Request{
 					Profile: p,
 					Rename:  prettycov.Rename{From: "m", To: "x"},
-					Exclude: excluding(t, `^m/`),
+					Exclude: patterns(t, `^m/`),
 				}
 			},
 			want: func(t *testing.T, m prettycov.Measurement) {
