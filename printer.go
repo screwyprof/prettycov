@@ -59,11 +59,13 @@ func Rows(tree *PathTree, opts Options) []Row {
 	var rows []Row
 
 	for d := range prepare(tree, opts, shape{files: opts.Files}) {
-		row := d.Row
-		// Copied here, where a Row outlives the yield. DisplayTree writes the bytes instead.
-		row.Prefix = string(d.Raw)
-
-		rows = append(rows, row)
+		rows = append(rows, Row{
+			// Copied here, where a Row outlives the yield. DisplayTree writes the bytes instead.
+			Prefix:   string(d.Raw),
+			Label:    d.Label,
+			Level:    int(d.Level),
+			Coverage: d.Coverage,
+		})
 	}
 
 	return rows
@@ -133,11 +135,15 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) (int, error) {
 // below it, so re-deriving the subtree stage 4 has already decided against would be one field
 // access away and nothing would catch it, which is how the two came to disagree twice.
 type drawn struct {
-	Row
+	Label    string
+	Level    Depth
+	Coverage CoverageStats
 
-	// Raw is Row.Prefix as bytes, which is where the traversal leaves it: Row.Prefix is empty in a
-	// drawn. It aliases the padding buffer walk reuses, so it is good for the duration of the yield
-	// and no longer — copy it, as Rows does, to keep it.
+	// Raw is the indent and glyph placing the row. It aliases the padding buffer walk reuses, so it
+	// is good for the duration of the yield and no longer — copy it, as Rows does, to keep it.
+	//
+	// Not a Row: embedding one put an always-empty Prefix beside this, where a renderer reading the
+	// obvious field would compile, vet clean, and draw every row flush left.
 	Raw []byte
 	// Blocks is empty unless the row stands for a file.
 	Blocks []Block
@@ -336,14 +342,12 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		}
 
 		if !b.yield(drawn{
-			Row: Row{
-				Coverage: e.node.Coverage,
-				Label:    e.label,
-				Level:    int(level),
-			},
-			Raw:    raw,
-			Blocks: e.node.Blocks,
-			Path:   here,
+			Label:    e.label,
+			Level:    level,
+			Coverage: e.node.Coverage,
+			Raw:      raw,
+			Blocks:   e.node.Blocks,
+			Path:     here,
 		}) {
 			return false
 		}

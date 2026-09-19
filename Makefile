@@ -361,11 +361,16 @@ bench-cmp: ## compare allocations against $(BENCH_BASE) and fail on a regression
 			|| { echo "cannot check out $(BENCH_BASE); pass BENCH_BASE=<ref>"; exit 1; }; \
 		(cd "$$tmp/base" && $(BENCH_RUN) $(BENCH_FLAGS) .) > "$$tmp/base.txt"; \
 		$(BENCH_RUN) $(BENCH_FLAGS) . > "$$tmp/new.txt"; \
+		names() { grep -oE '^Benchmark[A-Za-z0-9_/]+' "$$1" | sort -u; }; \
+		gone=$$(comm -23 <(names "$$tmp/base.txt") <(names "$$tmp/new.txt")); \
+		[ -z "$$gone" ] || { printf 'gone from the benchmark set since $(BENCH_BASE):\n%s\n' "$$gone" >&2; \
+			echo "benchstat compares only what is in both, so these would regress unwatched" >&2; exit 1; }; \
 		$(BENCHSTAT) -filter '.unit:allocs/op' "$$tmp/base.txt" "$$tmp/new.txt" \
 			| awk '/^[¹²]/ { print > "/dev/stderr"; next } { print } \
 				 /^geomean/ { next } \
-				 /\+[0-9.]+%/ { print "  " $$0 > "/dev/stderr"; bad = 1 } \
-				 END { if (bad) { print "allocations regressed against $(BENCH_BASE)" > "/dev/stderr"; exit 1 } }'
+				 /\+[0-9.]+%/ { bad = bad "  " $$1 "\n" } \
+				 END { if (bad) { printf "%s", bad > "/dev/stderr"; \
+					 print "allocations regressed against $(BENCH_BASE)" > "/dev/stderr"; exit 1 } }'
 
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
