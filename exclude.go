@@ -91,7 +91,7 @@ func newLedger(patterns []*regexp.Regexp) *ledger {
 	return ex
 }
 
-// at spells one block's position, in both the spellings a pattern can name it by. Into the
+// spell writes one block's position in both the spellings a pattern can name it by. Into the
 // ledger's own buffer, which is why it is a method: the grown array has to outlive the call.
 func (ex *ledger) spell(block Block, file string) (withCol, toLine []byte) {
 	withCol, toLine = block.at(ex.at, file)

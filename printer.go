@@ -199,7 +199,7 @@ func (b *walker) visible(tree *PathTree, level Depth) int {
 	for e := range b.below(tree, true) {
 		// The bar first, so a row nobody draws is never scanned, and asked of the node collapse
 		// merged to, which is the number the reader would have seen.
-		if b.hideAt != nil && b.allCovered(e.node, level) {
+		if b.hideAt != nil && b.allCovered(e.node, level, *b.hideAt) {
 			continue
 		}
 
@@ -229,8 +229,10 @@ func (b *walker) visible(tree *PathTree, level Depth) int {
 //
 // O(n·depth), since an ancestor re-walks what its child did. Measured worth it: 3.7ms of re-walk
 // against 7ms of rendering saved at 99% coverage.
-func (b *walker) allCovered(node *PathTree, level Depth) bool {
-	if !node.AtLeast(*b.hideAt) {
+// The bar is a value rather than read off b.hideAt, which is nil when --hide-covered was not
+// given: the caller has already asked, and passing it means a second one cannot forget to.
+func (b *walker) allCovered(node *PathTree, level Depth, bar Threshold) bool {
+	if !node.AtLeast(bar) {
 		return false
 	}
 
@@ -243,7 +245,7 @@ func (b *walker) allCovered(node *PathTree, level Depth) bool {
 	// by node spent the budget early wherever a run collapses, and called a subtree covered above
 	// rows the report does draw.
 	for child := range b.below(node, false) {
-		if !b.allCovered(child.node, level+1) {
+		if !b.allCovered(child.node, level+1, bar) {
 			return false
 		}
 	}
@@ -385,10 +387,11 @@ func glyphs(root, last bool) (glyph, carry string) {
 // collapse merges a run of nodes that each hold nothing but the next into one row, so a module path
 // does not spend three levels on "github.com", "owner", "repo".
 //
-// Files of its own stop the run, unless mergeFiles and that one file is all the directory holds,
-// where the two rows would carry the same number twice.
-// label is built only when the caller reads one; see below. The node it returns is the same either
-// way, so the two callers cannot disagree about which subtree a row stands for.
+// Files of its own stop the run, unless the report draws files and that one file is all the
+// directory holds, where the two rows would carry the same number twice.
+//
+// label is built only when the caller asks for one; see below. The node it returns is the same
+// either way, so the two callers cannot disagree about which subtree a row stands for.
 func (b *walker) collapse(label string, node *PathTree, wantLabel bool) (string, *PathTree) {
 	if !wantLabel {
 		label = ""
