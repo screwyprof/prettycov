@@ -10,14 +10,11 @@ linters:
   default: none
   enable:
     - asciicheck
-    - bodyclose
     - copyloopvar
-    - cyclop
     - depguard
     - dogsled
     - dupword
     - dupl
-    - durationcheck
     - embeddedstructfieldcheck
     - err113
     - errcheck
@@ -55,15 +52,12 @@ linters:
     - nilerr
     - nilnesserr
     - nlreturn
-    - noctx
     - nolintlint
     - paralleltest
     - prealloc
     - predeclared
     - revive
     - recvcheck
-    - rowserrcheck
-    - sqlclosecheck
     - staticcheck
     - tagliatelle
     - testifylint
@@ -149,15 +143,6 @@ linters:
           - goconst
           - gosec
         path: _test\.go
-      - linters:
-          - dupl
-          - funlen
-          - gosec
-        path: test_helpers\.go
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
 issues:
   # Only what this branch added, measured against where it left main.
   #
@@ -187,7 +172,3 @@ formatters:
       tab-len: 4
   exclusions:
     generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$

@@ -281,6 +281,16 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 	root := level == 0
 
 	for at, e := range entries {
+		// The glyph placing this row, and the column carried under it. The top row has neither.
+		glyph, carry := "\u251c ", "\u2502 " // ├ │
+		if at+1 == len(entries) {
+			glyph, carry = "\u2514 ", "  " // └, then the columns a glyph would have taken
+		}
+
+		if root {
+			glyph, carry = "", ""
+		}
+
 		// Each is read by one renderer only, so the one nobody asked for is not built.
 		var here, prefix string
 
@@ -294,7 +304,7 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		} else {
 			// Copied, so the row owns its prefix and padding stays reusable. The indent depends on
 			// whether every ancestor was a last child, which the level alone cannot say.
-			prefix = string(append(padding, symbol(root, getBoxType(at, len(entries)))...))
+			prefix = string(append(padding, glyph...))
 		}
 
 		if !b.yield(drawn{
@@ -312,7 +322,7 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 
 		// One buffer shared by siblings: depth-first, so the child is done before the next overwrites.
 		depth := len(padding)
-		padding = append(padding, symbol(root, childSymbol(at, len(entries)))...)
+		padding = append(padding, carry...)
 		carryOn := b.walk(e.node, level+1, here, padding)
 		padding = padding[:depth]
 
@@ -415,53 +425,4 @@ func formatCoverage(stats CoverageStats, opts Options) string {
 	}
 
 	return text
-}
-
-type boxType int
-
-const (
-	regular boxType = iota
-	last
-	afterLast
-	between
-)
-
-func getBoxType(index int, length int) boxType {
-	if index+1 == length {
-		return last
-	}
-
-	return regular
-}
-
-func childSymbol(index int, length int) boxType {
-	if index+1 == length {
-		return afterLast
-	}
-
-	return between
-}
-
-// symbol is the glyph placing a row, with its trailing space. Constants, since concatenating one
-// allocated twice per row. An unrecognised box type draws blank rather than panicking.
-func symbol(root bool, b boxType) string {
-	if root {
-		return ""
-	}
-
-	// The two columns a glyph would have taken.
-	const blank = "  "
-
-	switch b {
-	case regular:
-		return "\u251c " // ├
-	case last:
-		return "\u2514 " // └
-	case afterLast:
-		return blank
-	case between:
-		return "\u2502 " // │
-	}
-
-	return blank
 }
