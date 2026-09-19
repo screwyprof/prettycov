@@ -213,26 +213,18 @@ func (n *PathTree) onlyChildren() iter.Seq2[string, *PathTree] {
 // grading the whole tree and passing where that package failed.
 func (n *PathTree) underRoot(key string) *PathTree {
 	// No empty-key guard: Get is the only caller and refuses one.
-	//
-	// An array, not a slice: this is the miss path, and Get allocates nothing on it. onlyChildren
-	// yields at most maxRunDepth, which is the length.
-	var run [maxRunDepth]*PathTree
-
-	depth := 0
+	var found *PathTree
 
 	for _, child := range n.onlyChildren() {
-		run[depth] = child
-		depth++
-	}
-
-	for i := depth - 1; i >= 0; i-- {
 		// walk, not Get, which is what calls this: probing through Get would recurse without bound.
-		if node := run[i].walk(key); node != nil {
-			return node
+		// Every node is tried and the last hit kept, which is the deepest, so a shorter prefix of
+		// the run cannot answer instead. Allocates nothing, which Get promises on the miss path.
+		if node := child.walk(key); node != nil {
+			found = node
 		}
 	}
 
-	return nil
+	return found
 }
 
 // walk resolves key against this node: directories all the way but the last segment, where a file

@@ -68,3 +68,28 @@ func TestOnlyChildrenStopsWhenTheConsumerDoes(t *testing.T) {
 
 	assert.Equal(t, []string{"a"}, got)
 }
+
+// obeyed answers ASCII without the range tables, so the edges of that shortcut need holding: the
+// last C0 byte against the space beside it, DEL against the printable before it, and the first
+// rune above ASCII, which is a C1 control the shortcut would call harmless if it claimed one byte
+// too many.
+func TestObeyedDecidesTheAsciiEdges(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		r    rune
+		want bool
+	}{
+		"the last C0 byte":     {r: 0x1f, want: true},
+		"the space beside it":  {r: 0x20, want: false},
+		"the last printable":   {r: 0x7e, want: false},
+		"DEL, which is not C0": {r: 0x7f, want: true},
+		"the first C1 control": {r: 0x80, want: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, obeyed(tc.r))
+		})
+	}
+}

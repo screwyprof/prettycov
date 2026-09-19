@@ -102,11 +102,12 @@ func Measure(req Request) (Measurement, error) {
 	}
 
 	kept, excluded := Exclude(items, req.Exclude)
-	shortened, _ := Shorten(kept, req.Rename.From, req.Rename.To)
 
 	if rootMissed(req.Rename, items) {
 		return Measurement{Exclusions: excluded, why: RootMissed}, nil
 	}
+
+	shortened, _ := Shorten(kept, req.Rename.From, req.Rename.To)
 
 	tree := Process(shortened)
 	if _, ok := tree.Percentage(); !ok {

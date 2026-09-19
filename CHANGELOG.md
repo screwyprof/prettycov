@@ -12,6 +12,18 @@ tags.
 
 ## [Unreleased]
 
+### Breaking
+
+- `Rename.Half` is gone from the Go API. It reported one of `--old`/`--new` given without the
+  other, which is a rule about the command line and not about renaming: `Measure` accepted a half
+  rename and quietly renamed nothing. The CLI still refuses one, with the same message.
+
+### Changed
+
+- `Exclude`, `Rows`, `Misses` and the report allocate far less on a large profile. On a
+  2,000-file one, `Exclude` went from 38,699 allocations to 3, and drawing every file with
+  `--depth=max --files` from 7,901 to 1,068. Output is unchanged, byte for byte.
+
 ### Documentation
 
 - `misses` never piped into `vim -q -`. `-q` takes a filename and `-` is not special to it, so the

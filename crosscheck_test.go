@@ -61,12 +61,7 @@ func assertRowsMatchTheProfile(
 
 	rows := prettycov.Rows(tree, opts)
 
-	// Blank lines separate the top rows of a forest and stand for no row, so they come out before
-	// the count is asserted and before lines[i] is read beside rows[i].
-	lines := slices.DeleteFunc(
-		strings.Split(strings.TrimSuffix(renderOpts(t, tree, opts), "\n"), "\n"),
-		func(line string) bool { return line == "" },
-	)
+	lines := strings.Split(strings.TrimSuffix(renderOpts(t, tree, opts), "\n"), "\n")
 	require.Lenf(t, lines, len(rows), "one line per row, depth=%v files=%v", opts.Depth, opts.Files)
 
 	for i, r := range rowInfos(rows) {

@@ -11,7 +11,7 @@ make check
 ```
 
 Every tool the build reaches for is a Go program fetched at its pinned version by `go run`:
-golangci-lint, vale, govulncheck, gobco, gremlins. Never from your PATH, whatever is on it, because
+golangci-lint, vale, govulncheck, gobco, gremlins, benchstat. Never from your PATH, whatever is on it, because
 a pin that defers to whatever happens to be installed is a pin that lies. The first `make check`
 compiles them, so it is slow once and fast after.
 
@@ -51,11 +51,8 @@ to paste into a pull request:
 
 All of them are expected to pass before a pull request. `make help` lists the rest.
 
-`make bench-cmp` rebuilds the base in a worktree and compares with benchstat. It reads `allocs/op`
-and nothing else: that number is identical on every run and every machine, so a rise in it is
-always real, where `ns/op` on a shared runner moves 10% between runs of the same code. Run
-`make bench` for the timings. Compare against something other than `origin/main` with
-`make bench-cmp BENCH_BASE=<ref>`.
+`make bench-cmp` rebuilds the base in a worktree, so it needs no stored history and compares two
+runs made on one machine minutes apart. Point it elsewhere with `make bench-cmp BENCH_BASE=<ref>`.
 
 ## What a change looks like
 
@@ -77,8 +74,9 @@ A decision, a measurement, or the bug that forced the shape. Not what the next l
 
 ### Performance claims come with numbers
 
-`go test -bench=. -count=10` through `benchstat`, pasted into the commit body. A result with `~` is
-not a result.
+`make bench` for the timings, `make bench-cmp` for the allocations against `origin/main`, pasted
+into the commit body. A result with `~` is not a result. Do not retype either: paste what the
+target printed.
 
 ## Using an AI assistant
 

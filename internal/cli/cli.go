@@ -102,7 +102,7 @@ func (m *Measured) Validate() error {
 }
 
 // given names the half that was supplied, which is the flag to pair rather than the one to fix.
-// Exactly one is non-empty: Half is what got us here.
+// Exactly one is non-empty: Validate's own check is what got us here.
 func given(oldRoot, newRoot string) string {
 	if oldRoot != "" {
 		return fmt.Sprintf("--old=%q", oldRoot)

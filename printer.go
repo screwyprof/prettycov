@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Options controls how a tree is rendered. The zero value prints the top row alone, in plain text.
@@ -109,19 +110,7 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) (int, error) {
 	// One buffer for every line: bufio copies it out before the next overwrites it.
 	var line []byte
 
-	lastLevel := 0
-
 	for d := range prepare(tree, opts, shape{files: opts.Files}) {
-		// A top row that follows an indented one closes a tree and opens another: depth-first order
-		// puts the previous tree's deepest row directly above it. Not between two bare top rows,
-		// which are one module's own directories under a root `--new=.` collapsed away, and not on
-		// the first row.
-		if d.Level == 0 && lastLevel > 0 {
-			_ = buf.WriteByte('\n')
-		}
-
-		lastLevel = d.Level
-
 		line = append(line[:0], d.Raw...)
 		line = append(line, d.Label...)
 		line = append(line, " - "...)
@@ -307,10 +296,6 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 	start := b.visible(tree, level)
 	count := len(b.pool) - start
 
-	// Popped on every path out, so a sibling reuses this space instead of the pool growing by the
-	// whole tree.
-	defer func() { b.pool = b.pool[:start] }()
-
 	for at := range count {
 		// Read afresh each turn, never held across the recursion: a child's visible can grow the
 		// pool and move the array out from under a saved slice.
@@ -374,6 +359,10 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		}
 	}
 
+	// Popped so a sibling reuses this space instead of the pool growing by the whole tree. Only
+	// here: the two aborts above unwind every ancestor and the walker goes with them.
+	b.pool = b.pool[:start]
+
 	return true
 }
 
@@ -433,6 +422,13 @@ func sanitize(label string) string {
 // Everything else stays, so a path may be non-ASCII: Cf also holds the joiners U+200C and U+200D,
 // which spell ordinary words in Persian and Devanagari.
 func obeyed(r rune) bool {
+	// ASCII decides here rather than searching a range table per rune: every rune in the set below
+	// is non-ASCII except C0 and DEL, which is exactly what IsControl answers under RuneSelf.
+	// sanitize runs this per rune of every label, and it was 17.5% of the misses path.
+	if r < utf8.RuneSelf {
+		return r < 0x20 || r == 0x7f
+	}
+
 	return unicode.IsControl(r) ||
 		unicode.Is(unicode.Bidi_Control, r) ||
 		r == '\u2028' || r == '\u2029' || r == '\ufeff'

@@ -51,8 +51,8 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 
 	// One buffer for every position built below, since each is thrown away as soon as the patterns
 	// have been asked about it. See Block.at. Given a capacity rather than left nil: at[:0] on a nil
-	// slice appends into a fresh array every time, which is the allocation this exists to remove. A
-	// path longer than this still works, at one allocation for that block.
+	// slice appends into a fresh array every time, which is the allocation this exists to remove.
+	// A path longer than this reallocates once per file, since the helpers keep what they grew.
 	at := make([]byte, 0, 512)
 
 	for _, item := range items {
@@ -83,6 +83,8 @@ func noteBlocksAlreadyGone(dropped []Exclusion, patterns []*regexp.Regexp, item 
 
 	for _, block := range item.Blocks {
 		withCol, toLine := block.at(at, item.File)
+		// Kept, or a path over the buffer's capacity reallocates for every block rather than once.
+		at = withCol
 
 		for i, re := range patterns {
 			if !tookPath[i] && names(re, withCol, toLine) {
@@ -143,6 +145,8 @@ func chargeBlocks(
 	for seen, block := range item.Blocks {
 		charged := -1
 		withCol, toLine := block.at(at, item.File)
+		// Kept, for the reason noteBlocksAlreadyGone keeps it.
+		at = withCol
 
 		for i, re := range patterns {
 			if !names(re, withCol, toLine) {

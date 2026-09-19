@@ -328,14 +328,19 @@ BENCHSTAT := go run golang.org/x/perf/cmd/benchstat@$(BENCHSTAT_VERSION)
 # a CI checkout has no local branch of that name, only remote-tracking refs.
 BENCH_BASE ?= origin/main
 
-# -benchtime=20x rather than a duration: allocs/op is an exact count, the same at 20 iterations as
-# at a second of them, so time spent on timing precision buys this gate nothing. -count=6 is
-# benchstat's floor for a confidence interval.
-BENCH_FLAGS := -bench=. -benchmem -run='^$$' -benchtime=20x -count=6
+BENCH_RUN := go test -bench=. -benchmem -run='^$$'
 
-bench: ## run the benchmarks
+# -benchtime=20x rather than a duration: allocs/op is an exact count, the same at 20 iterations as
+# at a second of them, so time spent on timing precision buys the gate nothing. -count=6 is
+# benchstat's floor for a confidence interval.
+BENCH_FLAGS := -benchtime=20x -count=6
+
+# A duration here, not the gate's iteration count: these numbers are read for their timings, and
+# 20 iterations put BenchmarkGet/miss anywhere in 470-648ns against the 218ns a real measurement
+# gives. The gate never reads ns/op, so only this target pays for the precision.
+bench: ## run the benchmarks, with timings worth reading
 	@echo -e "$(OK_COLOR)==> Benchmarking$(NO_COLOR)"
-	@go test $(BENCH_FLAGS) .
+	@$(BENCH_RUN) -count=10 .
 
 # allocs/op only, and deliberately. ns/op on a shared CI runner swings 10-30% between runs of
 # identical code, so gating on it blocks merges by coin flip and trains everyone to re-run until
@@ -347,16 +352,16 @@ bench: ## run the benchmarks
 # checkout would swap the tree under everything else it is running.
 bench-cmp: ## compare allocations against $(BENCH_BASE) and fail on a regression
 	@echo -e "$(OK_COLOR)==> Allocations vs $(BENCH_BASE)$(NO_COLOR)"
-	@tmp=$$(mktemp -d); trap 'git worktree remove --force "$$tmp/base" >/dev/null 2>&1; rm -rf "$$tmp"' EXIT; \
+	@tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"; git worktree prune' EXIT; \
 		git worktree add --detach "$$tmp/base" $(BENCH_BASE) >/dev/null 2>&1 \
 			|| { echo "cannot check out $(BENCH_BASE); pass BENCH_BASE=<ref>"; exit 1; }; \
-		(cd "$$tmp/base" && go test $(BENCH_FLAGS) .) > "$$tmp/base.txt"; \
-		go test $(BENCH_FLAGS) . > "$$tmp/new.txt"; \
+		(cd "$$tmp/base" && $(BENCH_RUN) $(BENCH_FLAGS) .) > "$$tmp/base.txt"; \
+		$(BENCH_RUN) $(BENCH_FLAGS) . > "$$tmp/new.txt"; \
 		$(BENCHSTAT) -filter '.unit:allocs/op' "$$tmp/base.txt" "$$tmp/new.txt" \
-			| grep -v '^[¹²]' | tee "$$tmp/cmp.txt"; \
-		awk '/^geomean/ { next } \
-			 /\+[0-9.]+%/ { print "  " $$0 > "/dev/stderr"; bad = 1 } \
-			 END { if (bad) { print "allocations regressed against $(BENCH_BASE)" > "/dev/stderr"; exit 1 } }' "$$tmp/cmp.txt"
+			| awk '/^[¹²]/ { next } { print } \
+				 /^geomean/ { next } \
+				 /\+[0-9.]+%/ { print "  " $$0 > "/dev/stderr"; bad = 1 } \
+				 END { if (bad) { print "allocations regressed against $(BENCH_BASE)" > "/dev/stderr"; exit 1 } }'
 
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
