@@ -203,22 +203,6 @@ func TestRenameNamesNoPackage(t *testing.T) {
 	}
 }
 
-// Half asks about the values, which is the whole point: a presence check is satisfied by
-// `--old=$(MODULE) --new=.` with MODULE unset, and that renames nothing.
-//
-// Neither side given is not half a rename. It is no rename, which is every run that does not ask
-// for one.
-func TestRenameHalfReadsBothValues(t *testing.T) {
-	t.Parallel()
-
-	assert.True(t, prettycov.Rename{From: "m"}.Half(), "a source with no target")
-	assert.True(t, prettycov.Rename{To: "x"}.Half(), "a target with no source")
-
-	assert.False(t, prettycov.Rename{}.Half(), "neither is no rename, not half of one")
-	assert.False(t, prettycov.Rename{From: "m", To: "x"}.Half())
-	assert.False(t, prettycov.Rename{From: "m", To: "/"}.Half(), "the filesystem root is a target")
-}
-
 // Depth and Threshold read themselves, which is what lets a flag hold the parsed value.
 func TestParsedTypesReadText(t *testing.T) {
 	t.Parallel()

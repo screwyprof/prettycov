@@ -88,13 +88,13 @@ type Measured struct {
 // Order matters: `--old=/` with no --new answers both, and naming the root is the more useful
 // sentence.
 func (m *Measured) Validate() error {
-	rename := m.rename()
-
-	if rename.NamesNoPackage() {
+	if m.rename().NamesNoPackage() {
 		return fmt.Errorf("%w: got --old=%q", errRootNamesNoPkg, m.Old)
 	}
 
-	if rename.Half() {
+	// The values, not the presence: `--old=$(MODULE) --new=.` with MODULE unset supplies both
+	// flags and still renames nothing.
+	if (m.Old == "") != (m.New == "") {
 		return fmt.Errorf("%w: got %s", errHalfARename, given(m.Old, m.New))
 	}
 
