@@ -34,7 +34,7 @@ type PathTree struct {
 // Only the file carries the statements. Putting them on the directory as well, which is what
 // totalling per directory before building the tree amounts to, makes rollUp count every statement
 // twice, once on the directory and once beneath it.
-func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *arena) {
+func (n *PathTree) add(f FileCoverage, nodes *arena) {
 	// Split with path.Dir rather than by counting components, so a file with no directory at all
 	// still lands somewhere: path.Dir gives it ".", which is the row it renders as. Reading the
 	// directory off the second-to-last component instead left such a file hanging under the tree
@@ -47,15 +47,15 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// child of the same nameless kind, and both drew as a blank label. Every other directory
 	// path.Dir returns has no trailing slash, so this touches nothing else.
 	dir := n
-	for part := range strings.SplitSeq(strings.TrimSuffix(path.Dir(file), "/"), "/") {
+	for part := range strings.SplitSeq(strings.TrimSuffix(path.Dir(f.File), "/"), "/") {
 		dir = nodes.child(&dir.Children, part)
 	}
 
-	leaf := nodes.child(&dir.Files, path.Base(file))
+	leaf := nodes.child(&dir.Files, path.Base(f.File))
 	// Accumulated, not assigned, so a file named twice adds up rather than keeping the last one.
 	// ParseProfile cannot deliver that, since x/tools keys profiles by filename and merges their
 	// blocks, so this is for a caller handing Process a slice of its own.
-	leaf.Coverage = leaf.Coverage.Plus(stats)
+	leaf.Coverage = leaf.Coverage.Plus(f.Coverage)
 	// Kept because Misses reads positions the counts cannot say. Shared with the caller's slice
 	// rather than copied: the parser hands out one capped window per file, so appending to a leaf
 	// can never reach into the next file's blocks, and nothing here reorders or trims them. merge
@@ -65,7 +65,7 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// The append is for the same file named twice, which ParseProfile cannot deliver but a caller
 	// assembling its own can; cap == len makes that one copy rather than write into the window.
 	if leaf.Blocks == nil {
-		leaf.Blocks = blocks
+		leaf.Blocks = f.Blocks
 
 		return
 	}
@@ -74,7 +74,7 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// shares its array with. The parser's windows are already capped and this is a no-op for them;
 	// a caller slabbing its own blocks and naming one file twice would otherwise have the second
 	// add overwrite the blocks of the file after it.
-	leaf.Blocks = append(slices.Clip(leaf.Blocks), blocks...)
+	leaf.Blocks = append(slices.Clip(leaf.Blocks), f.Blocks...)
 }
 
 // child returns the node called name in the given map, creating both if this is the first time it

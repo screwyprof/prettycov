@@ -89,7 +89,7 @@ func ExampleShorten() {
 		panic(err)
 	}
 
-	shortened, renamed := prettycov.Shorten(files, "example.com/m", "m")
+	shortened, renamed := prettycov.Shorten(files, prettycov.Rename{From: "example.com/m", To: "m"})
 
 	// Three, not four: ParseProfile keys a profile by filename, so logger.go's two blocks are one
 	// FileCoverage by the time Shorten sees them.

@@ -147,7 +147,7 @@ func appendPosition(dst []byte, file string, line, col int) []byte {
 func Process(files []FileCoverage) *PathTree {
 	tree, nodes := &PathTree{}, &arena{}
 	for _, f := range files {
-		tree.add(f.File, f.Coverage, f.Blocks, nodes)
+		tree.add(f, nodes)
 	}
 
 	rollUp(tree)
@@ -170,8 +170,9 @@ func rollUp(node *PathTree) CoverageStats {
 	return node.Coverage
 }
 
-// Shorten rewrites the leading oldRoot of each path to newRoot and reports how many it renamed. The
-// files argument is never modified; with no rename asked for, the same slice comes back uncopied.
+// Shorten rewrites the leading Rename.From of each path to Rename.To and reports how many it
+// renamed. The files argument is never modified; with no rename asked for, the same slice comes
+// back uncopied.
 //
 // The count is why this is its own step: a root naming no package rewrites nothing, which otherwise
 // looks exactly like asking for no rename.
@@ -180,8 +181,8 @@ func rollUp(node *PathTree) CoverageStats {
 // "github.com/rapid/api" for --old=api, and a bare prefix rewrote "github.com/foobar" to "xbar".
 // All trailing separators are trimmed, not one: `--old=$(MODULE)/` can spell "example.com/m//".
 // Only trailing: a leading one is part of an absolute root.
-func Shorten(files []FileCoverage, oldRoot, newRoot string) ([]FileCoverage, int) {
-	oldRoot = strings.TrimRight(oldRoot, "/")
+func Shorten(files []FileCoverage, rename Rename) ([]FileCoverage, int) {
+	oldRoot, newRoot := strings.TrimRight(rename.From, "/"), rename.To
 	if oldRoot == "" || newRoot == "" {
 		return files, 0
 	}

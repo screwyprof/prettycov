@@ -43,56 +43,81 @@ func Exclude(items []FileCoverage, patterns []*regexp.Regexp) ([]FileCoverage, [
 		return items, nil
 	}
 
-	dropped := make([]Exclusion, len(patterns))
-	matchers := make([]matcher, len(patterns))
-
-	for i, re := range patterns {
-		dropped[i].Pattern = re.String()
-		matchers[i] = matcher{re: re, endAnchored: endAnchored(re)}
-	}
-
+	ex := newLedger(patterns)
 	kept := make([]FileCoverage, 0, len(items))
 
-	// One buffer for every position built below, since each is thrown away as soon as the patterns
-	// have been asked about it. See Block.at. Given a capacity rather than left nil: at[:0] on a nil
-	// slice appends into a fresh array every time, which is the allocation this exists to remove.
-	// A path longer than this reallocates once per file, since the helpers keep what they grew.
-	at := make([]byte, 0, 512)
-
 	for _, item := range items {
-		if chargeFile(dropped, matchers, item) {
-			noteBlocksAlreadyGone(dropped, matchers, item, at)
+		if ex.chargeFile(item) {
+			ex.noteBlocksAlreadyGone(item)
 
 			continue
 		}
 
-		if trimmed, ok := chargeBlocks(dropped, matchers, item, at); ok {
+		if trimmed, ok := ex.chargeBlocks(item); ok {
 			kept = append(kept, trimmed)
 		}
 	}
 
-	return kept, dropped
+	return kept, ex.charged
+}
+
+// A ledger is the patterns and what each has been charged, which are one thing: charged[i] is
+// pattern[i]'s tally, an invariant four separate functions used to carry as two arguments and keep
+// by hand.
+//
+// It owns the position buffer too. Every block of every file is spelled into it and thrown away as
+// soon as the patterns have been asked, so growth has to survive the file that caused it: passed
+// by value it did not, and a path over the capacity reallocated for every block rather than once.
+type ledger struct {
+	patterns []matcher
+	charged  []Exclusion
+	at       []byte
+}
+
+// newLedger compiles what is asked of every block once, since Exclude asks it of every block of
+// every file. 512 bytes rather than nil: at[:0] on a nil slice appends into a fresh array every
+// time, which is the allocation the buffer exists to remove.
+func newLedger(patterns []*regexp.Regexp) *ledger {
+	ex := &ledger{
+		patterns: make([]matcher, len(patterns)),
+		charged:  make([]Exclusion, len(patterns)),
+		at:       make([]byte, 0, 512),
+	}
+
+	for i, re := range patterns {
+		ex.patterns[i] = matcher{re: re, endAnchored: endAnchored(re)}
+		ex.charged[i].Pattern = re.String()
+	}
+
+	return ex
+}
+
+// at spells one block's position, in both the spellings a pattern can name it by. Into the
+// ledger's own buffer, which is why it is a method: the grown array has to outlive the call.
+func (ex *ledger) spell(block Block, file string) (withCol, toLine []byte) {
+	withCol, toLine = block.at(ex.at, file)
+	ex.at = withCol
+
+	return withCol, toLine
 }
 
 // noteBlocksAlreadyGone credits a pattern naming a block inside a file another pattern took whole.
 // Without it such a pattern reports "matched nothing", which invites deleting it, and the day the
 // path pattern narrows, the block returns to the denominator. Patterns that took the path are
 // skipped, being a prefix of every coordinate in it.
-func noteBlocksAlreadyGone(dropped []Exclusion, patterns []matcher, item FileCoverage, at []byte) {
+func (ex *ledger) noteBlocksAlreadyGone(item FileCoverage) {
 	// A fact about the file, so asked once. Answered here rather than carried from chargeFile.
-	tookPath := make([]bool, len(patterns))
-	for i, m := range patterns {
+	tookPath := make([]bool, len(ex.patterns))
+	for i, m := range ex.patterns {
 		tookPath[i] = m.re.MatchString(item.File)
 	}
 
 	for _, block := range item.Blocks {
-		withCol, toLine := block.at(at, item.File)
-		// Kept, or a path over the buffer's capacity reallocates for every block rather than once.
-		at = withCol
+		withCol, toLine := ex.spell(block, item.File)
 
-		for i, m := range patterns {
+		for i, m := range ex.patterns {
 			if !tookPath[i] && names(m, withCol, toLine) {
-				dropped[i].OverlappedBlocks++
+				ex.charged[i].OverlappedBlocks++
 			}
 		}
 	}
@@ -128,23 +153,23 @@ func names(m matcher, withCol, toLine []byte) bool {
 // chargeFile asks every pattern about the path and reports whether the file goes whole. Every
 // pattern is asked, not just up to the first hit, or one that only matches files an earlier pattern
 // took would report as a typo. First match wins for the statements, so the totals still add up.
-func chargeFile(dropped []Exclusion, patterns []matcher, item FileCoverage) bool {
+func (ex *ledger) chargeFile(item FileCoverage) bool {
 	charged := -1
 
-	for i, m := range patterns {
+	for i, m := range ex.patterns {
 		if !m.re.MatchString(item.File) {
 			continue
 		}
 
 		if charged >= 0 {
-			dropped[i].OverlappedFiles++
+			ex.charged[i].OverlappedFiles++
 
 			continue
 		}
 
 		charged = i
-		dropped[i].Files++
-		dropped[i].Statements += item.Coverage.Total()
+		ex.charged[i].Files++
+		ex.charged[i].Statements += item.Coverage.Total()
 	}
 
 	return charged >= 0
@@ -153,9 +178,7 @@ func chargeFile(dropped []Exclusion, patterns []matcher, item FileCoverage) bool
 // chargeBlocks takes the blocks a pattern names out of a file no pattern took whole, and reports
 // whether anything is left to draw. A file carrying no blocks is returned untouched, since Blocks is
 // optional. Coverage is recomputed only when something was dropped.
-func chargeBlocks(
-	dropped []Exclusion, patterns []matcher, item FileCoverage, at []byte,
-) (FileCoverage, bool) {
+func (ex *ledger) chargeBlocks(item FileCoverage) (FileCoverage, bool) {
 	if len(item.Blocks) == 0 {
 		return item, true
 	}
@@ -169,11 +192,9 @@ func chargeBlocks(
 	)
 
 	for seen, block := range item.Blocks {
-		withCol, toLine := block.at(at, item.File)
-		// Kept, for the reason noteBlocksAlreadyGone keeps it.
-		at = withCol
+		withCol, toLine := ex.spell(block, item.File)
 
-		if charged := chargeBlock(dropped, patterns, withCol, toLine, block.Coverage.Total()); charged < 0 {
+		if charged := ex.chargeBlock(withCol, toLine, block.Coverage.Total()); charged < 0 {
 			left = left.Plus(block.Coverage)
 
 			if blocks != nil {
@@ -208,23 +229,23 @@ func chargeBlocks(
 // The rule chargeFile applies to a path, applied to a coordinate: every pattern is asked rather
 // than stopping at the first, so one that only matches what an earlier took still reports as
 // working instead of as a typo, and the first match wins the statements so the totals add up.
-func chargeBlock(dropped []Exclusion, patterns []matcher, withCol, toLine []byte, stmts int) int {
+func (ex *ledger) chargeBlock(withCol, toLine []byte, stmts int) int {
 	charged := -1
 
-	for i, m := range patterns {
+	for i, m := range ex.patterns {
 		if !names(m, withCol, toLine) {
 			continue
 		}
 
 		if charged >= 0 {
-			dropped[i].OverlappedBlocks++
+			ex.charged[i].OverlappedBlocks++
 
 			continue
 		}
 
 		charged = i
-		dropped[i].Blocks++
-		dropped[i].Statements += stmts
+		ex.charged[i].Blocks++
+		ex.charged[i].Statements += stmts
 	}
 
 	return charged

@@ -207,7 +207,7 @@ func TestShortenCountsEveryFileItRenamed(t *testing.T) {
 		file("other.com/c.go", 1, 0),
 	}
 
-	shortened, renamed := prettycov.Shorten(files, "example.com/m", "m")
+	shortened, renamed := prettycov.Shorten(files, prettycov.Rename{From: "example.com/m", To: "m"})
 
 	assert.Equal(t, 2, renamed, "two of the three")
 	assert.Equal(t, "m/a.go", shortened[0].File)
@@ -248,7 +248,7 @@ func TestHasRootMatchesTheSameRootsShortenRenames(t *testing.T) {
 
 			// The agreement itself, not just the two answers: whatever Shorten would rewrite is
 			// what HasRoot has to find, or the CLI reports a root as absent while renaming by it.
-			_, renamed := prettycov.Shorten(files, tc.root, "x")
+			_, renamed := prettycov.Shorten(files, prettycov.Rename{From: tc.root, To: "x"})
 			assert.Equal(t, tc.want, renamed > 0, "Shorten disagrees")
 		})
 	}
@@ -371,7 +371,8 @@ func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			shortened, renamed := prettycov.Shorten([]prettycov.FileCoverage{file(tc.file, 1, 1)}, tc.old, tc.replace)
+			shortened, renamed := prettycov.Shorten([]prettycov.FileCoverage{file(tc.file, 1, 1)},
+				prettycov.Rename{From: tc.old, To: tc.replace})
 
 			assert.Equal(t, tc.want, shortened[0].File)
 			assert.Equal(t, tc.wantRenamed, renamed)
@@ -409,7 +410,7 @@ func TestProcessCleansPaths(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			shortened, _ := prettycov.Shorten(tc.files, "zz", tc.newRoot)
+			shortened, _ := prettycov.Shorten(tc.files, prettycov.Rename{From: "zz", To: tc.newRoot})
 			tree := prettycov.Process(shortened)
 
 			assert.Equal(t, tc.want, prettycov.Rows(tree, prettycov.Options{})[0].Label)
@@ -447,7 +448,8 @@ func TestShortenToDotStripsTheRoot(t *testing.T) {
 	t.Parallel()
 
 	shortened, renamed := prettycov.Shorten(
-		[]prettycov.FileCoverage{file("m/a.go", 5, 1), file("m/sub/b.go", 0, 4)}, "m", ".")
+		[]prettycov.FileCoverage{file("m/a.go", 5, 1), file("m/sub/b.go", 0, 4)},
+		prettycov.Rename{From: "m", To: "."})
 	require.Equal(t, 2, renamed)
 
 	stripped := prettycov.Rows(prettycov.Process(shortened), prettycov.Options{Depth: prettycov.DepthAll})
@@ -488,7 +490,7 @@ func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			shortened, _ := prettycov.Shorten(tc.files, "foo", tc.newRoot)
+			shortened, _ := prettycov.Shorten(tc.files, prettycov.Rename{From: "foo", To: tc.newRoot})
 			tree := prettycov.Process(shortened)
 			rows := prettycov.Rows(tree, prettycov.Options{})
 

@@ -262,6 +262,42 @@ func BenchmarkExclude(b *testing.B) {
 	}
 }
 
+// A path longer than the ledger's position buffer, across many files. The buffer's growth has to
+// outlive the file that caused it or every file pays for it again: before the ledger owned it, this
+// allocated once per file, 203 against 6. Every other fixture here has short paths, so nothing else
+// watches the ceiling.
+func BenchmarkExcludeLongPaths(b *testing.B) {
+	const files, blocksPer = 200, 20
+
+	items := make([]prettycov.FileCoverage, files)
+
+	for i := range items {
+		long := strings.Repeat("averylongdirectorycomponent/", 30) + fmt.Sprintf("f%d.go", i)
+
+		blocks := make([]prettycov.Block, blocksPer)
+		for j := range blocks {
+			blocks[j] = prettycov.Block{
+				Line: j + 1, Col: 2, EndLine: j + 1,
+				Coverage: prettycov.CoverageStats{Uncovered: 1},
+			}
+		}
+
+		items[i] = prettycov.FileCoverage{
+			File:     long,
+			Coverage: prettycov.CoverageStats{Uncovered: blocksPer},
+			Blocks:   blocks,
+		}
+	}
+
+	patterns := []*regexp.Regexp{regexp.MustCompile(`nomatch`)}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_, _ = prettycov.Exclude(items, patterns)
+	}
+}
+
 // One pattern per branch that actually charges, since each is a place a future change could
 // allocate and BenchmarkExclude reaches none of them: a path pattern taking whole files, a
 // coordinate pattern taking blocks out of files no path took — which is where the copy in

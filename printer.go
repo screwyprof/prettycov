@@ -267,7 +267,7 @@ func (b *walker) drawsAt(level Depth) bool { return level <= b.depth }
 func (b *walker) below(tree *PathTree, labels bool) iter.Seq[entry] {
 	return func(yield func(entry) bool) {
 		for name, node := range tree.Children {
-			label, merged := collapse(name, node, b.files, labels)
+			label, merged := b.collapse(name, node, labels)
 
 			// The filesystem root has no name: an absolute path splits to a leading empty component.
 			// Named here, not at the row, so visible sorts on what the reader sees. "/" belongs
@@ -389,7 +389,7 @@ func glyphs(root, last bool) (glyph, carry string) {
 // where the two rows would carry the same number twice.
 // label is built only when the caller reads one; see below. The node it returns is the same either
 // way, so the two callers cannot disagree about which subtree a row stands for.
-func collapse(label string, node *PathTree, mergeFiles, wantLabel bool) (string, *PathTree) {
+func (b *walker) collapse(label string, node *PathTree, wantLabel bool) (string, *PathTree) {
 	if !wantLabel {
 		label = ""
 	}
@@ -403,7 +403,7 @@ func collapse(label string, node *PathTree, mergeFiles, wantLabel bool) (string,
 	}
 
 	// A file has nothing below it, so this is where the run ends either way.
-	if mergeFiles && len(node.Files) == 1 && len(node.Children) == 0 {
+	if b.files && len(node.Files) == 1 && len(node.Children) == 0 {
 		for name, file := range node.Files {
 			if wantLabel {
 				label = join(label, name)
