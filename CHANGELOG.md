@@ -10,18 +10,19 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
-## [Unreleased]
+## [0.16.0] — 2026-09-19
 
-### Breaking
+### Go API
 
-- `Shorten` takes a `Rename` rather than two strings. The pair was always one value — `Measure`
-  took the type apart at the only call site to make the call — and `Rename` carries the rules that
-  judge it. Replace `Shorten(files, old, new)` with `Shorten(files, prettycov.Rename{From: old,
-  To: new})`.
+- **Breaking:** `Shorten` takes a `Rename` rather than two strings. Replace
+  `Shorten(files, old, new)` with `Shorten(files, prettycov.Rename{From: old, To: new})`.
 
-- `Rename.Half` is gone from the Go API. It reported one of `--old`/`--new` given without the
-  other, which is a rule about the command line and not about renaming: `Measure` accepted a half
-  rename and quietly renamed nothing. The CLI still refuses one, with the same message.
+  The pair was always one value — `Measure` took the type apart at the only call site to make the
+  call — and `Rename` carries the rules that judge it.
+
+- **Breaking:** `Rename.Half` is gone. It reported one of `--old`/`--new` given without the other,
+  which is a rule about the command line and not about renaming: `Measure` accepted a half rename
+  and quietly renamed nothing. The CLI still refuses one, with the same message.
 
 ### Changed
 
@@ -31,6 +32,11 @@ tags.
   Output is unchanged, byte for byte.
 
 ### Documentation
+
+- The reference said `total` puts back the module root the report collapsed away, with no caveat.
+  It needs a root to put back: a profile naming several modules — a `go.work` workspace built with
+  `-coverpkg` across two of them — collapses nothing into a shared top row, and two trees can each
+  draw a row reading `pkg/logger`. Ask for those by the full path the report prints above them.
 
 - `misses` never piped into `vim -q -`. `-q` takes a filename and `-` is not special to it, so the
   command both the README and the reference gave was `E40: Can't open errorfile -`, and vim wants
@@ -746,6 +752,10 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[0.16.0]: https://github.com/screwyprof/prettycov/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/screwyprof/prettycov/compare/v0.14.0...v0.15.0
+[0.14.0]: https://github.com/screwyprof/prettycov/compare/v0.13.0...v0.14.0
+[0.13.0]: https://github.com/screwyprof/prettycov/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/screwyprof/prettycov/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/screwyprof/prettycov/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/screwyprof/prettycov/compare/v0.9.0...v0.10.0
