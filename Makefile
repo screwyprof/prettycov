@@ -46,6 +46,9 @@ VALE_VERSION := v3.21.0
 REVIEWDOG_VERSION := v0.21.1
 # renovate: datasource=go depName=github.com/go-gremlins/gremlins
 GREMLINS_VERSION := v0.6.0
+# x/perf carries no semver tags, so this is the pseudo-version the proxy serves.
+# renovate: datasource=go depName=golang.org/x/perf
+BENCHSTAT_VERSION := v0.0.0-20260908200009-22c9c6c9d4da
 
 # ./VERSION is the single source of truth: `make release` tags from it and the linker stamps it in.
 # Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
@@ -311,11 +314,49 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@$(call summarise,docs-lint,^ *✔)
 	@echo; echo '$$ make mutate'
 	@$(call summarise,mutate,^(Killed:|Test efficacy:))
+	@echo; echo '$$ make bench-cmp'
+	@$(MAKE) --no-print-directory bench-cmp
 	@echo; echo '$$ make cover-branches'
 	@$(MAKE) --no-print-directory cover-branches 2>&1 | grep '^Condition coverage:' \
 		| awk 'NR==1 {print $$0 "    # root"} NR==2 {print $$0 "    # internal/app"} \
 		       NR==3 {print $$0 "    # internal/cli"} \
 		       END {if (NR != 3) {print "cover-branches reported " NR " packages, wanted 3" > "/dev/stderr"; exit 1}}'
+
+BENCHSTAT := go run golang.org/x/perf/cmd/benchstat@$(BENCHSTAT_VERSION)
+
+# What the benchmarks are compared against. origin/main for the same reason .golangci.yml uses it:
+# a CI checkout has no local branch of that name, only remote-tracking refs.
+BENCH_BASE ?= origin/main
+
+# -benchtime=20x rather than a duration: allocs/op is an exact count, the same at 20 iterations as
+# at a second of them, so time spent on timing precision buys this gate nothing. -count=6 is
+# benchstat's floor for a confidence interval.
+BENCH_FLAGS := -bench=. -benchmem -run='^$$' -benchtime=20x -count=6
+
+bench: ## run the benchmarks
+	@echo -e "$(OK_COLOR)==> Benchmarking$(NO_COLOR)"
+	@go test $(BENCH_FLAGS) .
+
+# allocs/op only, and deliberately. ns/op on a shared CI runner swings 10-30% between runs of
+# identical code, so gating on it blocks merges by coin flip and trains everyone to re-run until
+# green. allocs/op is the same number every run and every machine, so any move in it is real and
+# worth stopping for. B/op is exact too but almost always moves with the count; `make bench` shows
+# it, and the timings, for reading by hand.
+#
+# The base is built in a worktree rather than by checking out: `make check` runs this, and a
+# checkout would swap the tree under everything else it is running.
+bench-cmp: ## compare allocations against $(BENCH_BASE) and fail on a regression
+	@echo -e "$(OK_COLOR)==> Allocations vs $(BENCH_BASE)$(NO_COLOR)"
+	@tmp=$$(mktemp -d); trap 'git worktree remove --force "$$tmp/base" >/dev/null 2>&1; rm -rf "$$tmp"' EXIT; \
+		git worktree add --detach "$$tmp/base" $(BENCH_BASE) >/dev/null 2>&1 \
+			|| { echo "cannot check out $(BENCH_BASE); pass BENCH_BASE=<ref>"; exit 1; }; \
+		(cd "$$tmp/base" && go test $(BENCH_FLAGS) .) > "$$tmp/base.txt"; \
+		go test $(BENCH_FLAGS) . > "$$tmp/new.txt"; \
+		$(BENCHSTAT) -filter '.unit:allocs/op' "$$tmp/base.txt" "$$tmp/new.txt" \
+			| grep -v '^[¹²]' | tee "$$tmp/cmp.txt"; \
+		awk '/^geomean/ { next } \
+			 /\+[0-9.]+%/ { print "  " $$0 > "/dev/stderr"; bad = 1 } \
+			 END { if (bad) { print "allocations regressed against $(BENCH_BASE)" > "/dev/stderr"; exit 1 } }' "$$tmp/cmp.txt"
 
 install: ## install binary
 	@echo -e "$(OK_COLOR)==> Installing binary$(NO_COLOR)"
@@ -365,4 +406,5 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
+.PHONY: bench bench-cmp
 .PHONY: lint lint-annotate lint-all vulns docs-lint tidy check install hooks release publish clean help

@@ -46,9 +46,16 @@ to paste into a pull request:
 | `make docs-lint` | Vale over the Markdown, against Google's style guide |
 | `make mutate` | mutation testing; a surviving mutant is a test that asserts nothing |
 | `make cover-branches` | condition coverage, which statement coverage cannot see |
+| `make bench-cmp` | allocations against `origin/main`; a rise fails, timings do not gate |
 | `make tidy` | `go mod tidy -diff`, so a stale go.sum cannot reach main |
 
 All of them are expected to pass before a pull request. `make help` lists the rest.
+
+`make bench-cmp` rebuilds the base in a worktree and compares with benchstat. It reads `allocs/op`
+and nothing else: that number is identical on every run and every machine, so a rise in it is
+always real, where `ns/op` on a shared runner moves 10% between runs of the same code. Run
+`make bench` for the timings. Compare against something other than `origin/main` with
+`make bench-cmp BENCH_BASE=<ref>`.
 
 ## What a change looks like
 
