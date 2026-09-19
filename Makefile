@@ -377,7 +377,22 @@ install: ## install binary
 	go install -ldflags "$(LDFLAGS)" $(PWD)/cmd/prettycov/...
 
 # ./VERSION holds the last released version: bump it, then run this.
-release: ## tag a release from ./VERSION and publish it to the module proxy
+# Two invariants this file has drifted on, both silently, because nothing asked.
+#
+# Every `## [x.y.z]` needs a `[x.y.z]:` compare link or the heading renders as literal brackets;
+# three releases went without. And a section heading has to come from the set already in use: this
+# is not Keep a Changelog, the vocabulary is its own, and a stray `### Breaking` reads as a category
+# when the convention is a **Breaking:** label inside the section the change belongs to.
+changelog: ## check the changelog's compare links and section headings
+	@missing=$$(comm -23 \
+		<(grep -oE '^## \[[0-9.]+\]' CHANGELOG.md | tr -d '#[] ' | sort) \
+		<(grep -oE '^\[[0-9.]+\]:' CHANGELOG.md | tr -d '[]:' | sort)); \
+	[ -z "$$missing" ] || { printf 'changelog headings with no compare link:\n%s\n' "$$missing"; exit 1; }
+	@unknown=$$(comm -23 <(grep -oE '^### .+' CHANGELOG.md | sed 's/^### //' | sort -u) \
+		<(printf 'Added\nBuild\nCLI\nChanged\nDocumentation\nFixed\nGo API\n' | sort -u)); \
+	[ -z "$$unknown" ] || { printf 'changelog sections outside the house set:\n%s\n' "$$unknown"; exit 1; }
+
+release: changelog ## tag a release from ./VERSION and publish it to the module proxy
 	@v="v$$(cat VERSION)"; \
 	if ! git diff --quiet || ! git diff --cached --quiet; then \
 		echo "working tree is dirty; commit first"; exit 1; \
@@ -420,5 +435,5 @@ help: ## show this help
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
 .PHONY: all build fmt
 .PHONY: test cover-branches mutate test-cover-txt test-cover-html test-cover-total test-cover-tree
-.PHONY: bench bench-cmp
+.PHONY: bench bench-cmp changelog
 .PHONY: lint lint-annotate lint-all vulns docs-lint tidy check install hooks release publish clean help
