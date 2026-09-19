@@ -264,9 +264,13 @@ lint-annotate:
 		| go run github.com/reviewdog/reviewdog/cmd/reviewdog@$(REVIEWDOG_VERSION) \
 			-f=golangci-lint -name=golangci-lint -reporter=github-pr-check -fail-level=any
 
-lint-all: ## run linters
+# Both, and this is the whole point of the target: --new-from-rev clears the rev filter, and
+# issues.new-from-merge-base in .golangci.yml is a separate key it does not touch. With only the
+# first this reported "0 issues" over a tree holding 27, which is how a gocyclo violation this
+# repository introduced reached main unseen.
+lint-all: ## run linters over the whole tree, unfiltered
 	@echo -e "$(OK_COLOR)==> Linting$(NO_COLOR)"
-	$(GOLANGCI) run ./... --new-from-rev=""
+	$(GOLANGCI) run ./... --new-from-rev="" --new-from-merge-base=""
 
 # Prints $(2) when the gate passes, the whole output when it fails. Filtering both ways hid two
 # failures: govulncheck's advisory, and a Vale "1 error" against a pattern wanting "errors".

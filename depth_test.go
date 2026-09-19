@@ -9,6 +9,7 @@ import (
 	"github.com/screwyprof/prettycov"
 )
 
+// Every spelling a --depth can arrive as, including "max" and the two ways a number is refused.
 func TestParseDepth(t *testing.T) {
 	t.Parallel()
 

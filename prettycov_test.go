@@ -105,6 +105,8 @@ func TestProcessCountsEachStatementOnce(t *testing.T) {
 	}
 }
 
+// The share covered, and the counts it refuses to divide: nothing to cover is not 0%, and an
+// overflowed sum is not a percentage.
 func TestCoverageStatsPercentage(t *testing.T) {
 	t.Parallel()
 
@@ -378,7 +380,7 @@ func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 }
 
 // Splitting a path is not the same as walking one. Totalling per directory used to go through
-// path.Dir, which cleans on the way, so a doubled separator never reached a label; building the
+// [path.Dir], which cleans on the way, so a doubled separator never reached a label; building the
 // tree from the file path directly has to clean it itself. --new with a trailing slash is how a
 // caller produces one without meaning to.
 func TestProcessCleansPaths(t *testing.T) {
@@ -419,7 +421,7 @@ func TestProcessCleansPaths(t *testing.T) {
 // package off the second-to-last path component instead left such a file hanging under the tree
 // root, which nothing draws: the statements stayed in the total and appeared beside no row, and a
 // profile of nothing but bare filenames printed an empty report and exited 0.
-// "./x.go" and "x.go" are one file, because they are one path: path.Dir cleans a leading "." away
+// "./x.go" and "x.go" are one file, because they are one path: [path.Dir] cleans a leading "." away
 // as redundant. Worth pinning: making --new=. draw a single "." root means giving that prefix a
 // meaning of its own, and then a profile naming both spellings of one package splits into two rows
 // carrying the same label, with the package's statements divided between them.
@@ -456,6 +458,8 @@ func TestShortenToDotStripsTheRoot(t *testing.T) {
 	assert.Equal(t, native, stripped)
 }
 
+// A file the profile names with no directory still has to land somewhere the report draws.
+// Hanging it off the tree root printed an empty report and exited 0.
 func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 	t.Parallel()
 

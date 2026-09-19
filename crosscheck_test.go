@@ -215,7 +215,7 @@ func nodeTotals(files []prettycov.FileCoverage) map[string][]prettycov.CoverageS
 
 // dirsOf is the directories a file is counted in, nearest first, ending at "." for a file with no
 // directory of its own. The stop is on "/" as well as on a name with no separator in it, because
-// path.Dir("/") is "/": a walk that only looks for a separator never ends on an absolute path, and
+// [path.Dir]("/") is "/": a walk that only looks for a separator never ends on an absolute path, and
 // a profile holding one would hang the suite rather than fail it.
 func dirsOf(file string) []string {
 	var dirs []string

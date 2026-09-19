@@ -12,6 +12,8 @@ import (
 	"github.com/screwyprof/prettycov"
 )
 
+// A path the profile does not hold is nil rather than an empty node, so `total` can refuse it
+// instead of grading it 0.00.
 func TestPathTreeGetReturnsNilForAPathThatIsNotThere(t *testing.T) {
 	t.Parallel()
 
@@ -75,7 +77,7 @@ func TestPathTreeGetPrefersAFileOnTheLastSegment(t *testing.T) {
 }
 
 // A key read off a row resolves, and the report draws two labels the tree does not hold under that
-// name: path.Clean drops a "." component, so a file the profile gave no directory of its own merges
+// name: [path.Clean] drops a "." component, so a file the profile gave no directory of its own merges
 // into a row spelled as just the file; and the filesystem root has no name of its own, so it draws
 // as "/". Both are the renderer's substitutions, and Get undoes them. Otherwise `total main.go` is
 // refused for a row the tool printed one line above.
@@ -177,7 +179,7 @@ func TestPathTreeGetMissesAreNil(t *testing.T) {
 }
 
 // Prefixing under the collapsed root must not let a key climb out of it. Building each candidate as
-// a path meant path.Clean, which folds "..", so `total ..` resolved to an ancestor and printed its
+// a path meant [path.Clean], which folds "..", so `total ..` resolved to an ancestor and printed its
 // percentage with exit 0. The one failure the "a path the profile does not hold is exit 2" rule
 // exists to prevent, since a CI gate would grade a different node instead of failing.
 func TestPathTreeGetRefusesToClimbOutOfTheRoot(t *testing.T) {
@@ -196,7 +198,7 @@ func TestPathTreeGetRefusesToClimbOutOfTheRoot(t *testing.T) {
 }
 
 // An absolute profile collapses the same way, and the prefixing has to reach it. Rebuilding the
-// path to probe with lost this: an absolute path splits to a leading empty component, path.Join
+// path to probe with lost this: an absolute path splits to a leading empty component, [path.Join]
 // drops it, and "/abs/x/y/p" was probed as "abs/x/y/p", so no absolute tree ever resolved a row
 // label, while the identical relative profile did.
 func TestPathTreeGetResolvesUnderAnAbsoluteRoot(t *testing.T) {

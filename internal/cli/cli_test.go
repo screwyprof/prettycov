@@ -42,6 +42,7 @@ func fixture(name string) []byte {
 	return data
 }
 
+// The whole command through kong: argv in, a drawn report and an exit code out.
 func TestRunRendersTheReport(t *testing.T) {
 	t.Parallel()
 
@@ -93,6 +94,8 @@ func TestRunReadsARelativePathWithADirectory(t *testing.T) {
 	assert.Contains(t, stdout.String(), "60.00")
 }
 
+// --fail-under is the only flag turning coverage into a status, and exit 1 has to stay distinct
+// from the exit 2 that means prettycov could not run.
 func TestRunFailUnder(t *testing.T) {
 	t.Parallel()
 
@@ -204,6 +207,8 @@ func TestRunFailUnder(t *testing.T) {
 	}
 }
 
+// --color decides against the destination, so every spelling is asked of a buffer, which is not
+// a terminal and must come back plain unless always was given.
 func TestRunColorFlag(t *testing.T) {
 	t.Parallel()
 
@@ -351,6 +356,7 @@ func TestRunAcceptsBothVersionSpellings(t *testing.T) {
 	}
 }
 
+// --counts prints the fraction behind each percentage, which is what a row cannot say on its own.
 func TestRunCountsFlag(t *testing.T) {
 	t.Parallel()
 
@@ -827,6 +833,8 @@ func TestRunDoesNotBlameTheRootForWhatExcludeTook(t *testing.T) {
 	assert.Contains(t, stderr.String(), `--exclude "^m/" left out`, "and --exclude still says what it took")
 }
 
+// `total` writes one number and nothing else, since a Makefile captures it: anything on stdout
+// beside the figure ends up in the variable.
 func TestRunPrintsOnlyTheTotal(t *testing.T) {
 	t.Parallel()
 
@@ -1736,6 +1744,8 @@ func TestRunRefusesABadDepthOnBothDrawingCommands(t *testing.T) {
 // something a caller of this package can invent.
 var errSomethingWentWrong = errors.New("something went wrong")
 
+// A status carried out through an error is the handler's, so a plain error must not be mistaken
+// for one: the composition root prints those and nothing prints twice.
 func TestExitCodeOfReportsOnlyWhatAHandlerSet(t *testing.T) {
 	t.Parallel()
 
