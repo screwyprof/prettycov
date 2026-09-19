@@ -58,7 +58,11 @@ func Rows(tree *PathTree, opts Options) []Row {
 	var rows []Row
 
 	for d := range prepare(tree, opts, shape{files: opts.Files}) {
-		rows = append(rows, d.Row)
+		row := d.Row
+		// Copied here, where a Row outlives the yield. DisplayTree writes the bytes instead.
+		row.Prefix = string(d.Raw)
+
+		rows = append(rows, row)
 	}
 
 	return rows
@@ -102,19 +106,29 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) (int, error) {
 	buf := bufio.NewWriter(w)
 	rows := 0
 
+	// One buffer for every line: bufio copies it out before the next overwrites it.
+	var line []byte
+
+	lastLevel := 0
+
 	for d := range prepare(tree, opts, shape{files: opts.Files}) {
-		// A profile naming more than one root draws a forest, and depth-first order puts the first
-		// tree's deepest row directly above the second's top row. Blank line only between them, so
-		// a single-root report is unchanged.
-		if d.Level == 0 && rows > 0 {
+		// A top row that follows an indented one closes a tree and opens another: depth-first order
+		// puts the previous tree's deepest row directly above it. Not between two bare top rows,
+		// which are one module's own directories under a root `--new=.` collapsed away, and not on
+		// the first row.
+		if d.Level == 0 && lastLevel > 0 {
 			_ = buf.WriteByte('\n')
 		}
 
-		_, _ = buf.WriteString(d.Prefix)
-		_, _ = buf.WriteString(d.Label)
-		_, _ = buf.WriteString(" - ")
-		_, _ = buf.WriteString(formatCoverage(d.Coverage, opts))
-		_ = buf.WriteByte('\n')
+		lastLevel = d.Level
+
+		line = append(line[:0], d.Raw...)
+		line = append(line, d.Label...)
+		line = append(line, " - "...)
+		line = appendCoverage(line, d.Coverage, opts)
+		line = append(line, '\n')
+
+		_, _ = buf.Write(line)
 
 		rows++
 	}
@@ -132,6 +146,10 @@ func DisplayTree(w io.Writer, tree *PathTree, opts Options) (int, error) {
 type drawn struct {
 	Row
 
+	// Raw is Row.Prefix as bytes, which is where the traversal leaves it: Row.Prefix is empty in a
+	// drawn. It aliases the padding buffer walk reuses, so it is good for the duration of the yield
+	// and no longer — copy it, as Rows does, to keep it.
+	Raw []byte
 	// Blocks is empty unless the row stands for a file.
 	Blocks []Block
 	// Path is the whole path, which Label is not: a row carries only its own segment. Built from
@@ -154,6 +172,9 @@ type walker struct {
 	depth Depth
 	// hideAt is --hide-covered's bar, or nil when it was not given.
 	hideAt *Threshold
+	// pool is every level's entries at once, a stack rather than a slice per directory. walk
+	// truncates back to its own start on the way out, so siblings reuse the space.
+	pool []entry
 }
 
 // entry is one row to draw: the node, and the label it carries once any run below it is merged in.
@@ -165,16 +186,20 @@ type entry struct {
 	node *PathTree
 }
 
-// visible is what to draw below tree: everything it holds that could be a row, minus the ones
-// already at the bar, sanitised and sorted, since map order is randomised and this output is diffed
-// between runs.
-func (b *walker) visible(tree *PathTree, level Depth) []entry {
+// visible pushes what to draw below tree onto the pool: everything it holds that could be a row,
+// minus the ones already at the bar, sanitised and sorted, since map order is randomised and this
+// output is diffed between runs. It returns where this node's entries start.
+func (b *walker) visible(tree *PathTree, level Depth) int {
+	start := len(b.pool)
+
 	size := len(tree.Children)
 	if b.files {
 		size += len(tree.Files)
 	}
 
-	entries := make([]entry, 0, size)
+	// Grown to the child count that is already known. Without it append doubles, which overshoots
+	// so badly on a shallow report that the pool costs more than the per-node slice it replaces.
+	b.pool = slices.Grow(b.pool, size)
 
 	for e := range b.below(tree) {
 		// The bar first, so a row nobody draws is never scanned, and asked of the node collapse
@@ -186,18 +211,18 @@ func (b *walker) visible(tree *PathTree, level Depth) []entry {
 		// Before the sort, since a replaced rune sorts where the replacement does. After the bar,
 		// since allCovered reads no label and the scan is per rune.
 		e.label = sanitize(e.label)
-		entries = append(entries, e)
+		b.pool = append(b.pool, e)
 	}
 
 	// By the drawn label, not the name it started as: "api/errors.go" sorts before "api.go" because
 	// "/" follows ".". Merging is what lets two labels tie: a bare "a.go" merges to the same label
 	// as a directory called "a.go", and the original name breaks it, being unique within a map.
 	// Stable for the tie left when a name is in both maps; directories are gathered first.
-	slices.SortStableFunc(entries, func(x, y entry) int {
+	slices.SortStableFunc(b.pool[start:], func(x, y entry) int {
 		return cmp.Or(strings.Compare(x.label, y.label), strings.Compare(x.name, y.name))
 	})
 
-	return entries
+	return start
 }
 
 // allCovered reports whether a node and every row drawn beneath it are at the bar.
@@ -279,22 +304,36 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		return true
 	}
 
-	entries := b.visible(tree, level)
+	start := b.visible(tree, level)
+	count := len(b.pool) - start
 
-	for at, e := range entries {
+	// Popped on every path out, so a sibling reuses this space instead of the pool growing by the
+	// whole tree.
+	defer func() { b.pool = b.pool[:start] }()
+
+	for at := range count {
+		// Read afresh each turn, never held across the recursion: a child's visible can grow the
+		// pool and move the array out from under a saved slice.
+		e := b.pool[start+at]
+
 		// The glyph placing this row, and the column carried under it.
 		var glyph, carry string
 
 		switch {
 		case level == 0: // the top row carries neither
-		case at+1 == len(entries):
+		case at+1 == count:
 			glyph, carry = "\u2514 ", "  " // └, then the columns a glyph would have taken
 		default:
 			glyph, carry = "\u251c ", "\u2502 " // ├ │
 		}
 
 		// Each is read by one renderer only, so the one nobody asked for is not built.
-		var here, prefix string
+		var (
+			here string
+			raw  []byte
+		)
+
+		depth := len(padding)
 
 		if b.positions {
 			// join, not path.Join: one allocation, and right at the filesystem root, where
@@ -304,9 +343,12 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 				here = join(parent, e.label)
 			}
 		} else {
-			// Copied, so the row owns its prefix and padding stays reusable. The indent depends on
-			// whether every ancestor was a last child, which the level alone cannot say.
-			prefix = string(append(padding, glyph...))
+			// padding carries this row's whole prefix for the length of the yield, and the carry
+			// replaces the glyph before the child is walked. Not copied: the consumer reads it
+			// inside the yield. The indent depends on whether every ancestor was a last child,
+			// which the level alone cannot say.
+			padding = append(padding, glyph...)
+			raw = padding
 		}
 
 		if !b.yield(drawn{
@@ -314,8 +356,8 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 				Coverage: e.node.Coverage,
 				Label:    e.label,
 				Level:    int(level),
-				Prefix:   prefix,
 			},
+			Raw:    raw,
 			Blocks: e.node.Blocks,
 			Path:   here,
 		}) {
@@ -323,8 +365,7 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		}
 
 		// One buffer shared by siblings: depth-first, so the child is done before the next overwrites.
-		depth := len(padding)
-		padding = append(padding, carry...)
+		padding = append(padding[:depth], carry...)
 		carryOn := b.walk(e.node, level+1, here, padding)
 		padding = padding[:depth]
 
@@ -397,28 +438,40 @@ func obeyed(r rune) bool {
 		r == '\u2028' || r == '\u2029' || r == '\ufeff'
 }
 
-// formatCoverage renders a statement-less package as "n/a" rather than the "NaN" 0/0 gives, with no
+// appendCoverage renders a statement-less package as "n/a" rather than the "NaN" 0/0 gives, with no
 // grade and no counts. Percentage also refuses overflowed counts.
 //
 // Counts read uncovered over total, with the word kept: codecov prints the same fraction the other
 // way round, and a row gets pasted where no flag name travels with it.
-func formatCoverage(stats CoverageStats, opts Options) string {
+//
+// Into dst rather than concatenated: every row built two or three strings the writer copied out and
+// dropped.
+func appendCoverage(dst []byte, stats CoverageStats, opts Options) []byte {
 	pct, ok := stats.Percentage()
 	if !ok {
-		return "n/a"
+		return append(dst, "n/a"...)
 	}
-
-	text := pct.String()
 
 	// Only the one value that asks for it: Palette is an exported int, and escapes into a file are
 	// worse than a missing colour.
-	if opts.Color == ANSI {
-		text = grade(pct.Float()) + text + reset
+	coloured := opts.Color == ANSI
+	if coloured {
+		dst = append(dst, grade(pct.Float())...)
+	}
+
+	dst = pct.appendTo(dst)
+
+	if coloured {
+		dst = append(dst, reset...)
 	}
 
 	if opts.Counts {
-		text += "  " + strconv.Itoa(stats.Uncovered) + "/" + strconv.Itoa(stats.Total()) + " uncovered"
+		dst = append(dst, "  "...)
+		dst = strconv.AppendInt(dst, int64(stats.Uncovered), 10)
+		dst = append(dst, '/')
+		dst = strconv.AppendInt(dst, int64(stats.Total()), 10)
+		dst = append(dst, " uncovered"...)
 	}
 
-	return text
+	return dst
 }

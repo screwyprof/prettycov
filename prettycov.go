@@ -76,13 +76,19 @@ func (p Percentage) Float() float64 { return p.value }
 
 // String renders two decimals, and never 100.00 for code that is not fully covered. Rounding would
 // print it for 73999 of 74000, and 100% is what stops someone writing another test.
-func (p Percentage) String() string {
-	text := strconv.FormatFloat(p.value, 'f', 2, 64)
-	if text == "100.00" && !p.complete {
-		return "99.99"
+func (p Percentage) String() string { return string(p.appendTo(nil)) }
+
+// appendTo is String into a buffer the caller reuses, since a report writes one per row and drops
+// it. The one definition of the rounding guard; String is this, allocated.
+func (p Percentage) appendTo(dst []byte) []byte {
+	at := len(dst)
+
+	dst = strconv.AppendFloat(dst, p.value, 'f', 2, 64)
+	if !p.complete && string(dst[at:]) == "100.00" {
+		return append(dst[:at], "99.99"...)
 	}
 
-	return text
+	return dst
 }
 
 // FileCoverage is one file of a profile: its path as the profile spells it, and what the tests
