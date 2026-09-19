@@ -9,6 +9,7 @@ run:
 linters:
   default: none
   enable:
+    - bidichk
     - asciicheck
     - copyloopvar
     - cyclop
@@ -23,8 +24,10 @@ linters:
     - errorlint
     - exptostd
     - exhaustive
+    - forbidigo
     - forcetypeassert
     - funlen
+    - gocheckcompilerdirectives
     - gochecknoglobals
     - gochecknoinits
     - gocognit
@@ -52,15 +55,18 @@ linters:
     - nestif
     - nilerr
     - nilnesserr
+    - nilnil
     - nlreturn
     - nolintlint
     - paralleltest
+    - perfsprint
     - prealloc
     - predeclared
     - revive
     - recvcheck
     - staticcheck
     - tagliatelle
+    - testableexamples
     - testifylint
     - testpackage
     - thelper
@@ -69,6 +75,7 @@ linters:
     - unparam
     - usestdlibvars
     - unused
+    - usetesting
     - wastedassign
     - whitespace
     - wrapcheck
