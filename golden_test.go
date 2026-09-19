@@ -34,7 +34,7 @@ func TestDisplayTreeMatchesGolden(t *testing.T) {
 	files, err := prettycov.ParseProfile(filepath.Join("testdata", "delegator-go126.out"))
 	require.NoError(t, err)
 
-	shortened, _ := prettycov.Shorten(files, "github.com/screwyprof/delegator", "delegator")
+	shortened, _ := prettycov.Shorten(files, prettycov.Rename{From: "github.com/screwyprof/delegator", To: "delegator"})
 	tree := prettycov.Process(shortened)
 
 	for _, depth := range []prettycov.Depth{0, 1, 2, 3} {

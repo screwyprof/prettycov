@@ -18,7 +18,7 @@ example.com/m/web/mock_test_helper.go:30.2,31.3 4 0
 `
 
 // writeExampleProfile puts the constant somewhere ParseProfile can open it, and leaves it there:
-// an example has no testing.TB to hang a cleanup on, and the OS reaps its own temp directory. One
+// an example has no [testing.TB] to hang a cleanup on, and the OS reaps its own temp directory. One
 // shape rather than two, since a caller that must remember to defer is a caller that can forget.
 func writeExampleProfile() string {
 	f, err := os.CreateTemp("", "prettycov-example-*.out")
@@ -89,7 +89,7 @@ func ExampleShorten() {
 		panic(err)
 	}
 
-	shortened, renamed := prettycov.Shorten(files, "example.com/m", "m")
+	shortened, renamed := prettycov.Shorten(files, prettycov.Rename{From: "example.com/m", To: "m"})
 
 	// Three, not four: ParseProfile keys a profile by filename, so logger.go's two blocks are one
 	// FileCoverage by the time Shorten sees them.

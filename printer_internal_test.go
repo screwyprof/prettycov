@@ -7,33 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Internal, because the glyphs are how this package draws a tree, not something a caller picks.
-// Drawing a report is not worth a panic, so an unrecognised box type is a blank.
-func TestSymbolNeverPanics(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		box  boxType
-		want string
-	}{
-		{name: "regular", box: regular, want: "├ "},
-		{name: "last", box: last, want: "└ "},
-		{name: "between", box: between, want: "│ "},
-		{name: "after last", box: afterLast, want: "  "},
-		{name: "out of range", box: boxType(99), want: "  "},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			assert.NotPanics(t, func() { assert.Equal(t, tc.want, symbol(false, tc.box)) })
-			assert.Empty(t, symbol(true, tc.box), "the top row carries no glyph")
-		})
-	}
-}
-
 // prepare yields rather than returning a slice, so it has to honour a consumer that stops early:
 // range-over-func panics if the body is left and the function yields again. The unwinding is what
 // is easy to get wrong: stopping inside a grandchild has to stop every ancestor's loop too, not
@@ -73,5 +46,50 @@ func TestPrepareStopsWhenTheConsumerDoes(t *testing.T) {
 		}
 
 		assert.Equal(t, all[:stop], got, "stopping after %d rows", stop)
+	}
+}
+
+// onlyChildren is an iterator, so it has to honour a consumer that stops: range-over-func panics if
+// the body is left and the function yields again. Neither collapse nor underRoot breaks, so nothing
+// else reaches the early exit.
+func TestOnlyChildrenStopsWhenTheConsumerDoes(t *testing.T) {
+	t.Parallel()
+
+	// A run of three, so a stop after the first leaves two it must not yield.
+	tree := Process([]FileCoverage{{File: "a/b/c/d.go", Coverage: CoverageStats{Covered: 1}}})
+
+	var got []string
+
+	for name := range tree.onlyChildren() {
+		got = append(got, name)
+
+		break
+	}
+
+	assert.Equal(t, []string{"a"}, got)
+}
+
+// obeyed answers ASCII without the range tables, so the edges of that shortcut need holding: the
+// last C0 byte against the space beside it, DEL against the printable before it, and the first
+// rune above ASCII, which is a C1 control the shortcut would call harmless if it claimed one byte
+// too many.
+func TestObeyedDecidesTheAsciiEdges(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		r    rune
+		want bool
+	}{
+		"the last C0 byte":     {r: 0x1f, want: true},
+		"the space beside it":  {r: 0x20, want: false},
+		"the last printable":   {r: 0x7e, want: false},
+		"DEL, which is not C0": {r: 0x7f, want: true},
+		"the first C1 control": {r: 0x80, want: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, obeyed(tc.r))
+		})
 	}
 }

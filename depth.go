@@ -48,10 +48,8 @@ func ParseDepth(s string) (Depth, error) {
 
 	switch {
 	case errors.Is(err, strconv.ErrRange):
-		//nolint:wrapcheck // a sentinel of this package's own, returned for errors.Is.
 		return 0, ErrDepthTooLarge
 	case err != nil:
-		//nolint:wrapcheck // see above.
 		return 0, ErrBadDepth
 	}
 

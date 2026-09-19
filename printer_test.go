@@ -163,6 +163,8 @@ func TestDisplayTreeIsDeterministic(t *testing.T) {
 	}
 }
 
+// Map order is randomised, so the report is sorted or two runs of one profile diff against each
+// other. By the drawn label, which is why the collapsed run sorts where it does.
 func TestDisplayTreeSortsChildren(t *testing.T) {
 	t.Parallel()
 

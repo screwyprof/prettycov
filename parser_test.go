@@ -62,7 +62,7 @@ func TestParseProfileScrubsControlCharactersFromTheError(t *testing.T) {
 }
 
 // cover hands the scanner's own error back untouched, so a line past bufio's 64 KB limit arrives
-// as bufio.ErrTooLong. Scrubbing the message must not cost a caller the ability to match on it.
+// as [bufio.ErrTooLong]. Scrubbing the message must not cost a caller the ability to match on it.
 func TestParseProfileKeepsTheCauseThroughScrubbing(t *testing.T) {
 	t.Parallel()
 
@@ -75,7 +75,7 @@ func TestParseProfileKeepsTheCauseThroughScrubbing(t *testing.T) {
 }
 
 // A profile that cannot be opened keeps its cause, so callers can tell "no such file" from "not a
-// profile" without reading either message. fs.ErrNotExist rather than the OS's text, which differs
+// profile" without reading either message. [fs.ErrNotExist] rather than the OS's text, which differs
 // between platforms.
 func TestParseProfileReportsUnreadableFile(t *testing.T) {
 	t.Parallel()
@@ -97,6 +97,8 @@ func TestParseProfileAcceptsProfileWithNoBlocks(t *testing.T) {
 	assert.Empty(t, items)
 }
 
+// A file's statements are the sum of its blocks, split by whether the block ran at all: cmd/cover
+// reports a count, not a per-statement verdict.
 func TestParseProfileSumsStatementsPerFile(t *testing.T) {
 	t.Parallel()
 
@@ -153,8 +155,8 @@ func TestCoverageStatsAreComparable(t *testing.T) {
 	assert.Equal(t, first, second, "two identical parses must compare equal")
 }
 
-// testing.TB rather than *testing.T, so a benchmark can write a fixture too. Every caller passes a
-// *testing.T and is unaffected.
+// [testing.TB] rather than *[testing.T], so a benchmark can write a fixture too. Every caller passes a
+// *[testing.T] and is unaffected.
 func writeProfile(tb testing.TB, content string) string {
 	tb.Helper()
 

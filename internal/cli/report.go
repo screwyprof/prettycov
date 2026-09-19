@@ -41,8 +41,9 @@ func treeOf(req prettycov.Request, g gate, s Streams) (*prettycov.PathTree, erro
 	// where "drop this if it is here" is reasonable.
 	case prettycov.RootMissed:
 		_, _ = fmt.Fprintf(s.Err, "--old %q matched nothing, so no label was shortened\n", req.Rename.From)
+	// The only failure with no flag behind it, so the domain's words are the whole message.
 	case prettycov.NoStatements:
-		return nil, g.refuse("no statements to cover", s)
+		return nil, g.refuse(prettycov.NoStatements.String(), s)
 	case prettycov.ExcludedAway:
 		return nil, g.refuse("--exclude left nothing to report", s)
 	}

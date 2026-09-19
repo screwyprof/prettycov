@@ -2,6 +2,8 @@ package prettycov_test
 
 import (
 	"fmt"
+	"io"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -90,4 +92,228 @@ func writeSyntheticProfile(tb testing.TB) string {
 	}
 
 	return writeProfile(tb, b.String())
+}
+
+// Grafting every file onto the tree and rolling the totals back up.
+func BenchmarkProcess(b *testing.B) {
+	files := syntheticProfile(b)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = prettycov.Process(files)
+	}
+}
+
+// The one benchmark reading bytes off disk rather than starting from a parsed slice.
+func BenchmarkParseProfile(b *testing.B) {
+	path := writeSyntheticProfile(b)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		if _, err := prettycov.ParseProfile(path); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// Get is called once per invocation, so this exists to hold a claim rather than to chase a cost:
+// the walk allocates nothing, for a hit, a file hit and a miss alike.
+//
+// The miss case costs more than the hits and is meant to. A key the tree does not hold is the one
+// that reaches underRoot, which descends the collapsed root trying each prefix before giving up.
+// measured at 90ns before that fallback existed and 218ns after (benchstat, p=0.000, n=10). Kept:
+// the one call this makes per run sits beside ParseProfile at 5.7ms, so 130ns buys `total
+// pkg/logger` resolving without --old and --new for 0.003% of a run.
+func BenchmarkGet(b *testing.B) {
+	tree := prettycov.Process(syntheticProfile(b))
+
+	for _, bc := range []struct {
+		name string
+		key  string
+	}{
+		{name: "package", key: "github.com/acme/monorepo/unit3/pkg/logger"},
+		{name: "file", key: "github.com/acme/monorepo/unit3/pkg/logger/logger.go"},
+		{name: "miss", key: "github.com/acme/monorepo/unit3/pkg/nope"},
+	} {
+		b.Run(bc.name, func(b *testing.B) {
+			b.ReportAllocs()
+
+			for b.Loop() {
+				_ = tree.Get(bc.key)
+			}
+		})
+	}
+}
+
+// The default invocation: one level, no files. Cheap, and the one every run pays.
+func BenchmarkDisplayTreeDefault(b *testing.B) {
+	benchDisplayTree(b, prettycov.Options{Depth: 1})
+}
+
+// The deepest the printer goes, which is where a row's cost is multiplied by every file.
+func BenchmarkDisplayTreeMaxFiles(b *testing.B) {
+	benchDisplayTree(b, prettycov.Options{Depth: prettycov.DepthAll, Files: true})
+}
+
+// --hide-covered adds the allCovered re-walk, which is O(n·depth) along the surviving path.
+func BenchmarkDisplayTreeHideCovered(b *testing.B) {
+	bar := prettycov.MustThreshold(100.0)
+
+	benchDisplayTree(b, prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar})
+}
+
+// coveredProfile is the same fixture with all but one file in two hundred fully covered. The
+// profile itself is under-covered, so BenchmarkDisplayTreeHideCovered's allCovered refuses at the
+// first node and measures none of the walk below it — which is the walk the flag is made of.
+//
+// Blocks are cloned rather than rewritten: syntheticProfile's copies share one backing array.
+func coveredProfile(tb testing.TB) []prettycov.FileCoverage {
+	tb.Helper()
+
+	files := syntheticProfile(tb)
+
+	for i, f := range files {
+		// One file in two hundred keeps its misses, so there is still something to draw.
+		if i%200 == 0 {
+			continue
+		}
+
+		blocks := make([]prettycov.Block, len(f.Blocks))
+		for j, block := range f.Blocks {
+			block.Coverage = prettycov.CoverageStats{Covered: block.Coverage.Total()}
+			blocks[j] = block
+		}
+
+		f.Blocks, f.Coverage = blocks, prettycov.CoverageStats{Covered: f.Coverage.Total()}
+		files[i] = f
+	}
+
+	return files
+}
+
+// --hide-covered over a tree it descends rather than refusing at the top row, which is the shape
+// the flag exists for and the one a repository running this gate on itself has.
+func BenchmarkDisplayTreeHideCoveredDense(b *testing.B) {
+	bar := prettycov.MustThreshold(100.0)
+	tree := prettycov.Process(coveredProfile(b))
+	opts := prettycov.Options{Depth: prettycov.DepthAll, Files: true, HideCovered: &bar}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		// io.Discard never fails, so there is no error here to be interested in.
+		_, _ = prettycov.DisplayTree(io.Discard, tree, opts)
+	}
+}
+
+// Rows without the writer, so the traversal is measured rather than the formatting.
+func BenchmarkRows(b *testing.B) {
+	tree := prettycov.Process(syntheticProfile(b))
+	opts := prettycov.Options{Depth: prettycov.DepthAll, Files: true}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = prettycov.Rows(tree, opts)
+	}
+}
+
+// The same traversal as the tree benchmarks, plus folding every unrun block in the profile.
+func BenchmarkMisses(b *testing.B) {
+	tree := prettycov.Process(syntheticProfile(b))
+	opts := missOpts(prettycov.DepthAll)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = prettycov.Misses(tree, opts)
+	}
+}
+
+// The same again, plus formatting and writing every position.
+func BenchmarkDisplayMisses(b *testing.B) {
+	tree := prettycov.Process(syntheticProfile(b))
+	opts := missOpts(prettycov.DepthAll)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		// io.Discard never fails, so there is no error here to be interested in.
+		_, _ = prettycov.DisplayMisses(io.Discard, tree, opts)
+	}
+}
+
+// Two patterns matching nothing in the fixture, which is the hot loop and the common shape: a
+// pattern aimed at a few files is asked about every block of every other one. Nothing is charged,
+// so this measures matching alone. BenchmarkExcludeCharging measures the rest.
+func BenchmarkExclude(b *testing.B) {
+	files := syntheticProfile(b)
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`/sub7/`),
+		regexp.MustCompile(`file1\d\d\.go:3`),
+	}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_, _ = prettycov.Exclude(files, patterns)
+	}
+}
+
+// A path longer than the ledger's position buffer, across many files. The buffer's growth has to
+// outlive the file that caused it or every file pays for it again: before the ledger owned it, this
+// allocated once per file, 203 against 6. Every other fixture here has short paths, so nothing else
+// watches the ceiling.
+func BenchmarkExcludeLongPaths(b *testing.B) {
+	const files, blocksPer = 200, 20
+
+	items := make([]prettycov.FileCoverage, files)
+
+	for i := range items {
+		long := strings.Repeat("averylongdirectorycomponent/", 30) + fmt.Sprintf("f%d.go", i)
+
+		blocks := make([]prettycov.Block, blocksPer)
+		for j := range blocks {
+			blocks[j] = prettycov.Block{
+				Line: j + 1, Col: 2, EndLine: j + 1,
+				Coverage: prettycov.CoverageStats{Uncovered: 1},
+			}
+		}
+
+		items[i] = prettycov.FileCoverage{
+			File:     long,
+			Coverage: prettycov.CoverageStats{Uncovered: blocksPer},
+			Blocks:   blocks,
+		}
+	}
+
+	patterns := []*regexp.Regexp{regexp.MustCompile(`nomatch`)}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_, _ = prettycov.Exclude(items, patterns)
+	}
+}
+
+// One pattern per branch that actually charges, since each is a place a future change could
+// allocate and BenchmarkExclude reaches none of them: a path pattern taking whole files, a
+// coordinate pattern taking blocks out of files no path took — which is where the copy in
+// chargeBlocks happens — and a coordinate pattern naming blocks inside a file already taken whole,
+// which is noteBlocksAlreadyGone. Charges 635 files, 4,305 blocks and 106 already excluded.
+func BenchmarkExcludeCharging(b *testing.B) {
+	files := syntheticProfile(b)
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`/pkg/`),
+		regexp.MustCompile(`service\.go:[0-9]+:`),
+		regexp.MustCompile(`logger\.go:1[0-9]:`),
+	}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_, _ = prettycov.Exclude(files, patterns)
+	}
 }

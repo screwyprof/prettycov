@@ -9,15 +9,14 @@ run:
 linters:
   default: none
   enable:
+    - bidichk
     - asciicheck
-    - bodyclose
     - copyloopvar
     - cyclop
     - depguard
     - dogsled
     - dupword
     - dupl
-    - durationcheck
     - embeddedstructfieldcheck
     - err113
     - errcheck
@@ -25,8 +24,10 @@ linters:
     - errorlint
     - exptostd
     - exhaustive
+    - forbidigo
     - forcetypeassert
     - funlen
+    - gocheckcompilerdirectives
     - gochecknoglobals
     - gochecknoinits
     - gocognit
@@ -54,18 +55,18 @@ linters:
     - nestif
     - nilerr
     - nilnesserr
+    - nilnil
     - nlreturn
-    - noctx
     - nolintlint
     - paralleltest
+    - perfsprint
     - prealloc
     - predeclared
     - revive
     - recvcheck
-    - rowserrcheck
-    - sqlclosecheck
     - staticcheck
     - tagliatelle
+    - testableexamples
     - testifylint
     - testpackage
     - thelper
@@ -74,6 +75,7 @@ linters:
     - unparam
     - usestdlibvars
     - unused
+    - usetesting
     - wastedassign
     - whitespace
     - wrapcheck
@@ -121,18 +123,60 @@ linters:
     govet:
       enable:
         - shadow
+    # argument-limit is the reason this block exists: a function taking five things is usually two
+    # of them that belong together, which is how a pair of parallel slices travelled through four
+    # signatures here. Four is the bar because three real ones sit there and earn it — append takes
+    # its destination first, and walk's level, parent and padding are recursion state.
+    #
+    # The rest of the list is revive's own default set, written out because naming any rule replaces
+    # the defaults rather than adding to them. Without it, adding argument-limit would silently turn
+    # off var-naming and the twenty-two beside it, which is a gate quietly doing less.
+    revive:
+      rules:
+        - name: argument-limit
+          arguments: [4]
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
     # Keep in sync with the golines formatter below: same budget, same tab cost,
     # so `golangci-lint fmt` actually fixes what lll reports.
     lll:
       line-length: 120
       tab-width: 4
+    # allow-unused off, so a directive that stops suppressing anything fails rather than sitting
+    # there. It caught one the moment it went on: errors.New below made a //nolint redundant and
+    # the comment would have outlived the finding.
     nolintlint:
-      allow-unused: true
+      allow-unused: false
     wrapcheck:
       # Substrings of signatures to ignore; overrides wrapcheck's default set.
       # See https://github.com/tomarrell/wrapcheck#configuration
+      # errors.New cannot return anyone else's error, so one it produced is this package's own
+      # sentinel and returning it unwrapped is what lets errors.Is match. Said here rather than as
+      # six //nolint comments repeating "a sentinel of this package's own".
       ignore-sigs:
         - fmt.Errorf(
+        - errors.New(
   exclusions:
     generated: lax
     presets:
@@ -149,15 +193,6 @@ linters:
           - goconst
           - gosec
         path: _test\.go
-      - linters:
-          - dupl
-          - funlen
-          - gosec
-        path: test_helpers\.go
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
 issues:
   # Only what this branch added, measured against where it left main.
   #
@@ -187,7 +222,3 @@ formatters:
       tab-len: 4
   exclusions:
     generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$

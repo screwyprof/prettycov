@@ -1,6 +1,7 @@
 package prettycov
 
 import (
+	"iter"
 	"path"
 	"slices"
 	"strings"
@@ -33,7 +34,7 @@ type PathTree struct {
 // Only the file carries the statements. Putting them on the directory as well, which is what
 // totalling per directory before building the tree amounts to, makes rollUp count every statement
 // twice, once on the directory and once beneath it.
-func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *arena) {
+func (n *PathTree) add(f FileCoverage, nodes *arena) {
 	// Split with path.Dir rather than by counting components, so a file with no directory at all
 	// still lands somewhere: path.Dir gives it ".", which is the row it renders as. Reading the
 	// directory off the second-to-last component instead left such a file hanging under the tree
@@ -46,15 +47,15 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// child of the same nameless kind, and both drew as a blank label. Every other directory
 	// path.Dir returns has no trailing slash, so this touches nothing else.
 	dir := n
-	for part := range strings.SplitSeq(strings.TrimSuffix(path.Dir(file), "/"), "/") {
+	for part := range strings.SplitSeq(strings.TrimSuffix(path.Dir(f.File), "/"), "/") {
 		dir = nodes.child(&dir.Children, part)
 	}
 
-	leaf := nodes.child(&dir.Files, path.Base(file))
+	leaf := nodes.child(&dir.Files, path.Base(f.File))
 	// Accumulated, not assigned, so a file named twice adds up rather than keeping the last one.
 	// ParseProfile cannot deliver that, since x/tools keys profiles by filename and merges their
 	// blocks, so this is for a caller handing Process a slice of its own.
-	leaf.Coverage = leaf.Coverage.Plus(stats)
+	leaf.Coverage = leaf.Coverage.Plus(f.Coverage)
 	// Kept because Misses reads positions the counts cannot say. Shared with the caller's slice
 	// rather than copied: the parser hands out one capped window per file, so appending to a leaf
 	// can never reach into the next file's blocks, and nothing here reorders or trims them. merge
@@ -64,7 +65,7 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// The append is for the same file named twice, which ParseProfile cannot deliver but a caller
 	// assembling its own can; cap == len makes that one copy rather than write into the window.
 	if leaf.Blocks == nil {
-		leaf.Blocks = blocks
+		leaf.Blocks = f.Blocks
 
 		return
 	}
@@ -73,7 +74,7 @@ func (n *PathTree) add(file string, stats CoverageStats, blocks []Block, nodes *
 	// shares its array with. The parser's windows are already capped and this is a no-op for them;
 	// a caller slabbing its own blocks and naming one file twice would otherwise have the second
 	// add overwrite the blocks of the file after it.
-	leaf.Blocks = append(slices.Clip(leaf.Blocks), blocks...)
+	leaf.Blocks = append(slices.Clip(leaf.Blocks), f.Blocks...)
 }
 
 // child returns the node called name in the given map, creating both if this is the first time it
@@ -157,7 +158,7 @@ func (n *PathTree) Get(key string) *PathTree {
 		}
 	}
 
-	return n.underRoot(key, maxRootDepth)
+	return n.underRoot(key)
 }
 
 // onlyChild is the single directory below this node when that is all there is. One definition
@@ -176,35 +177,54 @@ func (n *PathTree) onlyChild() (string, *PathTree, bool) {
 	return "", nil, false
 }
 
-// maxRootDepth bounds how far the collapsed root is followed. The deepest run measured across the
-// reference checkouts is seven, so this stops a cycle without reaching any real tree.
-const maxRootDepth = 64
+// maxRunDepth bounds a run of single-child directories. The deepest measured across the reference
+// checkouts is seven, so this stops a cycle without reaching any real tree.
+const maxRunDepth = 64
+
+// onlyChildren yields each node below this one that is all its parent holds, nearest first: the run
+// collapse folds into one row. The one definition of that walk, because collapse builds the row's
+// label from it and underRoot walks the same nodes to resolve a path read off that row. The two
+// had their own copies, agreeing by comment.
+func (n *PathTree) onlyChildren() iter.Seq2[string, *PathTree] {
+	return func(yield func(string, *PathTree) bool) {
+		// Bounded, since Children is exported and a hand-built tree can point at itself.
+		for range maxRunDepth {
+			name, child, ok := n.onlyChild()
+			if !ok || !yield(name, child) {
+				return
+			}
+
+			n = child
+		}
+	}
+}
 
 // underRoot resolves key under the run of single-child directories the report collapsed into its
 // top row: "pkg/logger" read off a report, where the tree holds "github.com/x/y/pkg/logger".
 // Literal spellings are tried first, so this only adds answers.
 //
-// Descended first and probed from the deepest node back up, since the whole run is the one row the
-// report drew. Probing downwards let `total y` match the "y" inside "github.com/x/y" before the
-// package "y" beside it, grading the whole tree and passing where that package failed.
-func (n *PathTree) underRoot(key string, depth int) *PathTree {
-	// No empty-key guard: Get is the only caller, refuses one, and the recursion passes key through.
-	if depth == 0 {
-		return nil
+// Only meaningful where there is one root to put back. A profile naming several has no single run
+// below the tree root, so onlyChildren yields nothing and this answers nil — which is right: the
+// report draws each of those rows with its full path, and a bare label under one of them names a
+// node under every other just as well.
+//
+// Probed from the deepest node back up, since the whole run is the one row the report drew. Probing
+// downwards let `total y` match the "y" inside "github.com/x/y" before the package "y" beside it,
+// grading the whole tree and passing where that package failed.
+func (n *PathTree) underRoot(key string) *PathTree {
+	// No empty-key guard: Get is the only caller and refuses one.
+	var found *PathTree
+
+	for _, child := range n.onlyChildren() {
+		// walk, not Get, which is what calls this: probing through Get would recurse without bound.
+		// Every node is tried and the last hit kept, which is the deepest, so a shorter prefix of
+		// the run cannot answer instead. Allocates nothing, which Get promises on the miss path.
+		if node := child.walk(key); node != nil {
+			found = node
+		}
 	}
 
-	_, child, ok := n.onlyChild()
-	if !ok {
-		return nil
-	}
-
-	// Deepest first, so a shorter prefix of the run cannot answer instead.
-	if found := child.underRoot(key, depth-1); found != nil {
-		return found
-	}
-
-	// walk, not Get, which is what calls this: probing through Get would recurse without bound.
-	return child.walk(key)
+	return found
 }
 
 // walk resolves key against this node: directories all the way but the last segment, where a file

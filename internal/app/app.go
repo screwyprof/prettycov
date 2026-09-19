@@ -47,7 +47,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return int(cli.ExitFailed)
 	}
 
-	return status(ctx.Run(&cli.Streams{Out: stdout, Err: stderr}), stderr)
+	return status(ctx.Run(cli.Streams{Out: stdout, Err: stderr}), stderr)
 }
 
 // status turns what a handler returned into an exit code, printing anything that is a real error.

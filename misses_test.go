@@ -417,7 +417,7 @@ func TestMissesKeepAZeroWidthJoiner(t *testing.T) {
 // editor's error format cannot match and falls back to file:line:message, reading the column as the
 // text: `a.go:9:2` opens line 9 at column 1 and the column is lost.
 // displayMisses is DisplayMisses where the destination cannot fail, which is every test writing to
-// a bytes.Buffer. The error is the writer's, and a buffer has none.
+// a [bytes.Buffer]. The error is the writer's, and a buffer has none.
 func displayMisses(t *testing.T, w io.Writer, tree *prettycov.PathTree, opts prettycov.Options) int {
 	t.Helper()
 
@@ -427,6 +427,8 @@ func displayMisses(t *testing.T, w io.Writer, tree *prettycov.PathTree, opts pre
 	return listed
 }
 
+// The GNU compiler format, which is what makes a miss paste back as an --exclude pattern and open
+// in an editor. One line per region, not per block.
 func TestDisplayMissesWritesOnePositionPerLine(t *testing.T) {
 	t.Parallel()
 

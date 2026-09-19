@@ -72,6 +72,14 @@ func assertRowsMatchTheProfile(
 		require.Truef(t, ok, "row %q is not a path the profile names", r.path)
 		assert.Containsf(t, want, rows[i].Coverage, "row %q at depth %v", r.path, opts.Depth)
 
+		// The drawn line starts with exactly what the Row says places it. DisplayTree writes the
+		// traversal's bytes while Rows copies them, and the copy has to happen inside the yield:
+		// the buffer they alias is overwritten for the next sibling. Nothing else reads Prefix, so
+		// hoisting that copy would give every row the last one's indent with the suite still green.
+		assert.Truef(t, strings.HasPrefix(lines[i], rows[i].Prefix+rows[i].Label+" - "),
+			"line %q should open with the row's own prefix and label, got prefix %q label %q",
+			lines[i], rows[i].Prefix, rows[i].Label)
+
 		if r.total > 0 {
 			assert.Containsf(t, lines[i], fmt.Sprintf("%d/%d uncovered", rows[i].Coverage.Uncovered, r.total),
 				"the printed line for %q", r.path)
@@ -207,7 +215,7 @@ func nodeTotals(files []prettycov.FileCoverage) map[string][]prettycov.CoverageS
 
 // dirsOf is the directories a file is counted in, nearest first, ending at "." for a file with no
 // directory of its own. The stop is on "/" as well as on a name with no separator in it, because
-// path.Dir("/") is "/": a walk that only looks for a separator never ends on an absolute path, and
+// [path.Dir]("/") is "/": a walk that only looks for a separator never ends on an absolute path, and
 // a profile holding one would hang the suite rather than fail it.
 func dirsOf(file string) []string {
 	var dirs []string

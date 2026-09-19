@@ -12,6 +12,24 @@ tags.
 
 ## [Unreleased]
 
+### Breaking
+
+- `Shorten` takes a `Rename` rather than two strings. The pair was always one value — `Measure`
+  took the type apart at the only call site to make the call — and `Rename` carries the rules that
+  judge it. Replace `Shorten(files, old, new)` with `Shorten(files, prettycov.Rename{From: old,
+  To: new})`.
+
+- `Rename.Half` is gone from the Go API. It reported one of `--old`/`--new` given without the
+  other, which is a rule about the command line and not about renaming: `Measure` accepted a half
+  rename and quietly renamed nothing. The CLI still refuses one, with the same message.
+
+### Changed
+
+- `Exclude`, `Rows`, `Misses` and the report allocate far less on a large profile, and `Exclude`
+  itself runs in about half the time. On a 2,000-file profile `Exclude` went from 38,700
+  allocations to 5, and drawing every file with `--depth=max --files` from 7,901 to 1,067.
+  Output is unchanged, byte for byte.
+
 ### Documentation
 
 - `misses` never piped into `vim -q -`. `-q` takes a filename and `-` is not special to it, so the

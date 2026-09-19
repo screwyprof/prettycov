@@ -82,15 +82,6 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Coverage tree
-        run: |
-          {
-            echo '### Coverage'
-            echo '```'
-            make test-cover-tree || echo '(report failed)'
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
       # The one gate that cannot live in the Makefile: it compares against the base commit.
       # Uploads whenever a profile exists, so a gate failing after the tests still reports to the
       # required codecov/* checks instead of leaving them pending.

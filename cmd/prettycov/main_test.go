@@ -49,6 +49,8 @@ const buildTimeout = 2 * time.Minute
 //nolint:gochecknoglobals // TestMain has no other channel to the tests it runs.
 var binary string
 
+// TestMain builds the binary once for every case here, since these drive the artifact rather
+// than the package: netgo and static linking are what `go test` never exercises.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "prettycov-binary-test")
 	if err != nil {
@@ -178,7 +180,7 @@ func TestBinaryReportsAVersionWithoutAStamp(t *testing.T) {
 	assert.NotEmpty(t, strings.TrimSpace(got))
 }
 
-// os.Args passed unsliced feeds the program's own path in as a positional.
+// [os.Args] passed unsliced feeds the program's own path in as a positional.
 func TestBinaryPassesItsArguments(t *testing.T) {
 	t.Parallel()
 

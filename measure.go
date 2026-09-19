@@ -24,10 +24,6 @@ func (r Rename) NamesNoPackage() bool {
 	return r.Wanted() && strings.TrimRight(r.From, "/") == ""
 }
 
-// Half reports one side of a rename given without the other. A value rule, not a presence one:
-// `--old=$(MODULE) --new=.` with MODULE unset supplies both flags and still renames nothing.
-func (r Rename) Half() bool { return (r.From == "") != (r.To == "") }
-
 // A Request is what to measure: the profile, and what changes its contents. How the answer is drawn
 // is Options, which changes what is shown rather than what is counted.
 type Request struct {
@@ -106,11 +102,12 @@ func Measure(req Request) (Measurement, error) {
 	}
 
 	kept, excluded := Exclude(items, req.Exclude)
-	shortened, renamed := Shorten(kept, req.Rename.From, req.Rename.To)
 
-	if rootMissed(req.Rename, items, renamed) {
+	if rootMissed(req.Rename, items) {
 		return Measurement{Exclusions: excluded, why: RootMissed}, nil
 	}
+
+	shortened, _ := Shorten(kept, req.Rename)
 
 	tree := Process(shortened)
 	if _, ok := tree.Percentage(); !ok {
@@ -120,14 +117,9 @@ func Measure(req Request) (Measurement, error) {
 	return Measurement{Exclusions: excluded, tree: tree}, nil
 }
 
-// rootMissed reports whether the rename named a package the profile does not hold. renamed is a
-// shortcut, not a second reason: Exclude only drops files, so HasRoot would agree.
-func rootMissed(r Rename, items []FileCoverage, renamed int) bool {
-	if !r.Wanted() || renamed > 0 {
-		return false
-	}
-
-	return !HasRoot(items, r.From)
+// rootMissed reports whether the rename named a package the profile does not hold.
+func rootMissed(r Rename, items []FileCoverage) bool {
+	return r.Wanted() && !HasRoot(items, r.From)
 }
 
 // anyStatements reports whether the profile holds anything to cover. Statements rather than files:

@@ -105,6 +105,8 @@ func TestProcessCountsEachStatementOnce(t *testing.T) {
 	}
 }
 
+// The share covered, and the counts it refuses to divide: nothing to cover is not 0%, and an
+// overflowed sum is not a percentage.
 func TestCoverageStatsPercentage(t *testing.T) {
 	t.Parallel()
 
@@ -205,7 +207,7 @@ func TestShortenCountsEveryFileItRenamed(t *testing.T) {
 		file("other.com/c.go", 1, 0),
 	}
 
-	shortened, renamed := prettycov.Shorten(files, "example.com/m", "m")
+	shortened, renamed := prettycov.Shorten(files, prettycov.Rename{From: "example.com/m", To: "m"})
 
 	assert.Equal(t, 2, renamed, "two of the three")
 	assert.Equal(t, "m/a.go", shortened[0].File)
@@ -246,7 +248,7 @@ func TestHasRootMatchesTheSameRootsShortenRenames(t *testing.T) {
 
 			// The agreement itself, not just the two answers: whatever Shorten would rewrite is
 			// what HasRoot has to find, or the CLI reports a root as absent while renaming by it.
-			_, renamed := prettycov.Shorten(files, tc.root, "x")
+			_, renamed := prettycov.Shorten(files, prettycov.Rename{From: tc.root, To: "x"})
 			assert.Equal(t, tc.want, renamed > 0, "Shorten disagrees")
 		})
 	}
@@ -369,7 +371,8 @@ func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			shortened, renamed := prettycov.Shorten([]prettycov.FileCoverage{file(tc.file, 1, 1)}, tc.old, tc.replace)
+			shortened, renamed := prettycov.Shorten([]prettycov.FileCoverage{file(tc.file, 1, 1)},
+				prettycov.Rename{From: tc.old, To: tc.replace})
 
 			assert.Equal(t, tc.want, shortened[0].File)
 			assert.Equal(t, tc.wantRenamed, renamed)
@@ -378,7 +381,7 @@ func TestShortenReplacesOnlyALeadingRoot(t *testing.T) {
 }
 
 // Splitting a path is not the same as walking one. Totalling per directory used to go through
-// path.Dir, which cleans on the way, so a doubled separator never reached a label; building the
+// [path.Dir], which cleans on the way, so a doubled separator never reached a label; building the
 // tree from the file path directly has to clean it itself. --new with a trailing slash is how a
 // caller produces one without meaning to.
 func TestProcessCleansPaths(t *testing.T) {
@@ -407,7 +410,7 @@ func TestProcessCleansPaths(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			shortened, _ := prettycov.Shorten(tc.files, "zz", tc.newRoot)
+			shortened, _ := prettycov.Shorten(tc.files, prettycov.Rename{From: "zz", To: tc.newRoot})
 			tree := prettycov.Process(shortened)
 
 			assert.Equal(t, tc.want, prettycov.Rows(tree, prettycov.Options{})[0].Label)
@@ -419,7 +422,7 @@ func TestProcessCleansPaths(t *testing.T) {
 // package off the second-to-last path component instead left such a file hanging under the tree
 // root, which nothing draws: the statements stayed in the total and appeared beside no row, and a
 // profile of nothing but bare filenames printed an empty report and exited 0.
-// "./x.go" and "x.go" are one file, because they are one path: path.Dir cleans a leading "." away
+// "./x.go" and "x.go" are one file, because they are one path: [path.Dir] cleans a leading "." away
 // as redundant. Worth pinning: making --new=. draw a single "." root means giving that prefix a
 // meaning of its own, and then a profile naming both spellings of one package splits into two rows
 // carrying the same label, with the package's statements divided between them.
@@ -445,7 +448,8 @@ func TestShortenToDotStripsTheRoot(t *testing.T) {
 	t.Parallel()
 
 	shortened, renamed := prettycov.Shorten(
-		[]prettycov.FileCoverage{file("m/a.go", 5, 1), file("m/sub/b.go", 0, 4)}, "m", ".")
+		[]prettycov.FileCoverage{file("m/a.go", 5, 1), file("m/sub/b.go", 0, 4)},
+		prettycov.Rename{From: "m", To: "."})
 	require.Equal(t, 2, renamed)
 
 	stripped := prettycov.Rows(prettycov.Process(shortened), prettycov.Options{Depth: prettycov.DepthAll})
@@ -456,6 +460,8 @@ func TestShortenToDotStripsTheRoot(t *testing.T) {
 	assert.Equal(t, native, stripped)
 }
 
+// A file the profile names with no directory still has to land somewhere the report draws.
+// Hanging it off the tree root printed an empty report and exited 0.
 func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 	t.Parallel()
 
@@ -484,7 +490,7 @@ func TestProcessGivesFilesWithNoDirectoryAPackage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			shortened, _ := prettycov.Shorten(tc.files, "foo", tc.newRoot)
+			shortened, _ := prettycov.Shorten(tc.files, prettycov.Rename{From: "foo", To: tc.newRoot})
 			tree := prettycov.Process(shortened)
 			rows := prettycov.Rows(tree, prettycov.Options{})
 
