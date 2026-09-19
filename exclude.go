@@ -169,28 +169,11 @@ func chargeBlocks(
 	)
 
 	for seen, block := range item.Blocks {
-		charged := -1
 		withCol, toLine := block.at(at, item.File)
 		// Kept, for the reason noteBlocksAlreadyGone keeps it.
 		at = withCol
 
-		for i, re := range patterns {
-			if !names(re, withCol, toLine) {
-				continue
-			}
-
-			if charged >= 0 {
-				dropped[i].OverlappedBlocks++
-
-				continue
-			}
-
-			charged = i
-			dropped[i].Blocks++
-			dropped[i].Statements += block.Coverage.Total()
-		}
-
-		if charged < 0 {
+		if charged := chargeBlock(dropped, patterns, withCol, toLine, block.Coverage.Total()); charged < 0 {
 			left = left.Plus(block.Coverage)
 
 			if blocks != nil {
@@ -219,6 +202,32 @@ func chargeBlocks(
 
 		return item, true
 	}
+}
+
+// chargeBlock asks every pattern about one block's position and reports which was charged, or -1.
+// The rule chargeFile applies to a path, applied to a coordinate: every pattern is asked rather
+// than stopping at the first, so one that only matches what an earlier took still reports as
+// working instead of as a typo, and the first match wins the statements so the totals add up.
+func chargeBlock(dropped []Exclusion, patterns []matcher, withCol, toLine []byte, stmts int) int {
+	charged := -1
+
+	for i, m := range patterns {
+		if !names(m, withCol, toLine) {
+			continue
+		}
+
+		if charged >= 0 {
+			dropped[i].OverlappedBlocks++
+
+			continue
+		}
+
+		charged = i
+		dropped[i].Blocks++
+		dropped[i].Statements += stmts
+	}
+
+	return charged
 }
 
 // Exclusion is what one pattern took out. Per pattern, since unanchored matching needs showing:

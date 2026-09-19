@@ -245,13 +245,34 @@ func BenchmarkDisplayMisses(b *testing.B) {
 	}
 }
 
-// Two patterns, one matching whole files and one matching block coordinates, because Exclude asks
-// every pattern about both spellings of every block and the coordinate path is the hot one.
+// Two patterns matching nothing in the fixture, which is the hot loop and the common shape: a
+// pattern aimed at a few files is asked about every block of every other one. Nothing is charged,
+// so this measures matching alone. BenchmarkExcludeCharging measures the rest.
 func BenchmarkExclude(b *testing.B) {
 	files := syntheticProfile(b)
 	patterns := []*regexp.Regexp{
 		regexp.MustCompile(`/sub7/`),
 		regexp.MustCompile(`file1\d\d\.go:3`),
+	}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_, _ = prettycov.Exclude(files, patterns)
+	}
+}
+
+// One pattern per branch that actually charges, since each is a place a future change could
+// allocate and BenchmarkExclude reaches none of them: a path pattern taking whole files, a
+// coordinate pattern taking blocks out of files no path took — which is where the copy in
+// chargeBlocks happens — and a coordinate pattern naming blocks inside a file already taken whole,
+// which is noteBlocksAlreadyGone. Charges 635 files, 4,305 blocks and 106 already excluded.
+func BenchmarkExcludeCharging(b *testing.B) {
+	files := syntheticProfile(b)
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`/pkg/`),
+		regexp.MustCompile(`service\.go:[0-9]+:`),
+		regexp.MustCompile(`logger\.go:1[0-9]:`),
 	}
 
 	b.ReportAllocs()

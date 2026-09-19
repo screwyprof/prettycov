@@ -309,16 +309,7 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 		// pool and move the array out from under a saved slice.
 		e := b.pool[start+at]
 
-		// The glyph placing this row, and the column carried under it.
-		var glyph, carry string
-
-		switch {
-		case level == 0: // the top row carries neither
-		case at+1 == count:
-			glyph, carry = "\u2514 ", "  " // └, then the columns a glyph would have taken
-		default:
-			glyph, carry = "\u251c ", "\u2502 " // ├ │
-		}
+		glyph, carry := glyphs(level == 0, at+1 == count)
 
 		// Each is read by one renderer only, so the one nobody asked for is not built.
 		var (
@@ -372,6 +363,19 @@ func (b *walker) walk(tree *PathTree, level Depth, parent string, padding []byte
 	b.pool = b.pool[:start]
 
 	return true
+}
+
+// glyphs are the two columns placing a row: the one drawn beside it, and the one carried under it
+// so the rows below stay connected. The top row carries neither, and a last child's column closes.
+func glyphs(root, last bool) (glyph, carry string) {
+	switch {
+	case root:
+		return "", ""
+	case last:
+		return "\u2514 ", "  " // └, then the columns a glyph would have taken
+	default:
+		return "\u251c ", "\u2502 " // ├ │
+	}
 }
 
 // collapse merges a run of nodes that each hold nothing but the next into one row, so a module path

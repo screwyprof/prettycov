@@ -358,7 +358,7 @@ bench-cmp: ## compare allocations against $(BENCH_BASE) and fail on a regression
 		(cd "$$tmp/base" && $(BENCH_RUN) $(BENCH_FLAGS) .) > "$$tmp/base.txt"; \
 		$(BENCH_RUN) $(BENCH_FLAGS) . > "$$tmp/new.txt"; \
 		$(BENCHSTAT) -filter '.unit:allocs/op' "$$tmp/base.txt" "$$tmp/new.txt" \
-			| awk '/^[¹²]/ { next } { print } \
+			| awk '/^[¹²]/ { print > "/dev/stderr"; next } { print } \
 				 /^geomean/ { next } \
 				 /\+[0-9.]+%/ { print "  " $$0 > "/dev/stderr"; bad = 1 } \
 				 END { if (bad) { print "allocations regressed against $(BENCH_BASE)" > "/dev/stderr"; exit 1 } }'
