@@ -41,14 +41,14 @@ GOBCO_VERSION := v1.3.4
 GOLANGCI_VERSION := v2.14.0
 # vale-cli, not errata-ai: module moved at v3.20.0, old path still serves the tags and then refuses.
 # renovate: datasource=go depName=github.com/vale-cli/vale/v3
-VALE_VERSION := v3.23.0
+VALE_VERSION := v3.24.0
 # renovate: datasource=go depName=github.com/reviewdog/reviewdog
 REVIEWDOG_VERSION := v0.21.2
 # renovate: datasource=go depName=github.com/go-gremlins/gremlins
 GREMLINS_VERSION := v0.6.0
 # x/perf carries no semver tags, so this is the pseudo-version the proxy serves.
 # renovate: datasource=go depName=golang.org/x/perf
-BENCHSTAT_VERSION := v0.0.0-20260908200009-22c9c6c9d4da
+BENCHSTAT_VERSION := v0.0.0-20260929162123-406019bb8b68
 
 # ./VERSION is the single source of truth: `make release` tags from it and the linker stamps it in.
 # Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
