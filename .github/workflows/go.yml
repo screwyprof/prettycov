@@ -37,13 +37,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          # Not below 1.27.2: 1.27.0 and 1.27.1 miscount statements (golang/go#80974), and `1.27.x`
-          # takes whatever patch the runner image has cached.
-          #
-          # A range, not go-version-file: setup-go reads go.mod's minimum as an exact patch and sets
-          # GOTOOLCHAIN=local, so CI sat on 1.26.0 and shipped GO-2026-4601 through a green
-          # govulncheck. The minor stays pinned; only the patch floats.
+          # Not below 1.27.2: 1.27.0 and 1.27.1 miscount statements (golang/go#80974). check-latest,
+          # or setup-go takes whatever matching patch the runner has cached. Not go-version-file,
+          # which reads an exact patch off go.mod and floats nothing: CI sat on 1.26.0 that way and
+          # shipped GO-2026-4601 through a green govulncheck.
           go-version: '~1.27.2'
+          check-latest: true
           cache: true
           cache-dependency-path: go.sum
 
@@ -104,10 +103,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # go.mod's go line exactly, read off it. Not go-version-file, which prefers the toolchain line.
+      - id: gomod
+        run: echo "go=$(sed -n 's/^go //p' go.mod)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-go@v7
         with:
-          # go.mod's go line exactly. Not go-version-file, which reads the toolchain line.
-          go-version: '1.26.0'
+          go-version: ${{ steps.gomod.outputs.go }}
           cache: true
           cache-dependency-path: go.sum
 

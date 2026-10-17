@@ -248,10 +248,11 @@ web/store/pgxstore/store.go:43:16: 1 uncovered
 web/store/pgxstore/store.go:50:16: 1 uncovered
 ```
 
-These are a Go 1.26 profile's positions, where a block opens at its brace. Go 1.27 opens it at its
-first statement, so the same miss reads `scraper/service.go:95:3` rather than `94:16`: a line
-lower, or more when comments come first. The statements are the same; the entries can differ, as
-the fold below says.
+These are a Go 1.26 profile's positions. Go 1.27 opens a block that follows a brace at its first
+statement instead, so the same miss reads `scraper/service.go:95:3` rather than `94:16`: usually a
+line lower, more when comments come first, and only the column for a one-line function. A block
+that already opened at a statement, like `httpkit.go:62:2`, does not move. The statements are the
+same; the entries can differ, as the fold below says.
 
 Vim reads it as a quickfix list, but not off a pipe: `-q` takes a filename, and `-` is not special
 to it, so `prettycov misses | vim -q -` is `E40: Can't open errorfile -`. Vim also wants the

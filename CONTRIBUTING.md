@@ -29,10 +29,14 @@ and 1.27.1 do ([golang/go#80974](https://github.com/golang/go/issues/80974)). Ev
 block at blank and comment lines; those two give each piece the whole block's count, inflating
 every figure this tool reports. The floor is set in four places that move together: the
 `toolchain` line in [go.mod](go.mod), which switches an older local Go to it unless
-`GOTOOLCHAIN=local`, [flake.lock](flake.lock), whose nixpkgs decides the patch
-[flake.nix](flake.nix)'s `go_1_27` names, and `go-version` in [go.yml](.github/workflows/go.yml) and
-[vulns.yml](.github/workflows/vulns.yml). The `go` line in go.mod is not one of them: it is the
-oldest Go a user can build with: the `minimum` job in go.yml tests on it, and vulns.yml scans both.
+`GOTOOLCHAIN=local`; [flake.lock](flake.lock), whose nixpkgs decides the patch
+[flake.nix](flake.nix)'s `go_1_27` names; and `~1.27.2` in the `check` job of
+[go.yml](.github/workflows/go.yml) and in the matrix of [vulns.yml](.github/workflows/vulns.yml).
+`make test` refuses 1.27.0 and 1.27.1 whatever the toolchain line says.
+
+The `go` line in go.mod is not one of them: it is the oldest Go a user can build with. The
+`minimum` job in go.yml reads it and tests on it, and the `1.26.x` in vulns.yml's matrix is its
+minor.
 
 ## The gates
 
@@ -46,7 +50,7 @@ to paste into a pull request:
 | `make lint` | the same, narrowed to your diff, which is what CI annotates |
 | `make vulns` | govulncheck, reachability-aware |
 | `make docs-lint` | Vale over the Markdown, against Google's style guide |
-| `make mutate` | mutation testing; a surviving mutant is a test that asserts nothing |
+| `make mutate` | mutation testing; fails on a survivor, a test that asserts nothing, and on a timeout |
 | `make cover-branches` | condition coverage, which statement coverage cannot see |
 | `make bench-cmp` | allocations against `origin/main`; a rise fails, timings do not gate |
 | `make tidy` | `go mod tidy -diff`, so a stale go.sum cannot reach main |

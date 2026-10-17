@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     # Both lines users build on: 1.26 from go.mod's go line, 1.27 from the toolchain floor.
     strategy:
+      # One line's advisory must not cancel the other's scan.
+      fail-fast: false
       matrix:
         go: ['1.26.x', '~1.27.2']
     steps:
@@ -29,6 +31,8 @@ jobs:
         with:
           # CONTRIBUTING lists where the floor is set.
           go-version: ${{ matrix.go }}
+          # Users take the newest patch, so scan that, not whatever the runner has cached.
+          check-latest: true
           cache: true
           cache-dependency-path: go.sum
 

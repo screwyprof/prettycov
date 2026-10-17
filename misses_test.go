@@ -66,8 +66,9 @@ func TestMissesMergesAbuttingBlocks(t *testing.T) {
 	}, got, "the first two blocks are one region, the third is its own")
 }
 
-// Go 1.27.2's profile of an untested four-arm switch. Each arm opens below its `case`, and that line
-// is in no block, the same as a function's signature, so each arm is its own region.
+// Go 1.27.2's profile of an untested switch: the switch's own block, then three arms. Each arm
+// opens below its `case`, and that line is in no block, the same as a function's signature, so each
+// is its own region.
 func TestMissesListsGo127SwitchArmsApart(t *testing.T) {
 	t.Parallel()
 
@@ -80,7 +81,12 @@ func TestMissesListsGo127SwitchArmsApart(t *testing.T) {
 		),
 	})
 
-	assert.Len(t, prettycov.Misses(tree, missOpts(prettycov.DepthAll)), 4)
+	assert.Equal(t, []prettycov.Miss{
+		{File: "m/a.go", Line: 4, Col: 2, EndLine: 4, Statements: 1},
+		{File: "m/a.go", Line: 6, Col: 3, EndLine: 6, Statements: 1},
+		{File: "m/a.go", Line: 8, Col: 3, EndLine: 8, Statements: 1},
+		{File: "m/a.go", Line: 10, Col: 3, EndLine: 10, Statements: 1},
+	}, prettycov.Misses(tree, missOpts(prettycov.DepthAll)))
 }
 
 // A function with a blank line after it, then three one-line getters a blank line apart, from each
@@ -88,22 +94,29 @@ func TestMissesListsGo127SwitchArmsApart(t *testing.T) {
 func TestMissesKeepsFunctionsApart(t *testing.T) {
 	t.Parallel()
 
-	for name, blocks := range map[string][]prettycov.Block{
-		"go1.26": {
-			uncovered(5, 18, 8, 2), uncovered(10, 26, 10, 1),
-			uncovered(12, 17, 12, 1), uncovered(14, 17, 14, 1),
-		},
-		"go1.27": {
-			uncovered(6, 2, 8, 2), uncovered(10, 28, 10, 1),
-			uncovered(12, 19, 12, 1), uncovered(14, 19, 14, 1),
-		},
+	for name, tc := range map[string]struct {
+		line, col [4]int
+		endLine   int
+	}{
+		"go1.26": {line: [4]int{5, 10, 12, 14}, col: [4]int{18, 26, 17, 17}, endLine: 8},
+		"go1.27": {line: [4]int{6, 10, 12, 14}, col: [4]int{2, 28, 19, 19}, endLine: 8},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			tree := prettycov.Process([]prettycov.FileCoverage{withBlocks("m/a.go", blocks...)})
+			tree := prettycov.Process([]prettycov.FileCoverage{withBlocks("m/a.go",
+				uncovered(tc.line[0], tc.col[0], tc.endLine, 2),
+				uncovered(tc.line[1], tc.col[1], tc.line[1], 1),
+				uncovered(tc.line[2], tc.col[2], tc.line[2], 1),
+				uncovered(tc.line[3], tc.col[3], tc.line[3], 1),
+			)})
 
-			assert.Len(t, prettycov.Misses(tree, missOpts(prettycov.DepthAll)), 4)
+			assert.Equal(t, []prettycov.Miss{
+				{File: "m/a.go", Line: tc.line[0], Col: tc.col[0], EndLine: tc.endLine, Statements: 2},
+				{File: "m/a.go", Line: tc.line[1], Col: tc.col[1], EndLine: tc.line[1], Statements: 1},
+				{File: "m/a.go", Line: tc.line[2], Col: tc.col[2], EndLine: tc.line[2], Statements: 1},
+				{File: "m/a.go", Line: tc.line[3], Col: tc.col[3], EndLine: tc.line[3], Statements: 1},
+			}, prettycov.Misses(tree, missOpts(prettycov.DepthAll)))
 		})
 	}
 }

@@ -134,8 +134,13 @@ fmt: ## format code
 # the directory empty, and fails inside covdata naming neither the tag nor the tests.
 #
 # Appending merges, because readers of this format sum blocks they see twice.
+#
+# go.mod's toolchain line is a request GOTOOLCHAIN=local ignores, so the two releases that miscount
+# are refused here, where the profile is written.
 $(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
+	@! go version | grep -qE ' go1\.27\.[01] ' \
+		|| { echo "go1.27.0 and go1.27.1 miscount statements (golang/go#80974); use 1.27.2 or later"; exit 1; }
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
 	@go test -race -count=1 -shuffle=on -timeout=120s -cover -covermode atomic -coverpkg=./... -coverprofile=$@ ./...
 	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -race -count=1 -shuffle=on -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/
@@ -242,13 +247,14 @@ cover-branches: ## report conditions never evaluated both ways
 mutate: ## run mutation testing; fails if a mutant lived or timed out
 	@echo -e "$(OK_COLOR)==> Mutation testing$(NO_COLOR)"
 	@test -n "$(GO_FILES)" || { echo "no Go files; this needs a git checkout"; exit 1; }
-	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT; \
+	@tmp=$$(mktemp -d) && out=$$(mktemp) && trap 'rm -rf "$$tmp" "$$out"' EXIT; \
 	 $(GIT_LS) | tar -cf - -T - | (cd "$$tmp" && tar -xf -); \
-	 out=$$(cd "$$tmp" && go run github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VERSION) \
-		unleash --timeout-coefficient=30 . 2>&1) || { echo "$$out"; exit 1; }; \
-	 echo "$$out"; \
-	 grep -qE '^Killed: [1-9][0-9]*, Lived: 0,' <<<"$$out" && grep -qE '^Timed out: 0,' <<<"$$out" \
-		|| { echo "mutation testing: a mutant lived or timed out"; exit 1; }
+	 (cd "$$tmp" && go run github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VERSION) \
+		unleash --timeout-coefficient=30 . 2>&1) | tee "$$out"; \
+	 grep -qE '^Killed: [1-9]' "$$out" || { echo "mutate: no mutant was killed"; exit 1; }; \
+	 grep -qE '^Killed: [0-9]+, Lived: 0,' "$$out" || { echo "mutate: a mutant lived"; exit 1; }; \
+	 grep -qE '^Timed out: 0,' "$$out" \
+		|| { echo "mutate: a mutant timed out; on a slow machine, raise --timeout-coefficient"; exit 1; }
 
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.

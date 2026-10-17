@@ -22,11 +22,11 @@ tags.
 ### Documentation
 
 - Go 1.27 opens a coverage block at its first statement rather than at the brace, and splits blocks
-  at blank and comment lines. On a 1.27 profile the positions `misses` prints sit a line or more
-  lower, a `file:line:col` given to `--exclude` can take fewer statements than on 1.26, and
-  `misses` lists each arm of an untested `switch` on its own, where a 1.26 profile folded them into
-  one entry. The reference and the `Block` doc gave the brace as the only answer, and the examples
-  now say they are 1.26 output.
+  at blank and comment lines. On a 1.27 profile a position `misses` prints after a brace usually
+  sits a line lower, a `file:line:col` given to `--exclude` can take fewer statements than on
+  1.26, and `misses` lists each arm of an untested `switch` on its own, where a 1.26 profile
+  folded them into one entry. The reference and the `Block` doc gave the brace as the only
+  answer, and the examples now say they are 1.26 output.
 
 ## [0.16.0] — 2026-09-19
 
