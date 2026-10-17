@@ -233,16 +233,22 @@ cover-branches: ## report conditions never evaluated both ways
 # default left ours ~50ms against a suite needing 400: 105 of 123 mutants timed out and said
 # nothing. At 30 the run takes twelve seconds and every mutant is decided.
 #
+# The gate reads the counts: a survivor fails it, and so does a timeout, which efficacy leaves out
+# as if judged. Not the --threshold-* flags: v0.6.0 reads them as 0, and fails a run that equals one.
+#
 # "Not covered" is worth reading but not chasing: those land on `switch { case <expr>: }` lines and
 # package-level var initialisers, neither of which Go's cover instruments where gremlins looks.
 # cover-branches is the one that answers for those.
-mutate: ## report mutants the tests failed to kill
+mutate: ## run mutation testing; fails if a mutant lived or timed out
 	@echo -e "$(OK_COLOR)==> Mutation testing$(NO_COLOR)"
 	@test -n "$(GO_FILES)" || { echo "no Go files; this needs a git checkout"; exit 1; }
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT; \
 	 $(GIT_LS) | tar -cf - -T - | (cd "$$tmp" && tar -xf -); \
-	 (cd "$$tmp" && go run github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VERSION) \
-		unleash --timeout-coefficient=30 .)
+	 out=$$(cd "$$tmp" && go run github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VERSION) \
+		unleash --timeout-coefficient=30 . 2>&1) || { echo "$$out"; exit 1; }; \
+	 echo "$$out"; \
+	 grep -qE '^Killed: [1-9][0-9]*, Lived: 0,' <<<"$$out" && grep -qE '^Timed out: 0,' <<<"$$out" \
+		|| { echo "mutation testing: a mutant lived or timed out"; exit 1; }
 
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
@@ -317,7 +323,7 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@echo; echo '$$ make docs-lint'
 	@$(call summarise,docs-lint,^ *✔)
 	@echo; echo '$$ make mutate'
-	@$(call summarise,mutate,^(Killed:|Test efficacy:))
+	@$(call summarise,mutate,^(Killed:|Timed out:|Test efficacy:))
 	@echo; echo '$$ make bench-cmp'
 	@$(MAKE) --no-print-directory bench-cmp
 	@echo; echo '$$ make cover-branches'
