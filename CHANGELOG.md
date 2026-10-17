@@ -16,14 +16,17 @@ tags.
 
 - prettycov is built and tested on Go 1.27.2 rather than pinned to 1.26. 1.27.0 and 1.27.1
   miscount statements ([golang/go#80974][80974]) and 1.27.2 fixes it, so a profile you write on
-  1.27 is only right from 1.27.2 on. Building prettycov still needs only Go 1.26.
+  1.27 is only right from 1.27.2 on. Building prettycov still needs only Go 1.26, and CI now
+  checks that it does.
 
 ### Documentation
 
-- Go 1.27 opens a coverage block at its first statement rather than at the brace, so on a 1.27
-  profile the positions `misses` prints, and the `file:line:col` that `--exclude` matches, usually
-  sit a line lower: `if !ok {` on line 32 becomes the `return` on line 33. The reference and the
-  `Block` doc gave the brace as the only answer.
+- Go 1.27 opens a coverage block at its first statement rather than at the brace, and splits blocks
+  at blank and comment lines. On a 1.27 profile the positions `misses` prints sit a line or more
+  lower, a `file:line:col` given to `--exclude` can take fewer statements than on 1.26, and
+  `misses` lists each arm of an untested `switch` on its own, where a 1.26 profile folded them into
+  one entry. The reference and the `Block` doc gave the brace as the only answer, and the examples
+  now say they are 1.26 output.
 
 ## [0.16.0] — 2026-09-19
 

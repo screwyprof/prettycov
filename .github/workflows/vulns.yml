@@ -16,6 +16,10 @@ permissions:
 jobs:
   vulns:
     runs-on: ubuntu-latest
+    # Both lines users build on: 1.26 from go.mod's go line, 1.27 from the toolchain floor.
+    strategy:
+      matrix:
+        go: ['1.26.x', '~1.27.2']
     steps:
       - uses: actions/checkout@v7
         with:
@@ -23,9 +27,12 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          # Moves with go.yml's; CONTRIBUTING lists where the floor is set.
-          go-version: '~1.27.2'
+          # CONTRIBUTING lists where the floor is set.
+          go-version: ${{ matrix.go }}
           cache: true
           cache-dependency-path: go.sum
 
+      # local, or the toolchain line switches 1.26 to 1.27.2 and the scan reads the wrong stdlib.
       - run: make vulns
+        env:
+          GOTOOLCHAIN: local

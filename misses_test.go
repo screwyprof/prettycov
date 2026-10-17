@@ -66,6 +66,48 @@ func TestMissesMergesAbuttingBlocks(t *testing.T) {
 	}, got, "the first two blocks are one region, the third is its own")
 }
 
+// Go 1.27.2's profile of an untested four-arm switch. Each arm opens below its `case`, and that line
+// is in no block, the same as a function's signature, so each arm is its own region.
+func TestMissesListsGo127SwitchArmsApart(t *testing.T) {
+	t.Parallel()
+
+	tree := prettycov.Process([]prettycov.FileCoverage{
+		withBlocks("m/a.go",
+			uncovered(4, 2, 4, 1),
+			uncovered(6, 3, 6, 1),
+			uncovered(8, 3, 8, 1),
+			uncovered(10, 3, 10, 1),
+		),
+	})
+
+	assert.Len(t, prettycov.Misses(tree, missOpts(prettycov.DepthAll)), 4)
+}
+
+// A function with a blank line after it, then three one-line getters a blank line apart, from each
+// toolchain's profile. Folding across one line with no block merged all four into one region.
+func TestMissesKeepsFunctionsApart(t *testing.T) {
+	t.Parallel()
+
+	for name, blocks := range map[string][]prettycov.Block{
+		"go1.26": {
+			uncovered(5, 18, 8, 2), uncovered(10, 26, 10, 1),
+			uncovered(12, 17, 12, 1), uncovered(14, 17, 14, 1),
+		},
+		"go1.27": {
+			uncovered(6, 2, 8, 2), uncovered(10, 28, 10, 1),
+			uncovered(12, 19, 12, 1), uncovered(14, 19, 14, 1),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			tree := prettycov.Process([]prettycov.FileCoverage{withBlocks("m/a.go", blocks...)})
+
+			assert.Len(t, prettycov.Misses(tree, missOpts(prettycov.DepthAll)), 4)
+		})
+	}
+}
+
 // A covered block is not a miss either, and it does not join the regions on either side of it. The
 // blocks abut, so only the covered one between them keeps this two regions. A gap would have done
 // it on its own and tested nothing.

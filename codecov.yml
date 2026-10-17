@@ -8,11 +8,14 @@
 #
 # No count here on purpose. It moves with every commit that touches the source, and a hand-copied
 # one has gone stale three times in this repository already.
+#
+# The project target is the Makefile's COVERAGE_FLOOR; change both or neither.
 coverage:
   status:
     project:
       default:
         threshold: 0%
+        target: 99%
     patch:
       default:
         threshold: 1%

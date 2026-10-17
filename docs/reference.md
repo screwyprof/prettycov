@@ -248,6 +248,11 @@ web/store/pgxstore/store.go:43:16: 1 uncovered
 web/store/pgxstore/store.go:50:16: 1 uncovered
 ```
 
+These are a Go 1.26 profile's positions, where a block opens at its brace. Go 1.27 opens it at its
+first statement, so the same miss reads `scraper/service.go:95:3` rather than `94:16`: a line
+lower, or more when comments come first. The statements are the same; the entries can differ, as
+the fold below says.
+
 Vim reads it as a quickfix list, but not off a pipe: `-q` takes a filename, and `-` is not special
 to it, so `prettycov misses | vim -q -` is `E40: Can't open errorfile -`. Vim also wants the
 terminal that the pipe took. Give it the list as a file instead:
@@ -313,6 +318,12 @@ Blocks that abut fold into one entry. `cmd/cover` emits one per branch, so a fun
 arrives as a dozen of them. That halves the list on a badly covered profile and changes almost
 nothing on a good one, where misses are scattered single statements. A covered block between two
 uncovered ones stops the fold, or the entry would claim a statement the tests do reach.
+
+Only blocks that touch fold, since a line between two belongs to neither and the profile cannot say
+what it holds. Go 1.27 trims each block to the lines holding code, which makes that line more common:
+an untested `switch`, `select` or type switch lists each arm on its own, because the arm opens below
+its `case` rather than on it as in 1.26, and a run of two lines with no code, a blank line and a
+comment say, splits what 1.26 kept as one entry.
 
 `--depth` and `--hide-covered` narrow it as they narrow the tree under `--files`, being the same
 filtering with that one option set for you: a file is an entry of the package holding it, so it sits
@@ -418,9 +429,9 @@ statement stops being counted without dropping the file it lives in:
 
 The position is the block's start, and Go 1.27 moved it. Up to 1.26 `cmd/cover` opens a block at
 the brace, so `if !ok {` on line 32 owns the `return` on line 33; from 1.27 it opens at the `return`.
-A pattern written against one toolchain's profile can miss under the other, so read it from the
-profile rather than off the source. The column is optional, and only tells two blocks opening on
-one line apart.
+1.27 also splits a block at blank and comment lines, so a coordinate can take fewer statements than
+the same one did on 1.26. Read it from the profile rather than off the source, and again after
+changing toolchain. The column is optional, and only tells two blocks opening on one line apart.
 
 Patterns are unanchored here as everywhere, so a bare line number is a prefix: `a\.go:3` reaches
 lines 3, 30, and 300. Anchor it when you mean one line: `a\.go:3$`, or `a\.go:3:2$` to pin the

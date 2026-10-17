@@ -25,13 +25,14 @@ which is Python rather than Go and cannot be fetched the same way. Run `pip inst
 enter the devShell, which registers the hooks on entry. Nothing else asks for it.
 
 Go 1.27.2 or later. A coverage tool cannot ship on a toolchain that miscounts statements, and 1.27.0
-and 1.27.1 do ([golang/go#80974](https://github.com/golang/go/issues/80974)): they split a
-straight-line block at a blank line and write the whole run's count into each piece, inflating
+and 1.27.1 do ([golang/go#80974](https://github.com/golang/go/issues/80974)). Every 1.27 splits a
+block at blank and comment lines; those two give each piece the whole block's count, inflating
 every figure this tool reports. The floor is set in four places that move together: the
-`toolchain` line in [go.mod](go.mod), which also switches an older local Go to it,
-[flake.nix](flake.nix), and `go-version` in [go.yml](.github/workflows/go.yml) and
+`toolchain` line in [go.mod](go.mod), which switches an older local Go to it unless
+`GOTOOLCHAIN=local`, [flake.lock](flake.lock), whose nixpkgs decides the patch
+[flake.nix](flake.nix)'s `go_1_27` names, and `go-version` in [go.yml](.github/workflows/go.yml) and
 [vulns.yml](.github/workflows/vulns.yml). The `go` line in go.mod is not one of them: it is the
-oldest Go a user can build with.
+oldest Go a user can build with: the `minimum` job in go.yml tests on it, and vulns.yml scans both.
 
 ## The gates
 
