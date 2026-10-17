@@ -104,8 +104,8 @@ type FileCoverage struct {
 }
 
 // Block is one of a file's basic blocks. Exactly one side of Coverage is non-zero, since a block is
-// run or not run and never partly. The position is where cmd/cover opens it, so `if !ok {` on line 32
-// owns the `return` on line 33.
+// run or not run and never partly. The position is where cmd/cover opens it: at the brace up to Go
+// 1.26, so `if !ok {` on line 32 owns the `return` on line 33, and at the `return` from 1.27.
 //
 // Line and Col are its identity, and all --exclude matches against. EndLine is what Misses folds on.
 type Block struct {

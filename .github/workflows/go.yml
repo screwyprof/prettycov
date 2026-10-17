@@ -37,14 +37,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          # 1.26 rather than 1.27 on purpose: golang/go#80974 makes 1.27 miscount statements, which
-          # is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27
-          # backport, so this lifts when 1.28 ships and not before.
+          # Not below 1.27.2: 1.27.0 and 1.27.1 miscount statements (golang/go#80974), and `1.27.x`
+          # takes whatever patch the runner image has cached.
           #
-          # `.x`, not go-version-file: setup-go reads go.mod's minimum as an exact patch and sets
+          # A range, not go-version-file: setup-go reads go.mod's minimum as an exact patch and sets
           # GOTOOLCHAIN=local, so CI sat on 1.26.0 and shipped GO-2026-4601 through a green
           # govulncheck. The minor stays pinned; only the patch floats.
-          go-version: '1.26.x'
+          go-version: '~1.27.2'
           cache: true
           cache-dependency-path: go.sum
 

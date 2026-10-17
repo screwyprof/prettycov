@@ -2,6 +2,9 @@ module github.com/screwyprof/prettycov
 
 go 1.26.0
 
+// 1.27.0 and 1.27.1 miscount statements (golang/go#80974).
+toolchain go1.27.2
+
 require (
 	github.com/alecthomas/kong v1.16.1
 	github.com/stretchr/testify v1.12.1

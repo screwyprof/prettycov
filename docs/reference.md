@@ -416,9 +416,11 @@ statement stops being counted without dropping the file it lives in:
  └ web - 93.94  8/132 uncovered
 ```
 
-The position is the block's start, which `cmd/cover` opens just after the brace, so `if !ok {` on
-line 32 owns the `return` on line 33. Read it from the profile rather than off the source. The
-column is optional, and only tells two blocks opening on one line apart.
+The position is the block's start, and Go 1.27 moved it. Up to 1.26 `cmd/cover` opens a block at
+the brace, so `if !ok {` on line 32 owns the `return` on line 33; from 1.27 it opens at the `return`.
+A pattern written against one toolchain's profile can miss under the other, so read it from the
+profile rather than off the source. The column is optional, and only tells two blocks opening on
+one line apart.
 
 Patterns are unanchored here as everywhere, so a bare line number is a prefix: `a\.go:3` reaches
 lines 3, 30, and 300. Anchor it when you mean one line: `a\.go:3$`, or `a\.go:3:2$` to pin the

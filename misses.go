@@ -11,7 +11,7 @@ import (
 // Miss is a run of statements the tests never reached, in one file: one per contiguous region, not
 // per block, since cmd/cover emits a block per branch.
 //
-// Line and Col open the region's first block, `if !ok {` rather than the `return` inside it, and
+// Line and Col open the region's first block, wherever the toolchain opened it (see [Block]), and
 // are the only spelling a compiler-style consumer reads. EndLine is for the consumers that do speak
 // ranges (GitHub annotations, LSP). Statements is what the positions cannot say.
 type Miss struct {

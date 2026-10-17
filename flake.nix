@@ -31,11 +31,8 @@
         {
           devShells.default = pkgs.mkShell {
             packages = [
-              # 1.26 rather than 1.27: golang/go#80974 splits a straight-line block at blank lines
-              # and writes the whole run's statement count into each piece, inflating every number
-              # this tool reports. A coverage tool cannot ship on a toolchain that miscounts
-              # statements. CL 819000 fixed it for 1.28, with no 1.27 backport.
-              pkgs.go_1_26
+              # 1.27.2 or later: 1.27.0 and 1.27.1 miscount statements (golang/go#80974).
+              pkgs.go_1_27
               pkgs.gopls
               pkgs.gotools
               pkgs.pre-commit
