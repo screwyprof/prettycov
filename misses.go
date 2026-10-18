@@ -11,7 +11,7 @@ import (
 // Miss is a run of statements the tests never reached, in one file: one per contiguous region, not
 // per block, since cmd/cover emits a block per branch.
 //
-// Line and Col open the region's first block, `if !ok {` rather than the `return` inside it, and
+// Line and Col open the region's first block, wherever the toolchain opened it (see [Block]), and
 // are the only spelling a compiler-style consumer reads. EndLine is for the consumers that do speak
 // ranges (GitHub annotations, LSP). Statements is what the positions cannot say.
 type Miss struct {
@@ -52,6 +52,9 @@ func byPosition(x, y Block) int {
 // Abutting means opening no later than the line after the last region ended, with nothing covered
 // between. A covered block in the gap stops the fold, or the region would claim a statement the
 // tests reach.
+//
+// Only blocks that touch: a line between two may be a function's signature, which the profile
+// cannot tell from Go 1.27's `case` label or comment.
 //
 // Breaking that is invisible in the default output: only the range goes wrong, the statement counts
 // stay right, and the CLI prints the opening position alone. Verify a change here against EndLine,

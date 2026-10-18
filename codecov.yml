@@ -9,13 +9,7 @@
 # No count here on purpose. It moves with every commit that touches the source, and a hand-copied
 # one has gone stale three times in this repository already.
 #
-# The project target is a fixed 99% rather than a comparison against the base commit. Go 1.27
-# inflates statement counts (golang/go#80974) and go.mod pins 1.26 to avoid it — a baseline
-# measured on an inflated number would have failed the very commit that corrected it. The cost is
-# that the check passes at anything at or above 99%, and that is deliberate.
-#
-# The fix is milestoned Go 1.28, so no 1.27 release carries it. When go.mod moves past the bug,
-# drop the target and let threshold: 0% against the base commit mean something again.
+# The project target is the Makefile's COVERAGE_FLOOR; change both or neither.
 coverage:
   status:
     project:

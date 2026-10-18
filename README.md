@@ -92,6 +92,9 @@ pkg/logger/logger.go:44:26: 1 uncovered
 …
 ```
 
+These positions come from a Go 1.26 profile;
+[1.27 moves some of them](docs/reference.md#where-the-uncovered-statements-are).
+
 ```shell
 ❯ vim -q <(prettycov misses --old=$MODULE --new=. --depth=max)     # quickfix list
 ❯ prettycov misses --old=$MODULE --new=. --depth=max | reviewdog -f=golint -reporter=local

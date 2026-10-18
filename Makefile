@@ -134,8 +134,12 @@ fmt: ## format code
 # the directory empty, and fails inside covdata naming neither the tag nor the tests.
 #
 # Appending merges, because readers of this format sum blocks they see twice.
+#
+# The releases golang/go#80974 shipped in, refused whatever Go is on PATH.
 $(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
+	@! go env GOVERSION | grep -qE '^go1\.27(rc|beta|\.[01]([^0-9]|$$))' \
+		|| { echo "go1.27 before 1.27.2 miscounts statements (golang/go#80974)" >&2; exit 1; }
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
 	@go test -race -count=1 -shuffle=on -timeout=120s -cover -covermode atomic -coverpkg=./... -coverprofile=$@ ./...
 	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -race -count=1 -shuffle=on -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/
@@ -229,20 +233,24 @@ cover-branches: ## report conditions never evaluated both ways
 # Copied the same way as cover-branches, and for the same reason: gremlins works on its own copy of
 # the module root, so a gitignored _reference/ comes with it and fills /tmp.
 #
-# --timeout-coefficient times each mutant against a multiple of its baseline measurement. The
-# default left ours ~50ms against a suite needing 400: 105 of 123 mutants timed out and said
-# nothing. At 30 the run takes twelve seconds and every mutant is decided.
+# --timeout-coefficient: idle runs time out below 5, and 100 costs nothing unless a mutant hangs.
+#
+# The gate reads the counts, not --threshold-*, which v0.6.0 reads as 0.
 #
 # "Not covered" is worth reading but not chasing: those land on `switch { case <expr>: }` lines and
 # package-level var initialisers, neither of which Go's cover instruments where gremlins looks.
 # cover-branches is the one that answers for those.
-mutate: ## report mutants the tests failed to kill
+mutate: ## run mutation testing; fails if a mutant lived or timed out
 	@echo -e "$(OK_COLOR)==> Mutation testing$(NO_COLOR)"
 	@test -n "$(GO_FILES)" || { echo "no Go files; this needs a git checkout"; exit 1; }
-	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT; \
+	@tmp=$$(mktemp -d) && out=$$(mktemp) && trap 'rm -rf "$$tmp" "$$out"' EXIT; \
 	 $(GIT_LS) | tar -cf - -T - | (cd "$$tmp" && tar -xf -); \
 	 (cd "$$tmp" && go run github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VERSION) \
-		unleash --timeout-coefficient=30 .)
+		unleash --timeout-coefficient=100 . 2>&1) | tee "$$out"; \
+	 grep -qE '^Killed: [1-9]' "$$out" || { echo "mutate: no mutant was killed"; exit 1; }; \
+	 grep -qE '^Killed: [0-9]+, Lived: 0,' "$$out" || { echo "mutate: a mutant lived"; exit 1; }; \
+	 grep -qE '^Timed out: 0,' "$$out" \
+		|| { echo "mutate: a mutant timed out: it hangs the tests, or the machine stalled"; exit 1; }
 
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
@@ -317,7 +325,7 @@ check: ## run every quality gate and print the block to paste into a PR descript
 	@echo; echo '$$ make docs-lint'
 	@$(call summarise,docs-lint,^ *✔)
 	@echo; echo '$$ make mutate'
-	@$(call summarise,mutate,^(Killed:|Test efficacy:))
+	@$(call summarise,mutate,^(Killed:|Timed out:|Test efficacy:))
 	@echo; echo '$$ make bench-cmp'
 	@$(MAKE) --no-print-directory bench-cmp
 	@echo; echo '$$ make cover-branches'

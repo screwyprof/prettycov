@@ -5,7 +5,10 @@ name: Vulnerabilities
 #
 # Ceiling: GitHub disables a schedule after 60 days without repository activity — the same idleness
 # this exists for. Re-enable from the notification; nothing here can detect it stopped.
+#
+# On pull requests too: `make check` scans only the 1.27 line, and users also build on 1.26.
 on:
+  pull_request:
   schedule:
     - cron: '17 6 * * *'
   workflow_dispatch:
@@ -16,6 +19,13 @@ permissions:
 jobs:
   vulns:
     runs-on: ubuntu-latest
+    # Both lines users build on: 1.26, go.mod's go line, and 1.27 from the floor. Only 1.26 on a
+    # pull request, where make check already scans 1.27.
+    strategy:
+      # One line's advisory must not cancel the other's scan.
+      fail-fast: false
+      matrix:
+        go: ${{ github.event_name == 'pull_request' && fromJSON('["1.26.x"]') || fromJSON('["1.26.x", "~1.27.2"]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -23,9 +33,14 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          # Fifth place the 1.26 pin lives; CONTRIBUTING lists them.
-          go-version: '1.26.x'
+          # CONTRIBUTING lists where the floor is set.
+          go-version: ${{ matrix.go }}
+          # Users take the newest patch, so scan that, not whatever the runner has cached.
+          check-latest: true
           cache: true
           cache-dependency-path: go.sum
 
+      # local, or a raised go line downloads a newer Go and scans its stdlib instead.
       - run: make vulns
+        env:
+          GOTOOLCHAIN: local

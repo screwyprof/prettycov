@@ -174,8 +174,8 @@ func TestParseExclude(t *testing.T) {
 	})
 }
 
-// The coordinate is the block's start, which cmd/cover opens just after the brace: `if !ok {` on
-// line 32 owns the `return` on line 33.
+// The coordinate is the block's start as the profile records it; these are Go 1.26's, opening at
+// the brace, so `if !ok {` on line 32 owns the `return` on line 33.
 func TestExcludeTakesBlocksByCoordinate(t *testing.T) {
 	t.Parallel()
 

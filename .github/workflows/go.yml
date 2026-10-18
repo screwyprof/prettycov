@@ -37,14 +37,9 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          # 1.26 rather than 1.27 on purpose: golang/go#80974 makes 1.27 miscount statements, which
-          # is the one bug a coverage tool cannot ship on. CL 819000 fixed it for 1.28 with no 1.27
-          # backport, so this lifts when 1.28 ships and not before.
-          #
-          # `.x`, not go-version-file: setup-go reads go.mod's minimum as an exact patch and sets
-          # GOTOOLCHAIN=local, so CI sat on 1.26.0 and shipped GO-2026-4601 through a green
-          # govulncheck. The minor stays pinned; only the patch floats.
-          go-version: '1.26.x'
+          # 1.27.0 and 1.27.1 miscount statements. check-latest, or a cached older patch is used.
+          go-version: '~1.27.2'
+          check-latest: true
           cache: true
           cache-dependency-path: go.sum
 
@@ -96,3 +91,23 @@ jobs:
           disable_search: true
           fail_ci_if_error: true
           verbose: false
+
+  # go.mod's go line is the oldest Go a user can build with, and nothing else here runs it.
+  minimum:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          # Written out, not read off go.mod, or a raised go line would raise this too.
+          go-version: '1.26.0'
+          cache: true
+          cache-dependency-path: go.sum
+
+      # local: setup-go leaves auto, which would download a newer Go for a raised go line.
+      - run: make test
+        env:
+          GOTOOLCHAIN: local
