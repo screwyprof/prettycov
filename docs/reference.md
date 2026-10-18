@@ -322,9 +322,9 @@ uncovered ones stops the fold, or the entry would claim a statement the tests do
 
 Only blocks that touch fold, since a line between two belongs to neither and the profile cannot say
 what it holds. Go 1.27 trims each block to the lines holding code, which leaves such a line more
-often: a `case` label, so an untested `switch`, `select` or type switch lists each arm on its own,
-and a comment, even one at the top of a loop or `if` body. 1.26 opened a block on the line of its
-brace or `case` and folded across both. One-line functions on consecutive lines touch, so they fold
+often: a `case` label, so an untested `switch`, `select` or type switch lists each arm on its own;
+a comment at the top of a loop or `if` body; and any two lines in a row with no code, a blank line
+and a comment say. 1.26 kept those inside a block and folded across them. One-line functions on consecutive lines touch, so they fold
 on either toolchain.
 
 `--depth` and `--hide-covered` narrow it as they narrow the tree under `--files`, being the same

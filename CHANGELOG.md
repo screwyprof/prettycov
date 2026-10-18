@@ -25,7 +25,8 @@ tags.
   at blank and comment lines. On a 1.27 profile a position `misses` prints after a brace usually
   sits a line lower, a `file:line:col` given to `--exclude` can take fewer statements than on
   1.26, and `misses` splits an entry at a line no block owns: each arm of an untested `switch` is
-  listed on its own, and a comment can split a body, where a 1.26 profile folded both. The
+  listed on its own, and a comment or a blank line before one can split a body, where a 1.26
+  profile folded both. The
   reference and the `Block` doc gave the brace as the only answer, and the examples now say they
   are 1.26 output.
 

@@ -37,10 +37,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          # Not below 1.27.2: 1.27.0 and 1.27.1 miscount statements (golang/go#80974). check-latest,
-          # or setup-go takes whatever matching patch the runner has cached. Not go-version-file,
-          # which reads an exact patch off go.mod and floats nothing: CI sat on 1.26.0 that way and
-          # shipped GO-2026-4601 through a green govulncheck.
+          # 1.27.0 and 1.27.1 miscount statements. check-latest, or a cached older patch is used.
           go-version: '~1.27.2'
           check-latest: true
           cache: true
@@ -105,14 +102,12 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          # The oldest Go this repository promises, written here rather than read off go.mod, or a
-          # raised go line would raise this with it and pass.
+          # Written out, not read off go.mod, or a raised go line would raise this too.
           go-version: '1.26.0'
           cache: true
           cache-dependency-path: go.sum
 
-      # make test, for its tags and its counter check. local, since setup-go does not set it: a
-      # raised go line would otherwise download the newer Go and pass.
+      # local: setup-go leaves auto, which would download a newer Go for a raised go line.
       - run: make test
         env:
           GOTOOLCHAIN: local

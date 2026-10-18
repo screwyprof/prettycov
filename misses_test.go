@@ -66,9 +66,7 @@ func TestMissesMergesAbuttingBlocks(t *testing.T) {
 	}, got, "the first two blocks are one region, the third is its own")
 }
 
-// Go 1.27.2's profile of an untested switch: the switch's own block, then three arms. Each arm
-// opens below its `case`, and that line is in no block, the same as a function's signature, so each
-// is its own region.
+// Go 1.27.2's untested switch: its own block, then three arms, each below a `case` no block owns.
 func TestMissesListsGo127SwitchArmsApart(t *testing.T) {
 	t.Parallel()
 
@@ -89,8 +87,7 @@ func TestMissesListsGo127SwitchArmsApart(t *testing.T) {
 	}, prettycov.Misses(tree, missOpts(prettycov.DepthAll)))
 }
 
-// A function with a blank line after it, then three one-line getters a blank line apart, from each
-// toolchain's profile. Folding across one line with no block merged all four into one region.
+// A function, then three one-line getters, a blank line apart, as each toolchain profiles them.
 func TestMissesKeepsFunctionsApart(t *testing.T) {
 	t.Parallel()
 
