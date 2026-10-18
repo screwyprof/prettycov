@@ -321,10 +321,11 @@ nothing on a good one, where misses are scattered single statements. A covered b
 uncovered ones stops the fold, or the entry would claim a statement the tests do reach.
 
 Only blocks that touch fold, since a line between two belongs to neither and the profile cannot say
-what it holds. Go 1.27 trims each block to the lines holding code, which makes that line more common:
-an untested `switch`, `select` or type switch lists each arm on its own, because the arm opens below
-its `case` rather than on it as in 1.26, and a run of two lines with no code, a blank line and a
-comment say, splits what 1.26 kept as one entry.
+what it holds. Go 1.27 trims each block to the lines holding code, which leaves such a line more
+often: a `case` label, so an untested `switch`, `select` or type switch lists each arm on its own,
+and a comment, even one at the top of a loop or `if` body. 1.26 opened a block on the line of its
+brace or `case` and folded across both. One-line functions on consecutive lines touch, so they fold
+on either toolchain.
 
 `--depth` and `--hide-covered` narrow it as they narrow the tree under `--files`, being the same
 filtering with that one option set for you: a file is an entry of the package holding it, so it sits

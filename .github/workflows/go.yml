@@ -111,5 +111,8 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      # make test, for its tags and its counter check.
+      # make test, for its tags and its counter check. local, since setup-go does not set it: a
+      # raised go line would otherwise download the newer Go and pass.
       - run: make test
+        env:
+          GOTOOLCHAIN: local

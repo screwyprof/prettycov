@@ -139,7 +139,7 @@ fmt: ## format code
 # releases the bug shipped in, not the floor.
 $(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
-	@! go version | grep -qE ' go1\.27(rc|beta|\.[01] )' \
+	@! go env GOVERSION | grep -qE '^go1\.27(rc|beta|\.[01]$$)' \
 		|| { echo "go1.27 before 1.27.2 miscounts statements (golang/go#80974)" >&2; exit 1; }
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
 	@go test -race -count=1 -shuffle=on -timeout=120s -cover -covermode atomic -coverpkg=./... -coverprofile=$@ ./...
@@ -234,9 +234,8 @@ cover-branches: ## report conditions never evaluated both ways
 # Copied the same way as cover-branches, and for the same reason: gremlins works on its own copy of
 # the module root, so a gitignored _reference/ comes with it and fills /tmp.
 #
-# --timeout-coefficient times each mutant against a multiple of the suite's baseline run, and the
-# mutant also compiles. Idle, mutants time out below 5 (152 at 2, 20 at 3); one make check at 30
-# lost 8. 100 costs nothing unless a mutant hangs, and then about a minute of one worker.
+# --timeout-coefficient is a multiple of the suite's baseline run, which a mutant's compile also has
+# to fit in. Idle runs time out below 5; 100 costs nothing unless a mutant hangs.
 #
 # The gate reads the counts: a survivor fails it, and so does a timeout, which efficacy leaves out
 # as if judged. Not the --threshold-* flags: v0.6.0 reads them as 0, and fails a run that equals one.

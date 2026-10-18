@@ -53,9 +53,9 @@ func byPosition(x, y Block) int {
 // between. A covered block in the gap stops the fold, or the region would claim a statement the
 // tests reach.
 //
-// Only blocks that touch. A line between two belongs to no block, and the profile cannot say whether
-// it is a function's signature or, on Go 1.27, a `case` label. So on 1.27 each untested arm of a
-// switch is its own region, where 1.26 opened arms on their `case` and folded them.
+// Only blocks that touch. A line between two belongs to no block, and the profile cannot say
+// whether it is a function's signature or, on Go 1.27, a `case` label or a comment. So on 1.27
+// each untested arm of a switch is its own region, where 1.26 opened arms on their `case`.
 //
 // Breaking that is invisible in the default output: only the range goes wrong, the statement counts
 // stay right, and the CLI prints the opening position alone. Verify a change here against EndLine,

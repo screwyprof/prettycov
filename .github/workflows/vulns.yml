@@ -19,12 +19,13 @@ permissions:
 jobs:
   vulns:
     runs-on: ubuntu-latest
-    # Both lines users build on: 1.26 from go.mod's go line, 1.27 from the toolchain floor.
+    # Both lines users build on: 1.26, go.mod's go line, and 1.27 from the floor. Only 1.26 on a
+    # pull request, where make check already scans 1.27.
     strategy:
       # One line's advisory must not cancel the other's scan.
       fail-fast: false
       matrix:
-        go: ['1.26.x', '~1.27.2']
+        go: ${{ github.event_name == 'pull_request' && fromJSON('["1.26.x"]') || fromJSON('["1.26.x", "~1.27.2"]') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -39,4 +40,7 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
+      # local, or a raised go line downloads a newer Go and scans its stdlib instead.
       - run: make vulns
+        env:
+          GOTOOLCHAIN: local
