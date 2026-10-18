@@ -135,12 +135,12 @@ fmt: ## format code
 #
 # Appending merges, because readers of this format sum blocks they see twice.
 #
-# go.mod's toolchain line is a request GOTOOLCHAIN=local ignores, so the two releases that miscount
-# are refused here, where the profile is written.
+# Whatever Go is on PATH writes the profile, so the releases that miscount are refused here. The
+# releases the bug shipped in, not the floor.
 $(COVERAGE): $(GO_FILES) $(FIXTURES)
 	@echo -e "$(OK_COLOR)==> Running tests$(NO_COLOR)"
-	@! go version | grep -qE ' go1\.27\.[01] ' \
-		|| { echo "go1.27.0 and go1.27.1 miscount statements (golang/go#80974); use 1.27.2 or later"; exit 1; }
+	@! go version | grep -qE ' go1\.27(rc|beta|\.[01] )' \
+		|| { echo "go1.27 before 1.27.2 miscounts statements (golang/go#80974)" >&2; exit 1; }
 	@rm -rf $(COVERDATA) && mkdir -p $(COVERDATA)
 	@go test -race -count=1 -shuffle=on -timeout=120s -cover -covermode atomic -coverpkg=./... -coverprofile=$@ ./...
 	@GOCOVERDIR=$(PWD)/$(COVERDATA) go test -race -count=1 -shuffle=on -timeout=120s -tags=$(GO_TAGS) ./cmd/prettycov/

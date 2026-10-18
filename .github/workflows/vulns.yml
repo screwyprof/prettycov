@@ -5,7 +5,10 @@ name: Vulnerabilities
 #
 # Ceiling: GitHub disables a schedule after 60 days without repository activity — the same idleness
 # this exists for. Re-enable from the notification; nothing here can detect it stopped.
+#
+# On pull requests too: `make check` scans only the 1.27 line, and users also build on 1.26.
 on:
+  pull_request:
   schedule:
     - cron: '17 6 * * *'
   workflow_dispatch:
@@ -36,7 +39,4 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      # local, or the toolchain line switches 1.26 to 1.27.2 and the scan reads the wrong stdlib.
       - run: make vulns
-        env:
-          GOTOOLCHAIN: local

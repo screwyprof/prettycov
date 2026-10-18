@@ -43,7 +43,7 @@
       "automerge": false
     },
     {
-      "description": "Neither go.mod line is bumped. `go` is the oldest Go a user can build with; `toolchain` is a floor, the first release that counts statements correctly, and also the Go this bot runs tidy with. No manager reads the go-version in either workflow or flake.nix's nixpkgs attribute, so those move by hand: CONTRIBUTING lists them.",
+      "description": "go.mod's go line is the oldest Go a user can build with, and with no toolchain line it is also the Go this bot runs tidy with. Nothing bumps it. No manager reads the go-version in either workflow or flake.nix's nixpkgs attribute, so those move by hand: CONTRIBUTING lists them.",
       "matchDepNames": ["go"],
       "enabled": false
     }

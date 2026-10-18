@@ -27,16 +27,14 @@ enter the devShell, which registers the hooks on entry. Nothing else asks for it
 Go 1.27.2 or later. A coverage tool cannot ship on a toolchain that miscounts statements, and 1.27.0
 and 1.27.1 do ([golang/go#80974](https://github.com/golang/go/issues/80974)). Every 1.27 splits a
 block at blank and comment lines; those two give each piece the whole block's count, inflating
-every figure this tool reports. The floor is set in four places that move together: the
-`toolchain` line in [go.mod](go.mod), which switches an older local Go to it unless
-`GOTOOLCHAIN=local`; [flake.lock](flake.lock), whose nixpkgs decides the patch
-[flake.nix](flake.nix)'s `go_1_27` names; and `~1.27.2` in the `check` job of
+every figure this tool reports. `make test` refuses those releases, whatever Go is on PATH. The
+floor is set in two places that move together: [flake.lock](flake.lock), whose nixpkgs decides the
+patch [flake.nix](flake.nix)'s `go_1_27` names, and `~1.27.2` in the `check` job of
 [go.yml](.github/workflows/go.yml) and in the matrix of [vulns.yml](.github/workflows/vulns.yml).
-`make test` refuses 1.27.0 and 1.27.1 whatever the toolchain line says.
 
 The `go` line in go.mod is not one of them: it is the oldest Go a user can build with. The
-`minimum` job in go.yml reads it and tests on it, and the `1.26.x` in vulns.yml's matrix is its
-minor.
+`minimum` job in go.yml tests on it and the `1.26.x` in vulns.yml's matrix scans its minor, both
+written by hand, so raising the line means raising them.
 
 ## The gates
 
