@@ -234,9 +234,9 @@ cover-branches: ## report conditions never evaluated both ways
 # Copied the same way as cover-branches, and for the same reason: gremlins works on its own copy of
 # the module root, so a gitignored _reference/ comes with it and fills /tmp.
 #
-# --timeout-coefficient times each mutant against a multiple of its baseline measurement. The
-# default left ours ~50ms against a suite needing 400: 105 of 123 mutants timed out and said
-# nothing. At 30 the run takes twelve seconds and every mutant is decided.
+# --timeout-coefficient times each mutant against a multiple of the suite's baseline run, and the
+# mutant also compiles. Idle, mutants time out below 5 (152 at 2, 20 at 3); one make check at 30
+# lost 8. 100 costs nothing unless a mutant hangs, and then about a minute of one worker.
 #
 # The gate reads the counts: a survivor fails it, and so does a timeout, which efficacy leaves out
 # as if judged. Not the --threshold-* flags: v0.6.0 reads them as 0, and fails a run that equals one.
@@ -250,11 +250,11 @@ mutate: ## run mutation testing; fails if a mutant lived or timed out
 	@tmp=$$(mktemp -d) && out=$$(mktemp) && trap 'rm -rf "$$tmp" "$$out"' EXIT; \
 	 $(GIT_LS) | tar -cf - -T - | (cd "$$tmp" && tar -xf -); \
 	 (cd "$$tmp" && go run github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VERSION) \
-		unleash --timeout-coefficient=30 . 2>&1) | tee "$$out"; \
+		unleash --timeout-coefficient=100 . 2>&1) | tee "$$out"; \
 	 grep -qE '^Killed: [1-9]' "$$out" || { echo "mutate: no mutant was killed"; exit 1; }; \
 	 grep -qE '^Killed: [0-9]+, Lived: 0,' "$$out" || { echo "mutate: a mutant lived"; exit 1; }; \
 	 grep -qE '^Timed out: 0,' "$$out" \
-		|| { echo "mutate: a mutant timed out; on a slow machine, raise --timeout-coefficient"; exit 1; }
+		|| { echo "mutate: a mutant timed out: it hangs the tests, or the machine stalled"; exit 1; }
 
 # Dogfooding: prettycov's own report on its own profile. Run from source rather than an installed
 # binary, so a change to the printer shows up here before it is ever released.
