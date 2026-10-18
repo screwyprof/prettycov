@@ -10,7 +10,7 @@ Only user-visible changes are listed; `git log` has the rest. Releases before 0.
 so those entries are reconstructed from the history and checked against binaries built from the
 tags.
 
-## [Unreleased]
+## [0.17.0] — 2026-10-18
 
 ### Build
 
@@ -26,9 +26,8 @@ tags.
   sits a line lower, a `file:line:col` given to `--exclude` can take fewer statements than on
   1.26, and `misses` splits an entry at a line no block owns: each arm of an untested `switch` is
   listed on its own, and a comment or a blank line before one can split a body, where a 1.26
-  profile folded both. The
-  reference and the `Block` doc gave the brace as the only answer, and the examples now say they
-  are 1.26 output.
+  profile folded both. The reference and the `Block` doc gave the brace as the only answer, and
+  the examples now say they are 1.26 output.
 
 ## [0.16.0] — 2026-09-19
 
@@ -772,6 +771,7 @@ Initial release: a prefix tree of package paths and coverages, rendered to the t
 
 [80974]: https://github.com/golang/go/issues/80974
 
+[0.17.0]: https://github.com/screwyprof/prettycov/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/screwyprof/prettycov/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/screwyprof/prettycov/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/screwyprof/prettycov/compare/v0.13.0...v0.14.0
