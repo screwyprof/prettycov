@@ -34,7 +34,7 @@ GO_TAGS := integration
 # whole toolchain. The `# renovate:` lines let the bot read a Makefile it would otherwise ignore.
 # datasource=go makes it resolve each module against the proxy, the same place `go run` will.
 # renovate: datasource=go depName=golang.org/x/vuln
-GOVULNCHECK_VERSION := v1.8.0
+GOVULNCHECK_VERSION := v1.9.0
 # renovate: datasource=go depName=github.com/rillig/gobco
 GOBCO_VERSION := v1.3.4
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
@@ -48,7 +48,7 @@ REVIEWDOG_VERSION := v0.21.2
 GREMLINS_VERSION := v0.6.0
 # x/perf carries no semver tags, so this is the pseudo-version the proxy serves.
 # renovate: datasource=go depName=golang.org/x/perf
-BENCHSTAT_VERSION := v0.0.0-20260929162123-406019bb8b68
+BENCHSTAT_VERSION := v0.0.0-20261009192801-be2c69fb417e
 
 # ./VERSION is the single source of truth: `make release` tags from it and the linker stamps it in.
 # Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
