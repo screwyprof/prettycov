@@ -58,8 +58,6 @@ func TestRunRendersTheReport(t *testing.T) {
 
 // With no profile named at all, read ./coverage.out: that is what `go test -coverprofile` is
 // conventionally pointed at, so running prettycov bare in a repo should just work.
-//
-//nolint:paralleltest // t.Chdir cannot be combined with t.Parallel.
 func TestRunDefaultsToCoverageOutInTheWorkingDirectory(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "coverage.out"), []byte(profile), 0o600))
@@ -78,8 +76,6 @@ func TestRunDefaultsToCoverageOutInTheWorkingDirectory(t *testing.T) {
 
 // A relative path with a directory component used to fail: showReport chdir'd to the profile's
 // directory and then opened the path it was given, which no longer resolved from there.
-//
-//nolint:paralleltest // t.Chdir cannot be combined with t.Parallel.
 func TestRunReadsARelativePathWithADirectory(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o750))
