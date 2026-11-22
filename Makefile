@@ -34,21 +34,21 @@ GO_TAGS := integration
 # whole toolchain. The `# renovate:` lines let the bot read a Makefile it would otherwise ignore.
 # datasource=go makes it resolve each module against the proxy, the same place `go run` will.
 # renovate: datasource=go depName=golang.org/x/vuln
-GOVULNCHECK_VERSION := v1.9.0
+GOVULNCHECK_VERSION := v1.10.0
 # renovate: datasource=go depName=github.com/rillig/gobco
 GOBCO_VERSION := v1.3.4
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
 GOLANGCI_VERSION := v2.15.0
 # vale-cli, not errata-ai: module moved at v3.20.0, old path still serves the tags and then refuses.
 # renovate: datasource=go depName=github.com/vale-cli/vale/v3
-VALE_VERSION := v3.26.0
+VALE_VERSION := v3.28.1
 # renovate: datasource=go depName=github.com/reviewdog/reviewdog
-REVIEWDOG_VERSION := v0.21.2
+REVIEWDOG_VERSION := v0.21.3
 # renovate: datasource=go depName=github.com/go-gremlins/gremlins
 GREMLINS_VERSION := v0.6.0
 # x/perf carries no semver tags, so this is the pseudo-version the proxy serves.
 # renovate: datasource=go depName=golang.org/x/perf
-BENCHSTAT_VERSION := v0.0.0-20261009192801-be2c69fb417e
+BENCHSTAT_VERSION := v0.0.0-20261117185222-4febdb082b2c
 
 # ./VERSION is the single source of truth: `make release` tags from it and the linker stamps it in.
 # Dev builds still carry the commit, so binaries report e.g. v0.1.3+abc1234.
